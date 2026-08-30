@@ -4658,7 +4658,8 @@
     if (!karten.length) return;
 
     const ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (ruhig) return;   // Statische Darstellung übernimmt das CSS
+    if (ruhig) return;   // Ohne 3D bleibt die sichtbare Liste stehen
+    tn.classList.add("tn-aktiv");
 
     const titelEl = $("#tnTitel"), textEl = $("#tnText");
     const nrEl = $("#tnNr"), vonEl = $("#tnVon"), fortEl = $("#tnFort");
@@ -4681,9 +4682,9 @@
         // relative Position: 0 = genau vorn, negativ = noch fern, positiv = vorbei
         const eigen = (p * n) - i;
         // Tiefe: von weit hinten (-1800) nach ganz nah (+900)
-        const z = -1800 + eigen * 2700;
+        const z = -2100 + eigen * 3000;
         // Sichtbar nur im Fenster um die Mitte
-        const sicht = 1 - Math.min(1, Math.abs(eigen - 0.5) / 0.75);
+        const sicht = 1 - Math.min(1, Math.abs(eigen - 0.5) / 0.8);
         if (sicht <= 0) { k.style.opacity = "0"; k.style.visibility = "hidden"; return; }
         k.style.visibility = "visible";
         k.style.opacity = sicht.toFixed(3);
