@@ -35,7 +35,7 @@
   padding:16px clamp(20px,5vw,64px);background:rgba(250,251,252,.86);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-bottom:1px solid #E8ECF1}
-.lp-nav-logo{height:52px;width:auto;filter:invert(1);flex:0 0 auto}
+.lp-nav-logo{height:66px;width:auto;filter:invert(1);flex:0 0 auto}
 .lp-nav-links{display:flex;gap:26px;margin-left:auto}
 .lp-nav-links a{font-size:14px;color:#5A6472;text-decoration:none;transition:color .15s}
 .lp-nav-links a:hover{color:#101418}
@@ -201,7 +201,7 @@
 .lp-schluss .lp-btn-lg{width:auto}
 .lp-foot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
   padding:26px clamp(20px,5vw,64px);border-top:1px solid #E8ECF1}
-.lp-foot-logo{height:40px;width:auto;filter:invert(1);opacity:.8}
+.lp-foot-logo{height:52px;width:auto;filter:invert(1);opacity:.85}
 .lp-foot-tx{display:flex;flex-direction:column;gap:2px;margin-right:auto}
 .lp-foot-tx span{font-size:13px;color:#5A6472}
 .lp-foot-firma{font-size:12px!important;color:#8A939F!important}
@@ -219,7 +219,7 @@
 /* Handy – der Hauptweg für Besucher aus der Werbung */
 @media(max-width:560px){
   .lp-nav{gap:10px;padding:11px 16px}
-  .lp-nav-logo{height:36px}
+  .lp-nav-logo{height:44px}
   .lp-nav-cta{gap:4px}
   .lp-nav-cta .lp-btn{padding:10px 14px;font-size:13.5px;border-radius:10px}
   .lp-btn-text{font-size:13.5px;padding:10px 6px}
@@ -318,6 +318,8 @@
 }
 
 /* Bald-verfügbar-Kennzeichnung */
+.lp-hero-logo{display:block;height:88px;width:auto;object-fit:contain;
+  filter:invert(1);margin:0 0 26px}
 .lp-badge-soon{display:inline-flex;align-items:center;gap:9px;margin-bottom:20px;
   background:#E7F2EC;color:#1F6B4A;border:1px solid rgba(31,107,74,.2);
   font-size:12.5px;font-weight:600;padding:7px 15px;border-radius:20px}
@@ -362,6 +364,7 @@
   .lp-warte-feld{flex-direction:column}
   .lp-warte-feld .lp-btn-lg{width:100%}
   .lp-badge-soon{font-size:12px;padding:6px 13px;margin-bottom:16px}
+  .lp-hero-logo{height:56px;margin-bottom:18px}
 }
 
 /* Beta-Phase: keine Selbstregistrierung */
@@ -594,6 +597,121 @@
 .rc-fk-marks small{display:block;font-size:9.5px;opacity:.75}
 .rc-vg i.grau{background:color-mix(in srgb,var(--stroke-2) 85%,transparent)}
 .rc-vg i.alt{background:color-mix(in srgb,#4a9fee 75%,transparent)}
+
+/* ===== GRÜNDER ===== */
+.lp-gruender{display:grid;grid-template-columns:340px 1fr;gap:clamp(28px,4vw,56px);
+  align-items:start;max-width:1400px;margin:0 auto}
+.lp-gr-bild{position:relative;aspect-ratio:4/5;border-radius:20px;overflow:hidden;
+  background:linear-gradient(160deg,#1F6B4A,#124430);box-shadow:0 24px 54px -18px rgba(16,20,24,.34)}
+.lp-gr-bild img{width:100%;height:100%;object-fit:cover;position:relative;z-index:2}
+.lp-gr-platz{position:absolute;inset:0;display:grid;place-items:center;z-index:1;
+  font-family:"Space Grotesk",sans-serif;font-size:76px;font-weight:600;color:rgba(255,255,255,.32)}
+.lp-gr-tx .lp-h2{margin-bottom:20px;max-width:18em}
+.lp-gr-tx p{font-size:15.5px;line-height:1.7;color:#5A6472;margin:0 0 14px;max-width:38em}
+.lp-gr-fakten{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:16px;margin-top:26px;padding-top:24px;border-top:1px solid #E4E8ED}
+.lp-gr-fakten div{display:flex;flex-direction:column;gap:3px}
+.lp-gr-fakten b{font-size:14.5px;font-weight:600}
+.lp-gr-fakten span{font-size:12.5px;color:#8A939F}
+.lp-gr-sig{margin-top:24px;font-family:"Space Grotesk",sans-serif;font-size:20px;
+  color:#1F6B4A;font-style:italic}
+
+/* ===== TUNNEL: Eintauchen ins Produkt ===== */
+.lp-tunnel{height:520vh;position:relative;background:#0E1114}
+.lp-tn-halt{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  perspective:1100px;perspective-origin:50% 46%}
+/* Sog-Wirkung: Licht am Ende des Tunnels */
+.lp-tn-halt:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:radial-gradient(48% 44% at 50% 46%,rgba(31,107,74,.30),transparent 72%)}
+.lp-tn-kopf{position:relative;z-index:6;text-align:center;padding:0 24px;
+  max-width:620px;margin-bottom:clamp(20px,4vh,44px)}
+.lp-tn-zaehler{display:flex;align-items:baseline;justify-content:center;gap:6px;margin-bottom:14px}
+.lp-tn-zaehler b{font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:600;color:#7DD3A6}
+.lp-tn-zaehler span{font-size:12px;color:rgba(220,226,235,.4)}
+.lp-tn-h{font-family:"Space Grotesk",sans-serif;font-size:clamp(26px,4vw,42px);
+  font-weight:600;letter-spacing:-.03em;color:#fff;margin:0 0 12px;
+  transition:opacity .3s,transform .3s}
+.lp-tn-p{font-size:clamp(14.5px,1.5vw,17px);line-height:1.6;color:rgba(220,226,235,.62);
+  margin:0;transition:opacity .3s}
+.lp-tn-szene{position:absolute;inset:0;transform-style:preserve-3d;z-index:4}
+.lp-tn-karte{position:absolute;left:50%;top:50%;width:min(430px,84vw);
+  margin-left:min(-215px,-42vw);margin-top:-150px;
+  background:#181B21;border:1px solid rgba(180,190,205,.14);border-radius:20px;padding:24px;
+  color:#eef1f5;font-family:"Inter",sans-serif;
+  box-shadow:0 40px 90px -24px rgba(0,0,0,.7);
+  opacity:0;will-change:transform,opacity;backface-visibility:hidden}
+.lp-tk-kopf{margin-bottom:16px}
+.lp-tk-kopf span{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:#7DD3A6;margin-bottom:5px}
+.lp-tk-kopf b{font-family:"Space Grotesk",sans-serif;font-size:19px;font-weight:600}
+.lp-tk-zahl{font-family:"Space Grotesk",sans-serif;font-size:44px;font-weight:600;
+  letter-spacing:-.03em;line-height:1;color:#7DD3A6}
+.lp-tk-sub{font-size:12.5px;color:rgba(220,226,235,.5);margin-top:8px}
+.lp-tk-bal{display:flex;align-items:flex-end;gap:7px;height:58px;margin-top:18px}
+.lp-tk-bal i{flex:1;background:linear-gradient(180deg,#4CAF7D,#1F6B4A);border-radius:4px 4px 0 0}
+.lp-tk-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.lp-tk-grid div{background:rgba(48,52,60,.44);border:1px solid rgba(180,190,205,.1);
+  border-radius:12px;padding:14px}
+.lp-tk-grid b{display:block;font-family:"Space Grotesk",sans-serif;font-size:20px;font-weight:600}
+.lp-tk-grid small{display:block;font-size:11px;color:rgba(220,226,235,.48);margin-top:4px}
+.lp-tk-liste{display:flex;flex-direction:column;gap:8px}
+.lp-tk-liste div{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;
+  background:rgba(48,52,60,.4);border:1px solid rgba(180,190,205,.1);font-size:12.5px}
+.lp-tk-liste span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lp-tk-liste b{font-family:"Space Grotesk",sans-serif;font-size:13px}
+.lp-tk-liste i{font-style:normal;font-size:11px}
+.lp-tk-liste .ok i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(76,175,125,.22);color:#7DD3A6}
+.lp-tk-liste .offen{border-color:rgba(201,162,39,.36);background:rgba(201,162,39,.1)}
+.lp-tk-liste .offen i{color:#D9B23F;font-weight:600}
+.lp-tk-zeile{display:flex;align-items:center;gap:11px;margin-top:12px;font-size:12.5px;
+  color:rgba(220,226,235,.6)}
+.lp-tk-bar{flex:1;height:6px;border-radius:99px;background:rgba(180,190,205,.16);overflow:hidden}
+.lp-tk-bar b{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#1F6B4A,#4CAF7D)}
+.lp-tk-zeile em{font-style:normal;font-family:"Space Grotesk",sans-serif;color:#7DD3A6;font-size:13px}
+.lp-tk-zeile em.stark{font-size:17px;margin-left:auto}
+.lp-tk-tags{display:flex;flex-wrap:wrap;gap:8px}
+.lp-tk-tags span{font-size:12px;background:rgba(76,175,125,.14);
+  border:1px solid rgba(125,211,166,.24);color:#c8e8d6;border-radius:8px;padding:7px 12px}
+.lp-tn-fort{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);z-index:6;
+  width:min(240px,50vw);height:3px;border-radius:99px;background:rgba(180,190,205,.16);overflow:hidden}
+.lp-tn-fort i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#1F6B4A,#7DD3A6)}
+
+/* Der Ausgang: reißerischer Abschluss direkt nach dem Tunnel */
+.lp-schluss{position:relative;overflow:hidden}
+.lp-schluss.tunnel-exit{background:#0E1114;border-top:none;color:#fff}
+.lp-schluss.tunnel-exit:before{content:"";position:absolute;left:50%;top:-42%;
+  width:130%;height:100%;transform:translateX(-50%);pointer-events:none;
+  background:radial-gradient(48% 50% at 50% 50%,rgba(31,107,74,.4),transparent 70%)}
+.lp-schluss.tunnel-exit > *{position:relative;z-index:2}
+.lp-schluss.tunnel-exit .lp-h2{color:#fff;max-width:15em}
+.lp-schluss.tunnel-exit p{color:rgba(220,226,235,.66)}
+.lp-exit-badge{display:inline-flex;align-items:center;gap:9px;margin-bottom:18px;
+  background:rgba(76,175,125,.16);border:1px solid rgba(125,211,166,.3);color:#7DD3A6;
+  font-size:12.5px;font-weight:600;padding:8px 16px;border-radius:20px}
+.lp-exit-note{font-size:12.5px;color:rgba(220,226,235,.45);margin-top:16px}
+
+@media(max-width:900px){
+  .lp-gruender{grid-template-columns:1fr;gap:24px}
+  .lp-gr-bild{max-width:260px;aspect-ratio:1/1}
+  .lp-tunnel{height:440vh}
+  .lp-tn-karte{width:min(360px,86vw);margin-left:min(-180px,-43vw)}
+}
+@media(max-width:560px){
+  .lp-tn-kopf{margin-bottom:14px}
+  .lp-tk-zahl{font-size:36px}
+  .lp-tn-karte{padding:19px;margin-top:-134px}
+  .lp-gr-fakten{gap:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .lp-tunnel{height:auto}
+  .lp-tn-halt{position:static;height:auto;padding:60px 20px;perspective:none;display:block}
+  .lp-tn-szene{position:static;display:flex;flex-direction:column;gap:18px;align-items:center}
+  .lp-tn-karte{position:static;opacity:1!important;transform:none!important;
+    margin:0;width:min(430px,100%)}
+}
 
 /* ============================ SMYRNA GREEN THEME ============================ */
 :root{
@@ -1040,6 +1158,8 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .theme-sw{width:16px;height:16px;border-radius:50%;background:var(--sw);
   border:1px solid rgba(255,255,255,.2);flex:0 0 auto}
 .accent-row{display:flex;gap:11px;flex-wrap:wrap}
+/* Hintergrundfarben sind dunkel — sichtbarer Rand, damit sie erkennbar bleiben */
+.theme-dot{box-shadow:inset 0 0 0 1px rgba(180,190,205,.28)}
 .accent-dot{width:32px;height:32px;border-radius:50%;background:var(--ac);cursor:pointer;
   border:2px solid transparent;box-shadow:0 0 0 1px var(--stroke-2);transition:.15s;padding:0}
 .accent-dot:hover{transform:scale(1.1)}
@@ -1558,6 +1678,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
       <a href="#funktionen">Funktionen</a>
       <a href="#einblick">Einblick</a>
       <a href="#ablauf">So funktioniert's</a>
+      <a href="#gruender">Über mich</a>
       <a href="#preise">Preise</a>
     </nav>
     <div class="lp-nav-cta">
@@ -1568,6 +1689,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 
   <section class="lp-hero">
     <div class="lp-hero-tx">
+      <img src="estriq.PNG" alt="ESTRIQ" class="lp-hero-logo" onerror="this.style.display='none'">
       <div class="lp-badge-soon"><span class="lp-puls"></span>Bald verfügbar · Beta läuft</div>
       <div class="lp-eyebrow">Für private Vermieter und Eigentümer</div>
       <h1 class="lp-h1">Sieh endlich, was deine<br><em>Immobilien wirklich</em><br>abwerfen.</h1>
@@ -1852,11 +1974,103 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
     </div>
   </section>
 
-  <section class="lp-schluss">
-    <h2 class="lp-h2">Sei dabei, wenn ESTRIQ startet.</h2>
-    <p>Wir öffnen ESTRIQ Schritt für Schritt. Trag dich ein und du gehörst
-      zu den Ersten, die ihr Portfolio einrichten.</p>
-    <button class="lp-btn lp-btn-lg" data-warte>Platz auf der Warteliste sichern</button>
+  <!-- GRÜNDER · Vertrauen -->
+  <section class="lp-sec lp-sec-alt" id="gruender">
+    <div class="lp-gruender">
+      <div class="lp-gr-bild">
+        <img src="tobias.jpg" alt="Tobias Bücking"
+             onerror="this.style.display='none';this.parentElement.classList.add('kein-bild')">
+        <div class="lp-gr-platz">TB</div>
+      </div>
+      <div class="lp-gr-tx">
+        <div class="lp-eyebrow">Wer dahintersteht</div>
+        <h2 class="lp-h2">Ich habe ESTRIQ gebaut, weil mir das Werkzeug gefehlt hat.</h2>
+        <p>Ich bin Tobias Bücking, Geschäftsführer und Inhaber der Bücking Immobilien
+          GmbH &amp; Co. KG in Ganderkesee. Wir vermieten Wohnungen, eine Ferienwohnung
+          und verpachten Land.</p>
+        <p>Jahrelang habe ich meine Zahlen in Excel geführt. Jede Tabelle war anders
+          gewachsen, Renditen habe ich per Hand nachgerechnet, und bei der Frage
+          „Was bleibt am Monatsende eigentlich übrig?" musste ich erst suchen.
+          Fertige Verwaltungssoftware war entweder zu teuer oder auf Hausverwaltungen
+          mit hunderten Einheiten ausgelegt — nicht auf Leute wie uns.</p>
+        <p>Also habe ich ESTRIQ gebaut. Erst für mein eigenes Portfolio, dann so
+          weit, dass andere es nutzen können. Mein Studium als Wirtschaftsingenieur
+          hilft dabei, die Zahlen richtig aufzustellen — der Rest kommt aus der
+          täglichen Praxis mit eigenen Objekten.</p>
+        <div class="lp-gr-fakten">
+          <div><b>Wirtschaftsingenieurwesen</b><span>Studium</span></div>
+          <div><b>Eigenes Portfolio</b><span>Wohnungen, Ferienwohnung, Pachtland</span></div>
+          <div><b>Ganderkesee</b><span>Bücking Immobilien GmbH &amp; Co. KG</span></div>
+        </div>
+        <div class="lp-gr-sig">Tobias Bücking</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TUNNEL · Eintauchen ins Produkt -->
+  <section class="lp-tunnel" id="tunnel">
+    <div class="lp-tn-halt">
+      <div class="lp-tn-kopf">
+        <div class="lp-tn-zaehler"><b id="tnNr">01</b><span id="tnVon">/ 05</span></div>
+        <h2 class="lp-tn-h" id="tnTitel">Alles an einem Ort</h2>
+        <p class="lp-tn-p" id="tnText">Scroll weiter und sieh, was ESTRIQ dir zeigt.</p>
+      </div>
+      <div class="lp-tn-szene" id="tnSzene">
+
+        <div class="lp-tn-karte" data-titel="Deine Einnahmen" data-text="Alle Mieten aus allen Objekten, zusammengerechnet auf einen Blick.">
+          <div class="lp-tk-kopf"><span>Portfolio</span><b>Einnahmen / Monat</b></div>
+          <div class="lp-tk-zahl">8.326 €</div>
+          <div class="lp-tk-sub">6 von 7 Einheiten vermietet</div>
+          <div class="lp-tk-bal"><i style="height:62%"></i><i style="height:74%"></i><i style="height:70%"></i><i style="height:88%"></i><i style="height:82%"></i><i style="height:95%"></i></div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Rendite je Objekt" data-text="Welches Objekt trägt sich — und welches kostet dich Geld?">
+          <div class="lp-tk-kopf"><span>Vermietung</span><b>Haus Bergstraße 12</b></div>
+          <div class="lp-tk-grid">
+            <div><b>6,11 %</b><small>Bruttorendite</small></div>
+            <div><b>1.842 €</b><small>Netto-Cashflow</small></div>
+            <div><b>4.180 €</b><small>Einnahmen</small></div>
+            <div><b>820.000 €</b><small>Investition</small></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Mieteingänge abhaken" data-text="Am Zahltag fragt ESTRIQ nach. Ein Tipp pro Wohnung, und der Monat ist sauber.">
+          <div class="lp-tk-kopf"><span>Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div>
+          <div class="lp-tk-liste">
+            <div class="ok"><span>EG links · Familie Müller</span><b>830 €</b><i>✓</i></div>
+            <div class="ok"><span>1. OG rechts · M. Schneider</span><b>905 €</b><i>✓</i></div>
+            <div class="offen"><span>Dachgeschoss · K. Weber</span><b>650 €</b><i>offen</i></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Kredite und Tilgung" data-text="Restschuld, Zinsanteil und Sondertilgungen laufen automatisch mit.">
+          <div class="lp-tk-kopf"><span>Finanzierung</span><b>Restschuld gesamt</b></div>
+          <div class="lp-tk-zahl">939.883 €</div>
+          <div class="lp-tk-zeile"><span>Entschuldet</span><i class="lp-tk-bar"><b style="width:34%"></b></i><em>34 %</em></div>
+          <div class="lp-tk-zeile"><span>Tilgung / Monat</span><em class="stark">4.760 €</em></div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Rechner und Wissen" data-text="Elf Rechner und acht Themen, die erklären, was hinter den Zahlen steckt.">
+          <div class="lp-tk-kopf"><span>Tools</span><b>Rechner &amp; Wissen</b></div>
+          <div class="lp-tk-tags">
+            <span>Rendite</span><span>Kredit</span><span>Zinseszins</span>
+            <span>Sondertilgung</span><span>Kaufnebenkosten</span><span>Cashflow</span>
+            <span>Mieterhöhung</span><span>Kaufpreisfaktor</span>
+          </div>
+        </div>
+
+      </div>
+      <div class="lp-tn-fort"><i id="tnFort"></i></div>
+    </div>
+  </section>
+
+  <section class="lp-schluss tunnel-exit">
+    <div class="lp-exit-badge"><span class="lp-puls"></span>Nur 100 Lifetime-Plätze</div>
+    <h2 class="lp-h2">Du hast gerade gesehen, was dir bisher gefehlt hat.</h2>
+    <p>ESTRIQ öffnet Schritt für Schritt. Trag dich jetzt ein und gehöre zu den
+      Ersten, die ihr Portfolio einrichten — bevor die Lifetime-Plätze weg sind.</p>
+    <button class="lp-btn lp-btn-lg" data-warte>Jetzt Platz sichern</button>
+    <div class="lp-exit-note">Kostenlos · keine Zahlungsdaten nötig · jederzeit abbestellbar</div>
   </section>
 
   <footer class="lp-foot">
@@ -2098,9 +2312,9 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=39"></script>
-<script src="./data-save.js?v=39"></script>
-<script src="./finance-engine.js?v=39"></script>
-<script src="./app.js?v=39"></script>
+<script src="./data-loader.js?v=40"></script>
+<script src="./data-save.js?v=40"></script>
+<script src="./finance-engine.js?v=40"></script>
+<script src="./app.js?v=40"></script>
 </body>
 </html>
