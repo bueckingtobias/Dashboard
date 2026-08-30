@@ -1,0 +1,1442 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ESTRIQ – Das Cockpit für private Vermieter</title>
+<meta name="description" content="ESTRIQ zeigt dir jeden Monat, was deine Immobilien wirklich verdienen: Einnahmen, Cashflow, Rendite und Tilgung – für jedes Objekt, auf den Euro genau. Gebaut von einem Vermieter mit 14 Einheiten.">
+<meta property="og:title" content="ESTRIQ – Miete rein. Rate raus. Was bleibt wirklich?">
+<meta property="og:description" content="Das Cockpit für private Vermieter mit 1 bis 30 Einheiten. Einnahmen, Cashflow, Rendite und Tilgung – jeden Monat, auf den Euro genau.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0B1220">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* =====================================================================
+   ESTRIQ Landing · Corporate Design (dunkel)
+   Tinte #0B1220 · Fläche #111A2B · Grün #22C55E · Blau #3B82F6 · Amber #F59E0B
+   Display: Bricolage Grotesque · Text: Inter · Zahlen im Produkt: Space Grotesk
+   ===================================================================== */
+:root{
+  --ink-0:#070B14;--ink-1:#0B1220;--ink-2:#111A2B;--ink-3:#172136;
+  --line:rgba(148,163,184,.14);--line-2:rgba(148,163,184,.26);
+  --tx-0:#F4F7FB;--tx-1:#B7C2D2;--tx-2:#7C8A9E;
+  --green:#22C55E;--green-2:#4ADE80;--green-3:#15803D;--green-ink:#052E16;
+  --blue:#3B82F6;--blue-2:#93C5FD;--amber:#F59E0B;--amber-2:#FCD34D;--rose:#F43F5E;
+  --font-d:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+  --font-b:"Inter",system-ui,-apple-system,sans-serif;
+  --font-n:"Space Grotesk",system-ui,sans-serif;
+  --r:18px;--r-lg:24px;--wrap:1180px;--pad:clamp(20px,5vw,64px);--navh:76px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*,*:before,*:after{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ink-1);color:var(--tx-0);font-family:var(--font-b);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow-x:hidden}
+body.modal-open{overflow:hidden}
+img{max-width:100%;display:block}
+a{color:inherit}
+button{font-family:inherit}
+h1,h2,h3{margin:0;font-family:var(--font-d);font-weight:700;letter-spacing:-.03em;line-height:1.05}
+p{margin:0}
+svg{display:block}
+::selection{background:var(--green);color:var(--green-ink)}
+:focus-visible{outline:2px solid var(--green-2);outline-offset:3px;border-radius:6px}
+
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 var(--pad)}
+.sec{padding:clamp(72px,9vw,128px) 0;position:relative}
+.sec-h{margin-bottom:clamp(36px,5vw,64px)}
+.sec-h.center{text-align:center}
+.sec-h.center .h2,.sec-h.center .lead{margin-left:auto;margin-right:auto}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:12px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--green-2);margin-bottom:18px}
+.eyebrow:before{content:"";width:18px;height:1px;background:currentColor;opacity:.7}
+.sec-h.center .eyebrow:before{display:none}
+.h2{font-size:clamp(30px,4.2vw,50px);max-width:16em;line-height:1.04}
+.lead{font-size:clamp(16px,1.35vw,18.5px);color:var(--tx-1);max-width:36em;margin-top:16px;line-height:1.6}
+
+/* Knöpfe */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:1px solid transparent;
+  border-radius:12px;padding:13px 22px;font-size:15px;font-weight:600;text-decoration:none;white-space:nowrap;
+  transition:transform .18s var(--ease),box-shadow .18s,background .18s,border-color .18s,color .18s}
+.btn-p{background:var(--green);color:var(--green-ink);
+  box-shadow:0 10px 30px -12px rgba(34,197,94,.7),inset 0 1px 0 rgba(255,255,255,.28)}
+.btn-p:hover{background:var(--green-2);transform:translateY(-1px);box-shadow:0 16px 36px -12px rgba(34,197,94,.85),inset 0 1px 0 rgba(255,255,255,.3)}
+.btn-g{background:rgba(255,255,255,.04);border-color:var(--line-2);color:var(--tx-0)}
+.btn-g:hover{background:rgba(255,255,255,.08);border-color:rgba(148,163,184,.45)}
+.btn-lg{padding:16px 28px;font-size:16px;border-radius:14px}
+.btn-sm{padding:10px 16px;font-size:14px;border-radius:10px}
+.btn-block{width:100%;white-space:normal}
+.btn svg{width:17px;height:17px}
+.btn .arr{transition:transform .18s var(--ease)}
+.btn:hover .arr{transform:translateX(3px)}
+.btn:disabled{opacity:.7;cursor:default;transform:none}
+
+/* Navigation */
+.nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:background .25s,border-color .25s}
+.nav.on{background:rgba(11,18,32,.8);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.nav-in{max-width:var(--wrap);margin:0 auto;padding:0 var(--pad);height:var(--navh);display:flex;align-items:center;gap:28px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex:0 0 auto}
+.logo img{height:46px;width:auto}
+.logo-tx{font-family:var(--font-d);font-weight:800;font-size:26px;letter-spacing:-.03em;display:none;color:var(--tx-0)}
+.logo.noimg img{display:none}
+.logo.noimg .logo-tx{display:block}
+.nav-links{display:flex;gap:28px;margin-left:auto}
+.nav-links a{font-size:14.5px;font-weight:500;color:var(--tx-1);text-decoration:none;transition:color .15s}
+.nav-links a:hover{color:var(--tx-0)}
+.nav-cta{display:flex;align-items:center;gap:10px;margin-left:auto}
+.nav-links+.nav-cta{margin-left:0}
+
+/* Held */
+.hero{position:relative;overflow:hidden;padding:calc(var(--navh) + clamp(40px,7vw,88px)) 0 clamp(56px,8vw,104px)}
+.hero-bg{position:absolute;inset:0;pointer-events:none}
+.hero-bg .glow{position:absolute;width:900px;height:900px;right:-240px;top:-380px;border-radius:50%;
+  background:radial-gradient(circle,rgba(34,197,94,.22),rgba(34,197,94,.06) 40%,transparent 68%);filter:blur(24px)}
+.hero-bg .glow2{position:absolute;width:760px;height:760px;left:-320px;bottom:-360px;border-radius:50%;
+  background:radial-gradient(circle,rgba(59,130,246,.16),transparent 65%)}
+.hero-bg .grid{position:absolute;inset:0;
+  background-image:radial-gradient(rgba(148,163,184,.2) 1px,transparent 1px);background-size:28px 28px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 60% at 62% 32%,#000 15%,transparent 72%);
+  mask-image:radial-gradient(ellipse 70% 60% at 62% 32%,#000 15%,transparent 72%)}
+.hero-in{max-width:var(--wrap);margin:0 auto;padding:0 var(--pad);position:relative;display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(36px,5vw,72px);align-items:center}
+.badge{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--tx-1);
+  background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:99px;padding:7px 14px 7px 10px;margin-bottom:26px}
+.badge i{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}70%{box-shadow:0 0 0 9px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.h1{font-size:clamp(40px,6vw,76px);font-weight:750;line-height:.98;letter-spacing:-.035em;max-width:11em}
+.h1 em{font-style:normal;background:linear-gradient(90deg,#86EFAC,#4ADE80 45%,#22C55E);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-lead{margin-top:22px;font-size:clamp(16.5px,1.4vw,19px);line-height:1.6;color:var(--tx-1);max-width:31em}
+.hero-lead b{color:var(--tx-0);font-weight:600}
+
+/* Warteliste-Formular (Held + Abschluss) */
+.wl{display:flex;gap:10px;margin-top:32px;max-width:540px;flex-wrap:wrap}
+.wl .fld{flex:1 1 240px;min-width:0;position:relative}
+.wl input{width:100%;height:54px;border-radius:14px;border:1px solid var(--line-2);background:rgba(255,255,255,.045);
+  color:var(--tx-0);font:inherit;font-size:15.5px;padding:0 16px 0 44px;outline:none;transition:border-color .15s,box-shadow .15s}
+.wl input::placeholder{color:var(--tx-2)}
+.wl input:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.16)}
+.wl .fld svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--tx-2);pointer-events:none}
+.wl .btn{height:54px;flex:0 0 auto}
+.wl-msg{flex-basis:100%;font-size:14px;min-height:20px;color:var(--tx-2);margin-top:-2px}
+.wl-msg.ok{color:var(--green-2)}
+.wl-msg.bad{color:#FDA4AF}
+.cta-note{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--tx-2)}
+.cta-note span{display:inline-flex;align-items:center;gap:6px}
+.cta-note svg{width:14px;height:14px;color:var(--green-2)}
+
+/* Einblendung beim Laden */
+.up{opacity:0;transform:translateY(18px);animation:up .8s var(--ease) forwards}
+.up.d1{animation-delay:.08s}.up.d2{animation-delay:.18s}.up.d3{animation-delay:.28s}.up.d4{animation-delay:.38s}.up.d5{animation-delay:.5s}
+@keyframes up{to{opacity:1;transform:none}}
+
+/* Das Cockpit – Signatur-Element im Held */
+.stage{position:relative;perspective:1600px;perspective-origin:40% 50%}
+.cockpit{position:relative;background:linear-gradient(180deg,#121B2D,#0D1526);border:1px solid rgba(148,163,184,.22);
+  border-radius:20px;overflow:hidden;transform:rotateY(-10deg) rotateX(4deg);transform-style:preserve-3d;
+  will-change:transform;transition:transform .08s linear;
+  box-shadow:0 60px 120px -40px rgba(0,0,0,.75),0 30px 70px -30px rgba(34,197,94,.28),inset 0 1px 0 rgba(255,255,255,.06)}
+.ck-top{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+.ck-top i{width:9px;height:9px;border-radius:50%;background:rgba(148,163,184,.28)}
+.ck-url{margin-left:8px;font-size:11.5px;color:var(--tx-2);background:rgba(255,255,255,.04);border:1px solid var(--line);
+  border-radius:7px;padding:4px 10px;flex:1;max-width:190px;text-align:center}
+.ck-pill{margin-left:auto;font-size:11px;font-weight:600;color:var(--green-2);background:rgba(34,197,94,.12);
+  border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:4px 10px;white-space:nowrap}
+.ck-body{display:grid;grid-template-columns:52px 1fr}
+.ck-rail{border-right:1px solid var(--line);padding:14px 0;display:flex;flex-direction:column;align-items:center;gap:8px}
+.ck-rail i{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--tx-2)}
+.ck-rail i.on{background:rgba(34,197,94,.14);color:var(--green-2)}
+.ck-rail svg{width:15px;height:15px}
+.ck-main{padding:18px 18px 16px;min-width:0}
+.ck-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:14px}
+.ck-eb{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green-2);margin-bottom:4px}
+.ck-head b{font-family:var(--font-n);font-size:19px;font-weight:600;display:block;line-height:1.1}
+.ck-head small{font-size:11.5px;color:var(--tx-2)}
+.ck-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;grid-template-rows:auto auto;gap:9px}
+.ck-tile{background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:13px;padding:12px 13px;min-width:0}
+.ck-tile.big{grid-row:span 2;display:flex;flex-direction:column;
+  background:linear-gradient(160deg,rgba(34,197,94,.18),rgba(255,255,255,.03) 70%);border-color:rgba(34,197,94,.3)}
+.ck-lab{font-size:10.5px;color:var(--tx-2);font-weight:500;display:block}
+.ck-num{display:block;font-family:var(--font-n);font-weight:600;font-size:17px;letter-spacing:-.02em;margin-top:4px;
+  line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ck-tile.big .ck-num{font-size:30px;margin-top:8px}
+.ck-tile small{display:block;font-size:10.5px;color:var(--tx-2);margin-top:4px}
+.ck-num.amber{color:var(--amber)}
+.ck-num.green{color:var(--green-2)}
+.spark{margin-top:auto;padding-top:10px;width:100%;height:46px}
+.spark path.l{fill:none;stroke:var(--green-2);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.spark path.a{fill:url(#sg);stroke:none}
+.ck-list{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.ck-row{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:9px;font-size:11.5px;
+  background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.ck-row .ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(59,130,246,.16);color:var(--blue-2)}
+.ck-row .ic.fe{background:rgba(245,158,11,.16);color:var(--amber-2)}
+.ck-row .ic svg{width:11px;height:11px}
+.ck-row .nm{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ck-row .nm small{display:block;font-size:10px;color:var(--tx-2);font-weight:400}
+.ck-row b{font-family:var(--font-n);font-size:12px;color:var(--green-2);white-space:nowrap}
+
+.toast{position:absolute;z-index:3;display:flex;align-items:center;gap:10px;background:rgba(17,26,43,.94);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line-2);border-radius:14px;
+  padding:9px 14px 9px 9px;font-size:12.5px;font-weight:500;box-shadow:0 20px 40px -16px rgba(0,0,0,.65);
+  opacity:0;transform:translateY(12px);animation:toastIn .7s var(--ease) forwards;white-space:nowrap}
+.toast .tk{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:rgba(34,197,94,.18);color:var(--green-2);flex:0 0 auto}
+.toast .tk.bl{background:rgba(59,130,246,.18);color:var(--blue-2)}
+.toast .tk svg{width:14px;height:14px}
+.toast small{display:block;font-size:10.5px;color:var(--tx-2);font-weight:400;line-height:1.3}
+.toast.t1{left:34px;bottom:-44px;animation-delay:1.2s}
+.toast.t2{right:-24px;top:54px;animation-delay:1.9s}
+@keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+
+/* Vertrauensstreifen */
+.trust{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.015)}
+.trust-in{max-width:var(--wrap);margin:0 auto;padding:0 var(--pad);display:grid;grid-template-columns:repeat(4,1fr)}
+.trust-it{display:flex;align-items:center;gap:13px;padding:22px 20px;border-left:1px solid var(--line);font-size:13px;color:var(--tx-1);line-height:1.4}
+.trust-it:first-child{border-left:none;padding-left:0}
+.trust-it b{display:block;color:var(--tx-0);font-weight:600;font-size:14px;margin-bottom:1px}
+.trust-it .ti{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:rgba(34,197,94,.1);color:var(--green-2)}
+.trust-it svg{width:18px;height:18px}
+
+/* Drei Fragen */
+.fragen{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.frage{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r);padding:28px 26px 26px;display:flex;flex-direction:column;gap:18px;
+  transition:border-color .2s,transform .2s var(--ease)}
+.frage:hover{border-color:rgba(148,163,184,.32);transform:translateY(-2px)}
+.frage .fq{font-family:var(--font-d);font-size:clamp(19px,1.7vw,23px);font-weight:600;letter-spacing:-.02em;line-height:1.28}
+.frage .fa{margin-top:auto;display:flex;gap:11px;align-items:flex-start;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px;color:var(--tx-1);line-height:1.55}
+.frage .fa i{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:rgba(34,197,94,.15);color:var(--green-2);margin-top:1px}
+.frage .fa svg{width:11px;height:11px}
+.frage .fa b{color:var(--tx-0);font-weight:600}
+.fragen-note{margin-top:30px;font-size:clamp(16px,1.4vw,18px);color:var(--tx-1);text-align:center}
+.fragen-note b{color:var(--tx-0);font-weight:600}
+
+/* Ein Monat mit ESTRIQ – Zeitstrahl */
+.tl{position:relative;display:flex;flex-direction:column;gap:clamp(56px,7vw,100px)}
+.tl-rail{position:absolute;left:27px;top:28px;bottom:28px;width:2px;background:var(--line);border-radius:2px;overflow:hidden}
+.tl-rail i{display:block;width:100%;height:0;background:linear-gradient(180deg,var(--green-2),var(--green));border-radius:2px}
+.st{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1.12fr);min-width:0;gap:0 clamp(24px,3.5vw,52px);align-items:center;position:relative}
+.st-date{position:relative;z-index:2;width:56px;height:56px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:var(--ink-2);border:1px solid var(--line-2);font-family:var(--font-n);font-weight:700;font-size:19px;line-height:1;
+  box-shadow:0 0 0 8px var(--ink-1);transition:border-color .4s,color .4s,box-shadow .4s}
+.st-date small{font-family:var(--font-b);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx-2);font-weight:600;margin-top:3px}
+.st.on .st-date{border-color:var(--green);color:var(--green-2);box-shadow:0 0 0 8px var(--ink-1),0 0 28px rgba(34,197,94,.35)}
+.st-tx h3{font-size:clamp(22px,2.2vw,30px);letter-spacing:-.025em;line-height:1.12}
+.st-tx p{margin-top:12px;font-size:15.5px;line-height:1.65;color:var(--tx-1);max-width:30em}
+.st-kpi{margin-top:18px;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--green-2);
+  background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.26);border-radius:99px;padding:6px 12px}
+.st-kpi svg{width:13px;height:13px}
+.st-vis{perspective:1400px;min-width:0}
+.st-tx{min-width:0}
+.pcard{background:linear-gradient(180deg,#131C2E,#0E1626);border:1px solid rgba(148,163,184,.2);border-radius:18px;padding:20px;
+  box-shadow:0 40px 80px -30px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);
+  opacity:0;transform:rotateY(-9deg) rotateX(3deg) translateY(24px);transition:transform .9s var(--ease),opacity .9s var(--ease)}
+.st.on .pcard{opacity:1;transform:none}
+
+/* Mini-UI-Bausteine (in allen Produktkarten) */
+.ui-h{display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;margin-bottom:14px;flex-wrap:wrap}
+.ui-h span{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green-2);margin-bottom:4px}
+.ui-h b{font-family:var(--font-n);font-size:17px;font-weight:600;display:block;line-height:1.15}
+.pill{font-size:10.5px;font-weight:600;color:var(--tx-1);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:99px;padding:4px 9px;white-space:nowrap}
+.pill.gr{color:var(--green-2);background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.26)}
+.pill.am{color:var(--amber-2);background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3)}
+.ui-list{display:flex;flex-direction:column;gap:7px}
+.ui-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:12.5px;transition:border-color .3s,background .3s}
+.ui-row .nm{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ui-row .nm small{display:block;font-size:10.5px;color:var(--tx-2);font-weight:400;margin-top:1px}
+.ui-row b{font-family:var(--font-n);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chk{flex:0 0 auto;width:22px;height:22px;border-radius:50%;border:1.5px solid rgba(148,163,184,.35);display:grid;place-items:center;color:transparent;
+  transition:background .35s,border-color .35s,color .35s,transform .35s var(--ease)}
+.chk svg{width:11px;height:11px}
+.ui-row.done .chk{background:var(--green);border-color:var(--green);color:var(--green-ink);transform:scale(1.08)}
+.ui-row.done{border-color:rgba(34,197,94,.3)}
+.ui-row.offen{border-color:rgba(245,158,11,.38);background:rgba(245,158,11,.08)}
+.ui-row.offen .stt{flex:0 0 auto;font-size:10px;font-weight:700;color:var(--amber-2);letter-spacing:.08em;text-transform:uppercase}
+.ui-foot{margin-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--tx-2)}
+.ui-foot b{color:var(--tx-0);font-family:var(--font-n);font-weight:600}
+.ui-bar{flex:1;height:5px;border-radius:99px;background:rgba(148,163,184,.16);overflow:hidden}
+.ui-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--green-3),var(--green-2));transition:width 1.1s var(--ease) .2s}
+.on .ui-bar i,.in .ui-bar i{width:var(--w)}
+.ui-big{font-family:var(--font-n);font-size:40px;font-weight:600;letter-spacing:-.03em;line-height:1;color:var(--green-2);font-variant-numeric:tabular-nums}
+.ui-big small{font-family:var(--font-b);font-size:12px;color:var(--tx-2);font-weight:500;letter-spacing:0;display:block;margin-top:6px}
+.ui-kv{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.ui-kv div{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px 13px;min-width:0}
+.ui-kv b{display:block;font-family:var(--font-n);font-size:19px;font-weight:600;letter-spacing:-.02em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ui-kv small{display:block;font-size:10.5px;color:var(--tx-2);margin-top:3px}
+.ui-kv .gr{color:var(--green-2)}
+.ui-kv .bl{color:var(--blue-2)}
+
+/* Wasserfall (Cashflow) */
+.wf{display:flex;align-items:flex-end;gap:12px;height:176px;padding-top:6px}
+.wf>div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.wf .bar{width:100%;height:0;border-radius:8px 8px 3px 3px;transition:height 1s var(--ease)}
+.wf>div:nth-child(2) .bar{transition-delay:.15s}.wf>div:nth-child(3) .bar{transition-delay:.3s}.wf>div:nth-child(4) .bar{transition-delay:.45s}
+.on .wf .bar{height:var(--h)}
+.wf .plus{background:linear-gradient(180deg,var(--green-2),var(--green-3))}
+.wf .minus{background:linear-gradient(180deg,rgba(244,63,94,.85),rgba(244,63,94,.3))}
+.wf .minus2{background:linear-gradient(180deg,rgba(148,163,184,.65),rgba(148,163,184,.22))}
+.wf .rest{background:linear-gradient(180deg,#86EFAC,var(--green));box-shadow:0 0 24px rgba(34,197,94,.35)}
+.wf .lb{font-size:10.5px;color:var(--tx-2);margin-top:8px;white-space:nowrap}
+.wf .vl{font-family:var(--font-n);font-size:12.5px;font-weight:600;margin-top:3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.wf .vl.neg{color:#FDA4AF}.wf .vl.pos{color:var(--green-2)}
+
+/* Handy-Rahmen */
+.phone{width:min(260px,100%);margin:0 auto;background:#0B1220;border:1px solid rgba(148,163,184,.3);border-radius:36px;padding:12px;
+  box-shadow:0 40px 80px -30px rgba(0,0,0,.75),inset 0 0 0 1px rgba(255,255,255,.04)}
+.phone .notch{width:84px;height:24px;border-radius:99px;background:#000;margin:0 auto 10px}
+.phone .scr{background:linear-gradient(180deg,#121B2D,#0D1526);border-radius:24px;padding:14px 12px 16px;min-height:390px}
+.phone .ui-row{padding:9px 10px}
+.phone .ui-big{font-size:30px}
+.ob{display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:10px 11px;font-size:12px}
+.ob .t{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ob .t span{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob .t b{font-family:var(--font-n);color:var(--green-2);font-size:12.5px;white-space:nowrap}
+.ob .u{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--tx-2)}
+.ob .u .ui-bar{height:4px}
+
+/* Bento-Raster */
+.bento{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.bc{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:26px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;gap:18px;transition:border-color .2s,transform .2s var(--ease)}
+.bc:hover{border-color:rgba(148,163,184,.32);transform:translateY(-2px)}
+.bc-7{grid-column:span 7}.bc-5{grid-column:span 5}.bc-4{grid-column:span 4}.bc-12{grid-column:span 12}
+.bc h3{font-size:clamp(19px,1.6vw,22px);letter-spacing:-.02em;line-height:1.2}
+.bc p{font-size:14px;color:var(--tx-1);line-height:1.6;margin-top:8px}
+.bc .vis{margin-top:auto}
+.bc-12{flex-direction:row;align-items:center;gap:clamp(24px,4vw,56px)}
+.bc-12>div{flex:1;min-width:0}
+.bc-12 .vis{margin-top:0;flex:0 0 min(420px,46%)}
+.jahr{display:flex;align-items:flex-end;gap:5px;height:118px}
+.jahr i{flex:1;background:linear-gradient(180deg,var(--green-2),var(--green-3));border-radius:4px 4px 2px 2px;height:0;transition:height .9s var(--ease);opacity:.9}
+.jahr i.lo{background:linear-gradient(180deg,rgba(148,163,184,.55),rgba(148,163,184,.2))}
+.in .jahr i{height:var(--h)}
+.jahr-m{display:flex;gap:5px;margin-top:6px}
+.jahr-m span{flex:1;text-align:center;font-size:9px;color:var(--tx-2)}
+.formel{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-family:var(--font-n);font-size:13px;color:var(--green-2)}
+.merke{margin-top:10px;border-left:3px solid var(--green);padding:10px 13px;background:rgba(34,197,94,.08);border-radius:0 10px 10px 0;font-size:12.5px;line-height:1.55;color:var(--tx-1)}
+.arten{display:flex;flex-direction:column;gap:7px}
+.art{display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:12.5px}
+.art .ic{flex:0 0 auto;width:28px;height:28px;border-radius:8px;display:grid;place-items:center}
+.art .ic svg{width:14px;height:14px}
+.art .ic.a{background:rgba(59,130,246,.16);color:var(--blue-2)}
+.art .ic.b{background:rgba(245,158,11,.16);color:var(--amber-2)}
+.art .ic.c{background:rgba(34,197,94,.16);color:var(--green-2)}
+.art .nm{flex:1;font-weight:500}
+.art .nm small{display:block;font-size:10.5px;color:var(--tx-2);font-weight:400}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chips span{font-size:12px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.22);color:#C8E8D6;border-radius:9px;padding:6px 11px}
+.chips span.mehr{background:transparent;border-color:var(--line-2);color:var(--tx-2)}
+.tipp{background:linear-gradient(160deg,rgba(245,158,11,.14),rgba(255,255,255,.03) 70%);border:1px solid rgba(245,158,11,.3);border-radius:16px;padding:18px}
+.tipp .th{display:flex;align-items:center;gap:9px;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--amber-2)}
+.tipp .th svg{width:14px;height:14px}
+.tipp b{display:block;font-family:var(--font-n);font-size:16px;font-weight:600;margin-top:10px;line-height:1.3}
+.tipp p{font-size:13px;color:var(--tx-1);margin-top:8px;line-height:1.55}
+.tipp .tb{margin-top:14px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--tx-0);
+  background:rgba(255,255,255,.06);border:1px solid var(--line-2);border-radius:9px;padding:8px 12px}
+.tipp .tb svg{width:13px;height:13px}
+
+/* Schritte */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r);padding:28px 26px;position:relative}
+.step-n{font-family:var(--font-n);font-size:12.5px;font-weight:700;color:var(--green-2);letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:18px;display:flex;align-items:center;gap:12px}
+.step-n:after{content:"";flex:1;height:1px;background:var(--line)}
+.step h3{font-size:21px;letter-spacing:-.02em;line-height:1.2}
+.step p{margin-top:10px;font-size:14.5px;color:var(--tx-1);line-height:1.6}
+.step .t{margin-top:18px;font-size:12.5px;color:var(--tx-2);display:flex;gap:7px;align-items:center}
+.step .t svg{width:14px;height:14px;color:var(--green-2)}
+
+/* Gründer */
+.gruender{display:grid;grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr);gap:clamp(32px,5vw,80px);align-items:center}
+.gr-card{position:relative;background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px;overflow:hidden}
+.gr-card:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(60% 50% at 30% 0%,rgba(34,197,94,.16),transparent 70%)}
+.gr-photo{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;border:1px solid var(--line);
+  background:linear-gradient(160deg,#1A2540,#0B1220);display:grid;place-items:center}
+.gr-photo img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.gr-photo .mono{font-family:var(--font-d);font-size:clamp(80px,9vw,120px);font-weight:800;letter-spacing:-.06em;color:rgba(148,163,184,.22);line-height:1}
+.gr-photo .tag{position:absolute;left:14px;bottom:14px;font-size:11px;font-weight:600;color:var(--tx-1);background:rgba(11,18,32,.75);
+  backdrop-filter:blur(8px);border:1px solid var(--line-2);border-radius:99px;padding:6px 11px}
+.gr-photo.hasimg .mono{display:none}
+.gr-name{position:relative;margin-top:18px;font-family:var(--font-d);font-size:23px;font-weight:700;letter-spacing:-.02em}
+.gr-role{position:relative;font-size:13.5px;color:var(--tx-1);margin-top:3px;line-height:1.5}
+.gr-facts{position:relative;margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.gr-fact{background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.gr-fact b{display:block;font-family:var(--font-n);font-size:17px;font-weight:600;white-space:nowrap}
+.gr-fact small{font-size:11px;color:var(--tx-2);display:block;margin-top:2px}
+.gr-tx blockquote{margin:0;font-family:var(--font-d);font-size:clamp(19px,1.9vw,25px);font-weight:500;line-height:1.42;letter-spacing:-.015em;color:var(--tx-0)}
+.gr-tx blockquote em{font-style:normal;color:var(--green-2)}
+.gr-sig{margin-top:18px;font-size:14px;color:var(--tx-2);display:flex;align-items:center;gap:12px}
+.gr-sig:before{content:"";width:28px;height:1px;background:var(--green-2)}
+.gr-pr{margin-top:32px;display:grid;gap:12px}
+.gr-p{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:14px}
+.gr-p .ic{flex:0 0 auto;width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:rgba(34,197,94,.12);color:var(--green-2)}
+.gr-p .ic svg{width:17px;height:17px}
+.gr-p b{display:block;font-size:15px;font-weight:600;margin-bottom:2px}
+.gr-p span{font-size:13.5px;color:var(--tx-1);line-height:1.55}
+
+/* Preise */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch;margin-top:8px}
+.plan{position:relative;background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:32px 28px 28px;display:flex;flex-direction:column}
+.plan.top{border-color:rgba(34,197,94,.45);background:linear-gradient(180deg,rgba(34,197,94,.1),var(--ink-2) 42%);box-shadow:0 30px 70px -30px rgba(34,197,94,.4)}
+.plan.life{border-color:rgba(245,158,11,.45);background:linear-gradient(180deg,rgba(245,158,11,.1),var(--ink-2) 42%)}
+.plan-flag{position:absolute;top:-13px;left:26px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:99px;padding:5px 12px;background:var(--green);color:var(--green-ink)}
+.plan.life .plan-flag{background:var(--amber);color:#3B1F00}
+.plan-n{font-size:14px;font-weight:600;color:var(--tx-1);letter-spacing:.02em}
+.plan-p{margin-top:10px;font-family:var(--font-d);font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;display:flex;align-items:baseline;gap:7px;font-variant-numeric:tabular-nums}
+.plan-p span{font-family:var(--font-b);font-size:14px;font-weight:500;color:var(--tx-2);letter-spacing:0}
+.plan-d{margin-top:12px;font-size:14px;color:var(--tx-1);line-height:1.55;min-height:44px}
+.plan ul{list-style:none;margin:22px 0 0;padding:22px 0 0;border-top:1px solid var(--line);display:grid;gap:11px;font-size:14px}
+.plan li{display:flex;gap:10px;align-items:flex-start;line-height:1.45}
+.plan li:before{content:"";flex:0 0 auto;width:18px;height:18px;border-radius:50%;margin-top:1px;background:rgba(34,197,94,.16);
+  -webkit-mask:none;mask:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234ADE80' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>");
+  background-repeat:no-repeat;background-position:center;background-size:10px}
+.plan.life li:before{background-color:rgba(245,158,11,.16);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FCD34D' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>")}
+.plan .btn{margin-top:auto}
+.plan ul+.btn{margin-top:26px}
+.plan-note{margin-top:12px;font-size:12px;color:var(--tx-2);text-align:center;line-height:1.45}
+.plans-note{margin-top:26px;text-align:center;font-size:13.5px;color:var(--tx-2);display:flex;justify-content:center;gap:8px 22px;flex-wrap:wrap}
+.plans-note span{display:inline-flex;align-items:center;gap:7px}
+.plans-note svg{width:14px;height:14px;color:var(--green-2)}
+
+/* FAQ */
+.faq{max-width:840px;margin:0 auto;border-top:1px solid var(--line)}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:22px 4px;
+  font-family:var(--font-d);font-size:clamp(17px,1.5vw,20px);font-weight:600;letter-spacing:-.015em;line-height:1.3}
+.faq summary{overflow-wrap:anywhere}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary i{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:1px solid var(--line-2);display:grid;place-items:center;color:var(--tx-1);transition:transform .25s var(--ease),background .25s,border-color .25s}
+.faq summary i svg{width:13px;height:13px}
+.faq details[open] summary i{transform:rotate(45deg);background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.4);color:var(--green-2)}
+.faq details p{padding:0 4px 24px;font-size:15px;color:var(--tx-1);line-height:1.68;max-width:46em}
+
+/* Abschluss */
+.final{position:relative;overflow:hidden;text-align:center;padding:clamp(88px,11vw,150px) 0}
+.final:before{content:"";position:absolute;left:50%;top:0;width:1100px;height:640px;transform:translateX(-50%);pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 0%,rgba(34,197,94,.24),rgba(34,197,94,.07) 40%,transparent 70%);filter:blur(28px)}
+.final .wrap{position:relative}
+.final .h2{max-width:14em;margin:0 auto}
+.final .lead{margin:18px auto 0}
+.final .wl{margin:36px auto 0;justify-content:center;max-width:660px}
+.final .cta-note{justify-content:center}
+
+/* Fußzeile */
+.foot{border-top:1px solid var(--line);padding:34px 0 40px}
+.foot-in{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.foot .logo img{height:38px}
+.foot-tx{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--tx-2);margin-right:auto;line-height:1.45}
+.foot-tx b{color:var(--tx-1);font-weight:500}
+.foot-links{display:flex;gap:20px;align-items:center;font-size:13.5px;flex-wrap:wrap}
+.foot-links a,.foot-links button{color:var(--tx-1);background:none;border:none;cursor:pointer;font:inherit;padding:0;text-decoration:none;transition:color .15s}
+.foot-links a:hover,.foot-links button:hover{color:var(--tx-0)}
+
+/* Fester Knopf am Handy */
+.sticky{position:fixed;left:0;right:0;bottom:0;z-index:45;display:none;align-items:center;gap:12px;padding:12px 16px;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom));background:rgba(11,18,32,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-top:1px solid var(--line-2);transform:translateY(110%);transition:transform .3s var(--ease)}
+.sticky.on{transform:none}
+.sticky-tx{flex:1;min-width:0}
+.sticky-tx b{display:block;font-size:14px}
+.sticky-tx span{font-size:12px;color:var(--tx-2)}
+.sticky .btn{flex:0 0 auto}
+
+/* Popups */
+.modal{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;background:rgba(3,6,12,.72);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .2s}
+.modal.open{opacity:1;pointer-events:auto}
+.mbox{position:relative;width:min(480px,100%);background:var(--ink-2);border:1px solid var(--line-2);border-radius:22px;padding:34px 30px 30px;
+  box-shadow:0 50px 100px -30px rgba(0,0,0,.85);transform:translateY(14px) scale(.98);transition:transform .25s var(--ease);
+  max-height:88vh;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal.open .mbox{transform:none}
+.mbox.wide{width:min(740px,100%)}
+.mclose{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.04);
+  color:var(--tx-1);cursor:pointer;display:grid;place-items:center;font-size:22px;line-height:1;transition:background .15s}
+.mclose:hover{background:rgba(255,255,255,.09)}
+.mbox h3{font-size:25px;letter-spacing:-.025em;padding-right:36px}
+.msub{margin-top:8px;font-size:14.5px;color:var(--tx-1);line-height:1.55}
+.mform{margin-top:22px;display:grid;gap:14px}
+.mform label{font-size:12.5px;font-weight:600;color:var(--tx-1);display:block;margin-bottom:6px}
+.mform input,.mform select{width:100%;height:50px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,.045);
+  color:var(--tx-0);font:inherit;font-size:15px;padding:0 14px;outline:none;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none}
+.mform select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B7C2D2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 14px center;background-size:16px;padding-right:40px}
+.mform select option{background:#111A2B;color:#F4F7FB}
+.mform input:focus,.mform select:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.16)}
+.mform .wl-msg{margin-top:0}
+.mlink{margin-top:16px;font-size:13.5px;color:var(--tx-2);text-align:center}
+.mlink button{background:none;border:none;color:var(--green-2);font:inherit;font-weight:600;cursor:pointer;padding:0}
+.legal h2{font-size:22px;margin:30px 0 12px;letter-spacing:-.02em}
+.legal h2:first-child{margin-top:0}
+.legal h3{font-size:16px;margin:20px 0 6px;letter-spacing:-.01em}
+.legal p{font-size:14px;color:var(--tx-1);line-height:1.68;margin-bottom:10px}
+.legal strong{color:var(--tx-0)}
+.legal .stand{font-size:12.5px;color:var(--tx-2);font-style:italic;margin-top:22px}
+
+/* Einblenden beim Scrollen */
+.rv{opacity:0;transform:translateY(22px);transition:opacity .75s var(--ease),transform .75s var(--ease)}
+.rv.in{opacity:1;transform:none}
+.rv.d1{transition-delay:.08s}.rv.d2{transition-delay:.16s}.rv.d3{transition-delay:.24s}
+
+/* Bildschirme */
+@media(max-width:960px){
+  .nav-links{display:none}
+  .hero-in{grid-template-columns:1fr;gap:44px}
+  .hero-bg .glow{right:-320px;top:-320px;width:720px;height:720px}
+  .stage{perspective:none;margin:0 6px}
+  .cockpit{transform:none!important}
+  .toast.t1{left:8px;bottom:-22px}
+  .toast.t2{right:-6px;top:-16px}
+  .trust-in{grid-template-columns:1fr 1fr}
+  .trust-it{border-left:none;border-top:1px solid var(--line);padding:16px 0}
+  .trust-it:nth-child(-n+2){border-top:none}
+  .fragen{grid-template-columns:1fr}
+  .tl-rail{display:none}
+  .st{grid-template-columns:minmax(0,1fr);gap:18px}
+  .st-date{width:auto;height:auto;flex-direction:row;gap:8px;padding:8px 14px;border-radius:99px;box-shadow:none!important;font-size:16px;justify-self:start}
+  .st-date small{margin-top:0}
+  .pcard{transform:translateY(24px)}
+  .bento{grid-template-columns:1fr}
+  .bc-7,.bc-5,.bc-4,.bc-12{grid-column:span 1}
+  .bc-12{flex-direction:column;align-items:stretch}
+  .bc-12 .vis{flex:none}
+  .steps{grid-template-columns:1fr}
+  .gruender{grid-template-columns:1fr}
+  .gr-card{max-width:520px}
+  .plans{grid-template-columns:1fr;max-width:520px;margin-left:auto;margin-right:auto}
+  .plan-d{min-height:0}
+  .sticky{display:flex}
+  body{padding-bottom:0}
+}
+@media(max-width:600px){
+  :root{--navh:66px}
+  .logo img{height:36px}
+  .nav-cta{gap:4px}
+  .nav-cta .btn-g{background:none;border-color:transparent;padding:10px 8px;color:var(--tx-1)}
+  .hero{padding-bottom:64px}
+  .h1{font-size:clamp(38px,11vw,50px)}
+  .hero-lead{font-size:16px}
+  .wl .btn{width:100%;white-space:normal;height:auto;min-height:54px}
+  .wl .fld{flex-basis:100%}
+  .ck-body{grid-template-columns:44px 1fr}
+  .ck-main{padding:14px 13px 13px}
+  .ck-grid{grid-template-columns:1fr 1fr}
+  .ck-tile.big{grid-column:span 2;grid-row:auto}
+  .ck-tile.big .ck-num{font-size:28px}
+  .ck-url{display:none}
+  .toast{font-size:11.5px;padding:8px 12px 8px 8px}
+  .toast .tk{width:24px;height:24px}
+  .trust-in{grid-template-columns:1fr}
+  .trust-it{border-top:1px solid var(--line)!important;padding:14px 0}
+  .trust-it:first-child{border-top:none!important}
+  .sec{padding:64px 0}
+  .frage{padding:22px 20px}
+  .wf{height:150px;gap:6px}
+  .wf .lb{white-space:normal;text-align:center;line-height:1.2}
+  .wf .vl{font-size:11px}
+  .bc{padding:22px}
+  .plan{padding:28px 22px 24px}
+  .gr-card{padding:16px}
+  .gr-facts{grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .gr-fact{padding:8px 9px}
+  .gr-fact b{font-size:15px}
+  .mbox{padding:28px 22px 24px;border-radius:18px}
+  .final{padding-bottom:110px}
+  .foot{padding-bottom:110px}
+}
+@media(max-width:370px){
+  .plan-p{font-size:38px}
+  .h1{font-size:36px}
+  .cockpit .ck-tile.big .ck-num{font-size:24px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*:before,*:after{animation:none!important;transition:none!important}
+  .rv,.up,.toast,.pcard{opacity:1!important;transform:none!important}
+  .cockpit{transform:none!important}
+  .on .wf .bar,.wf .bar{height:var(--h)}
+  .jahr i{height:var(--h)}
+  .ui-bar i{width:var(--w)}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================ NAVIGATION ============================ -->
+<header class="nav" id="nav">
+  <div class="nav-in">
+    <a class="logo" href="#top" aria-label="ESTRIQ Startseite">
+      <img src="estriq.PNG" alt="ESTRIQ">
+      <span class="logo-tx">ESTRIQ</span>
+    </a>
+    <nav class="nav-links" aria-label="Seitennavigation">
+      <a href="#monat">Produkt</a>
+      <a href="#funktionen">Funktionen</a>
+      <a href="#preise">Preise</a>
+      <a href="#gruender">Gründer</a>
+    </nav>
+    <div class="nav-cta">
+      <button class="btn btn-g btn-sm" type="button" data-login>Beta-Login</button>
+      <button class="btn btn-p btn-sm" type="button" data-warte>Platz sichern</button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============================ HELD ============================ -->
+<section class="hero" id="hero">
+  <div class="hero-bg" aria-hidden="true"><div class="glow"></div><div class="glow2"></div><div class="grid"></div></div>
+  <div class="hero-in">
+    <div class="hero-tx">
+      <div class="badge up d1"><i></i>Beta läuft · Warteliste offen</div>
+      <h1 class="h1 up d2">Miete rein.<br>Rate raus.<br><em>Was bleibt wirklich?</em></h1>
+      <p class="hero-lead up d3">ESTRIQ ist das Cockpit für private Vermieter. Es zeigt dir jeden Monat, was jedes deiner Objekte
+        tatsächlich abwirft – <b>Einnahmen, Cashflow, Rendite und Tilgung</b>, auf den Euro genau.
+        Kein Excel. Keine Software für 300 Einheiten. Gebaut von einem Vermieter mit 14.</p>
+      <form class="wl up d4" data-notiz="Held" novalidate>
+        <div class="fld">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
+          <input type="email" name="email" placeholder="deine@e-mail.de" autocomplete="email" inputmode="email" aria-label="E-Mail-Adresse">
+        </div>
+        <button class="btn btn-p" type="submit">Platz sichern
+          <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <div class="wl-msg" aria-live="polite"></div>
+      </form>
+      <div class="cta-note up d5">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Kostenlos vormerken</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Kein Abo, keine Karte</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Zugang in Reihenfolge der Liste</span>
+      </div>
+    </div>
+
+    <div class="hero-vis up d3" aria-hidden="true">
+      <div class="stage">
+        <div class="cockpit" id="cockpit">
+          <div class="ck-top"><i></i><i></i><i></i><span class="ck-url">estriq.de</span><span class="ck-pill">August 2026</span></div>
+          <div class="ck-body">
+            <aside class="ck-rail">
+              <i class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10.5h20"/><path d="M6 15h3"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M8 6h8M8 11h2M12 11h2M8 15h2M12 15h2M16 11v4"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></i>
+            </aside>
+            <div class="ck-main">
+              <div class="ck-head">
+                <div><span class="ck-eb">Portfolio</span><b>Übersicht</b><small>3 Objekte · 7 Einheiten</small></div>
+              </div>
+              <div class="ck-grid">
+                <div class="ck-tile big">
+                  <span class="ck-lab">Einnahmen / Monat</span>
+                  <b class="ck-num" data-count="8326" data-suffix=" €">0 €</b>
+                  <small>6 von 7 Einheiten vermietet</small>
+                  <svg class="spark" viewBox="0 0 120 40" preserveAspectRatio="none">
+                    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ADE80" stop-opacity=".35"/><stop offset="1" stop-color="#4ADE80" stop-opacity="0"/></linearGradient></defs>
+                    <path class="a" d="M0,30 L15,27 L30,28 L45,22 L60,23 L75,17 L90,15 L105,10 L120,8 L120,40 L0,40 Z"/>
+                    <path class="l" d="M0,30 L15,27 L30,28 L45,22 L60,23 L75,17 L90,15 L105,10 L120,8"/>
+                  </svg>
+                </div>
+                <div class="ck-tile"><span class="ck-lab">Cashflow</span><b class="ck-num green" data-count="1766" data-suffix=" €">0 €</b><small>nach Rate &amp; Kosten</small></div>
+                <div class="ck-tile"><span class="ck-lab">Restschuld</span><b class="ck-num" data-count="939883" data-suffix=" €">0 €</b><small>34 % entschuldet</small></div>
+                <div class="ck-tile"><span class="ck-lab">Bruttorendite Ø</span><b class="ck-num">5,9 %</b><small>3 Objekte</small></div>
+                <div class="ck-tile"><span class="ck-lab">Offene Mieten</span><b class="ck-num amber">1</b><small>Dachgeschoss · 650 €</small></div>
+              </div>
+              <div class="ck-list">
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/></svg></span><span class="nm">Bergstraße 12<small>5 Einheiten · 4 vermietet</small></span><b>4.180 €</b></div>
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span><span class="nm">Parkallee 8<small>1 Einheit · vermietet</small></span><b>2.940 €</b></div>
+                <div class="ck-row"><span class="ic fe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18M6 10V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/></svg></span><span class="nm">Ferienwohnung See<small>Kurzzeit · Saison läuft</small></span><b>1.206 €</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="toast t1">
+          <span class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span>Miete eingegangen<small>EG links · Familie Müller · 830 €</small></span>
+        </div>
+        <div class="toast t2">
+          <span class="tk bl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M15 8h5v5"/></svg></span>
+          <span>Restschuld gesunken<small>−4.760 € getilgt im August</small></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ VERTRAUEN ============================ -->
+<section class="trust" aria-label="Fakten">
+  <div class="trust-in">
+    <div class="trust-it"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg></span><div><b>Aus der Praxis</b>Entwickelt an 14 eigenen Einheiten</div></div>
+    <div class="trust-it"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg></span><div><b>Überall dabei</b>iPhone, iPad und Desktop – ohne App Store</div></div>
+    <div class="trust-it"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><div><b>Deine Daten</b>Verschlüsselt gespeichert, DSGVO-konform</div></div>
+    <div class="trust-it"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span><div><b>Kein Risiko</b>30 Tage kostenlos, monatlich kündbar</div></div>
+  </div>
+</section>
+
+<!-- ============================ DREI FRAGEN ============================ -->
+<section class="sec" id="fragen">
+  <div class="wrap">
+    <div class="sec-h center rv">
+      <div class="eyebrow">Ehrlich gefragt</div>
+      <h2 class="h2">Drei Fragen, die jeder Vermieter aus dem Stand beantworten sollte.</h2>
+    </div>
+    <div class="fragen">
+      <article class="frage rv">
+        <div class="fq">Was bleibt dir bei jedem Objekt nach Kreditrate und Kosten wirklich übrig?</div>
+        <div class="fa"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></i><span><b>In ESTRIQ:</b> Cashflow je Objekt – nach Rate, nach Bewirtschaftung, jeden Monat neu berechnet.</span></div>
+      </article>
+      <article class="frage rv d1">
+        <div class="fq">Welche Miete ist diesen Monat noch nicht eingegangen?</div>
+        <div class="fa"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></i><span><b>In ESTRIQ:</b> Mietkontrolle am Zahltag – ein Tipp pro Wohnung, offene Posten leuchten.</span></div>
+      </article>
+      <article class="frage rv d2">
+        <div class="fq">Wie viel deiner Kredite hast du schon getilgt – und wie viel Vermögen baust du pro Monat auf?</div>
+        <div class="fa"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></i><span><b>In ESTRIQ:</b> Restschuld, Tilgungsfortschritt und Sondertilgungen laufen automatisch mit.</span></div>
+      </article>
+    </div>
+    <p class="fragen-note rv">Wenn du bei einer Frage erst nachrechnen musst: <b>Genau dafür ist ESTRIQ gebaut.</b></p>
+  </div>
+</section>
+
+<!-- ============================ EIN MONAT MIT ESTRIQ ============================ -->
+<section class="sec" id="monat">
+  <div class="wrap">
+    <div class="sec-h rv">
+      <div class="eyebrow">So fühlt sich Kontrolle an</div>
+      <h2 class="h2">Ein Monat mit ESTRIQ.</h2>
+      <p class="lead">Vier Momente, die jeder Vermieter kennt – und wie sie aussehen, wenn die Zahlen von selbst stimmen.</p>
+    </div>
+
+    <div class="tl" id="tl">
+      <div class="tl-rail" aria-hidden="true"><i id="tlFill"></i></div>
+
+      <!-- Tag 1 -->
+      <div class="st">
+        <div class="st-date">01<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Zahltag. ESTRIQ fragt nach.</h3>
+          <p>Du öffnest die App – und ESTRIQ legt dir die Mieten vor, die heute fällig sind. Objekt für Objekt,
+            mit Mieter und Sollbetrag. Ein Tipp pro Wohnung, fertig. Was offen bleibt, bleibt sichtbar.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Mietkontrolle beim Anmelden</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div><span class="pill">Bergstraße 12</span></div>
+            <div class="ui-list">
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">EG links<small>Familie Müller</small></span><b>830 €</b></div>
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">EG rechts<small>H. Petersen</small></span><b>795 €</b></div>
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">1. OG rechts<small>M. Schneider</small></span><b>905 €</b></div>
+              <div class="ui-row offen"><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">Dachgeschoss<small>K. Weber</small></span><b>650 €</b><span class="stt">offen</span></div>
+            </div>
+            <div class="ui-foot"><span>Eingegangen im August</span><b>3.180 € von 3.830 €</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 3 -->
+      <div class="st">
+        <div class="st-date">03<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Die Rate ist abgebucht. Der Cashflow steht.</h3>
+          <p>Miete minus Kreditrate minus Bewirtschaftung: ESTRIQ rechnet den ehrlichen Cashflow – nicht die Kaltmiete,
+            die dir mal jemand versprochen hat. Fürs ganze Portfolio und für jedes Objekt einzeln.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Cashflow nach Rate &amp; Kosten</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Cashflow · August</span><b>Was am Monatsende bleibt</b></div><span class="pill gr">Portfolio</span></div>
+            <div class="wf">
+              <div><i class="bar plus" style="--h:100%"></i><span class="lb">Mieten</span><span class="vl">8.326 €</span></div>
+              <div><i class="bar minus" style="--h:65%"></i><span class="lb">Kreditraten</span><span class="vl neg">−5.412 €</span></div>
+              <div><i class="bar minus2" style="--h:14%"></i><span class="lb">Kosten</span><span class="vl neg">−1.148 €</span></div>
+              <div><i class="bar rest" style="--h:21%"></i><span class="lb">Cashflow</span><span class="vl pos">+1.766 €</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 15 -->
+      <div class="st">
+        <div class="st-date">15<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Zwischendurch ein Blick aufs Handy.</h3>
+          <p>Im Café, vor dem Banktermin, auf der Baustelle: Einnahmen, Auslastung, Rendite – jedes Objekt in einer Karte.
+            Farben sagen dir sofort, wo es läuft und wo nicht. ESTRIQ liegt als App auf deinem Home-Bildschirm.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Rendite je Objekt</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard" style="background:transparent;border:none;box-shadow:none;padding:0">
+            <div class="phone">
+              <div class="notch"></div>
+              <div class="scr">
+                <div class="ui-h"><div><span>Portfolio</span><b>Übersicht</b></div><span class="pill">Aug</span></div>
+                <div class="ui-big" data-count="8326" data-suffix=" €">0 €<small>Einnahmen im Monat · 6/7 vermietet</small></div>
+                <div class="ui-list" style="margin-top:14px">
+                  <div class="ob"><div class="t"><span>Bergstraße 12</span><b>4.180 €</b></div><div class="u"><span>4/5</span><span class="ui-bar"><i style="--w:80%"></i></span><span class="pill gr">6,1 %</span></div></div>
+                  <div class="ob"><div class="t"><span>Parkallee 8</span><b>2.940 €</b></div><div class="u"><span>1/1</span><span class="ui-bar"><i style="--w:100%"></i></span><span class="pill gr">5,4 %</span></div></div>
+                  <div class="ob"><div class="t"><span>Ferienwohnung See</span><b>1.206 €</b></div><div class="u"><span>Belegung</span><span class="ui-bar"><i style="--w:71%"></i></span><span class="pill am">71 %</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 30 -->
+      <div class="st">
+        <div class="st-date">30<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Monatsabschluss. Dein Vermögen ist gewachsen.</h3>
+          <p>Cashflow plus Tilgung: ESTRIQ zeigt dir, wie viel Vermögen du in diesem Monat aufgebaut hast – und wie weit du
+            bei jedem Kredit schon bist. Die Zahl, wegen der du überhaupt vermietest.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Tilgung &amp; Restschuld</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Monatsabschluss · August</span><b>Vermögensaufbau</b></div><span class="pill gr">+6.526 €</span></div>
+            <div class="ui-big" data-count="6526" data-suffix=" €">0 €<small>Cashflow + Tilgung in diesem Monat</small></div>
+            <div class="ui-list" style="margin-top:16px">
+              <div class="ui-row"><span class="nm">Cashflow nach Rate &amp; Kosten</span><b style="color:var(--green-2)">+1.766 €</b></div>
+              <div class="ui-row"><span class="nm">Getilgt im August</span><b style="color:var(--green-2)">+4.760 €</b></div>
+              <div class="ui-row"><span class="nm">Restschuld gesamt<small>Sondertilgung im Dezember geplant: 10.000 €</small></span><b>939.883 €</b></div>
+            </div>
+            <div class="ui-foot"><span>Entschuldet</span><span class="ui-bar" style="margin:0 12px"><i style="--w:34%"></i></span><b>34 %</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FUNKTIONEN (Bento) ============================ -->
+<section class="sec" id="funktionen">
+  <div class="wrap">
+    <div class="sec-h rv">
+      <div class="eyebrow">Alles drin</div>
+      <h2 class="h2">Gebaut für Vermieter, die es genau wissen wollen.</h2>
+      <p class="lead">Kein Baukasten, keine Funktionen fürs Prospekt. Jede Ansicht ist an einem echten Bestand entstanden und wird dort jeden Monat benutzt.</p>
+    </div>
+    <div class="bento">
+
+      <article class="bc bc-7 rv">
+        <div>
+          <h3>Jedes Objekt einzeln durchleuchtet.</h3>
+          <p>Bruttorendite, Cashflow nach Kreditrate, eingesetztes Kapital, Auslastung – pro Objekt, pro Monat. Du siehst auf einen Blick, welches Haus dich trägt und welches dich nur beschäftigt.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Vermietung</span><b>Bergstraße 12</b></div><span class="pill">5 Einheiten · Baujahr 1994</span></div>
+          <div class="ui-kv">
+            <div><b class="gr">6,11 %</b><small>Bruttorendite</small></div>
+            <div><b class="gr">1.842 €</b><small>Cashflow nach Rate</small></div>
+            <div><b>4.180 €</b><small>Einnahmen / Monat</small></div>
+            <div><b class="bl">820.000 €</b><small>Investition</small></div>
+          </div>
+          <div class="ui-foot"><span>Vermietet</span><span class="ui-bar" style="margin:0 12px"><i style="--w:80%"></i></span><b>4 / 5</b></div>
+        </div>
+      </article>
+
+      <article class="bc bc-5 rv d1">
+        <div>
+          <h3>Der Jahresblick.</h3>
+          <p>Zwölf Monate auf einen Blick: Einnahmen, Ausreißer, Leerstand. Die Prognose fürs Jahr läuft mit.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Einnahmen 2026</span><b>Jahresprognose</b></div><span class="pill gr">99.912 €</span></div>
+          <div class="jahr" aria-hidden="true">
+            <i style="--h:72%"></i><i style="--h:72%"></i><i style="--h:74%"></i><i style="--h:74%"></i><i style="--h:78%"></i><i style="--h:82%"></i>
+            <i style="--h:86%"></i><i style="--h:88%"></i><i class="lo" style="--h:60%"></i><i class="lo" style="--h:60%"></i><i class="lo" style="--h:62%"></i><i class="lo" style="--h:62%"></i>
+          </div>
+          <div class="jahr-m"><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span></div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv">
+        <div>
+          <h3>Erklärt statt nur angezeigt.</h3>
+          <p>Hinter jeder Kennzahl steckt ein „i“: was sie bedeutet, wie sie gerechnet wird, was ein guter Wert ist.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Kennzahl</span><b>Bruttomietrendite</b></div></div>
+          <div class="formel">(Jahreskaltmiete ÷ Investition) × 100</div>
+          <div class="merke">Unter 4 % wird positiver Cashflow schwierig. Ab 6 % wird es interessant.</div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv d1">
+        <div>
+          <h3>Auch Ferienwohnung und Pachtland.</h3>
+          <p>Drei Vermietungsarten in einem Portfolio – statt in drei Programmen.</p>
+        </div>
+        <div class="vis arten">
+          <div class="art"><span class="ic a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/></svg></span><span class="nm">Klassische Vermietung<small>Wohnung, Mehrfamilienhaus, Gewerbe</small></span></div>
+          <div class="art"><span class="ic b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18M6 10V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/></svg></span><span class="nm">Ferienwohnung &amp; Kurzzeit<small>Belegung und Saison inklusive</small></span></div>
+          <div class="art"><span class="ic c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M4 20V10l8-6 8 6v10"/><path d="M4 14h16"/></svg></span><span class="nm">Landpacht &amp; Pachtverträge<small>Jahrespacht, Laufzeiten, Fälligkeiten</small></span></div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv d2">
+        <div>
+          <h3>Elf Rechner. Acht Themen.</h3>
+          <p>Vom Kaufpreisfaktor bis zur Sondertilgung – die Werkzeuge, die du vor dem nächsten Kauf brauchst. Inklusive.</p>
+        </div>
+        <div class="vis chips">
+          <span>Rendite</span><span>Kredit</span><span>Zinseszins</span><span>Sondertilgung</span><span>Kaufnebenkosten</span>
+          <span>Cashflow</span><span>Mieterhöhung</span><span>Kaufpreisfaktor</span><span class="mehr">+ 3 weitere</span>
+        </div>
+      </article>
+
+      <article class="bc bc-12 rv">
+        <div>
+          <h3>Tipps, die du am selben Tag umsetzen kannst.</h3>
+          <p>ESTRIQ schaut in deine Zahlen und schlägt vor, was sich lohnt: eine fehlende Rücklage, eine Sondertilgung, eine Belegung, die noch nicht eingetragen ist. Jeder Tipp bringt einen kleinen Assistenten mit – ein paar Fragen, und es ist erledigt.</p>
+        </div>
+        <div class="vis">
+          <div class="tipp">
+            <div class="th"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1.5 2-1.5 4h-5c0-2-.5-3-1.5-4z"/></svg>Verbesserungstipp</div>
+            <b>Für die Bergstraße 12 ist noch keine Instandhaltungsrücklage hinterlegt.</b>
+            <p>Mit einer Rücklage rechnet ESTRIQ deinen Cashflow realistischer – und du bist beim nächsten Dach nicht überrascht.</p>
+            <span class="tb">Assistent starten <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================ SO STARTEST DU ============================ -->
+<section class="sec" id="start">
+  <div class="wrap">
+    <div class="sec-h center rv">
+      <div class="eyebrow">So startest du</div>
+      <h2 class="h2">In fünf Minuten steht dein Cockpit.</h2>
+      <p class="lead">Kein Import, keine Schulung. Ein Assistent führt dich durch – und ab dann rechnet ESTRIQ jeden Monat von selbst.</p>
+    </div>
+    <div class="steps">
+      <article class="step rv">
+        <div class="step-n">Schritt 1</div>
+        <h3>Objekt anlegen</h3>
+        <p>Adresse, Kaufpreis, Finanzierung. Der Assistent fragt nur, was ESTRIQ wirklich zum Rechnen braucht.</p>
+        <div class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>etwa 2 Minuten</div>
+      </article>
+      <article class="step rv d1">
+        <div class="step-n">Schritt 2</div>
+        <h3>Einheiten und Mieten eintragen</h3>
+        <p>Mieter, Kaltmiete, Zahltag – für jede Wohnung. Ferienwohnung und Pachtland gehen genauso.</p>
+        <div class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>etwa 3 Minuten</div>
+      </article>
+      <article class="step rv d2">
+        <div class="step-n">Schritt 3</div>
+        <h3>Das Cockpit läuft</h3>
+        <p>Ab jetzt rechnet ESTRIQ jeden Monat mit: Cashflow, Rendite, Restschuld. Und fragt am Zahltag von selbst nach.</p>
+        <div class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>ab sofort, jeden Monat</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ GRÜNDER ============================ -->
+<section class="sec" id="gruender">
+  <div class="wrap">
+    <div class="gruender">
+      <div class="gr-card rv">
+        <div class="gr-photo" id="grPhoto">
+          <span class="mono">TB</span>
+          <img src="gruender.jpg" alt="Tobias Bücking, Gründer von ESTRIQ" id="grImg">
+          <span class="tag">Ganderkesee, Niedersachsen</span>
+        </div>
+        <div class="gr-name">Tobias Bücking</div>
+        <div class="gr-role">Gründer von ESTRIQ · Geschäftsführer Bücking Immobilien GmbH &amp; Co. KG</div>
+        <div class="gr-facts">
+          <div class="gr-fact"><b>14</b><small>Einheiten im eigenen Bestand</small></div>
+          <div class="gr-fact"><b>Täglich</b><small>selbst im Einsatz</small></div>
+          <div class="gr-fact"><b>Beta</b><small>direkter Draht zum Gründer</small></div>
+        </div>
+      </div>
+      <div class="gr-tx rv d1">
+        <div class="eyebrow">Der Gründer</div>
+        <h2 class="h2" style="margin-bottom:26px">Gebaut von einem Vermieter. Nicht von einer Agentur.</h2>
+        <blockquote>„Ich vermiete selbst, 14 Einheiten. Und jeden Monat hatte ich dieselbe Frage: <em>Was bleibt wirklich übrig?</em>
+          Excel wusste es nicht. Die Hausverwaltungssoftware war für 300 Einheiten gemacht, nicht für 14.
+          Also habe ich ESTRIQ gebaut – für mich. Jede Funktion darin ist an meinem eigenen Bestand entstanden und wird dort jeden Monat benutzt.“</blockquote>
+        <div class="gr-sig">Tobias Bücking</div>
+        <div class="gr-pr">
+          <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg></span><div><b>Aus der Praxis, nicht vom Reißbrett</b><span>Jede Kennzahl, jeder Assistent, jeder Tipp wurde zuerst an echten Objekten gebraucht – und erst dann gebaut.</span></div></div>
+          <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M15 8h5v5"/></svg></span><div><b>Ehrliche Zahlen</b><span>ESTRIQ rechnet nach Kreditrate und Kosten. Auch dann, wenn das Ergebnis nicht schmeichelt.</span></div></div>
+          <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.2 7.3L4 21l1.7-5.1A8 8 0 1 1 21 12z"/></svg></span><div><b>Direkter Draht</b><span>In der Beta landet dein Feedback bei mir persönlich – und fließt in die nächste Version ein.</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ PREISE ============================ -->
+<section class="sec" id="preise">
+  <div class="wrap">
+    <div class="sec-h center rv">
+      <div class="eyebrow">Preise</div>
+      <h2 class="h2">Fair kalkuliert – oder einmal für immer.</h2>
+      <p class="lead">Die Monatstarife starten mit 30 Tagen ohne Kosten, kündbar zum Monatsende. Lifetime gibt es nur in der Startphase.</p>
+    </div>
+    <div class="plans">
+      <article class="plan rv">
+        <div class="plan-n">Basic</div>
+        <div class="plan-p">19,99 €<span>/ Monat</span></div>
+        <p class="plan-d">Für den Einstieg mit wenigen Wohnungen.</p>
+        <ul>
+          <li>Bis zu 3 Objekte</li>
+          <li>Bis zu 10 Wohneinheiten</li>
+          <li>Klassische Vermietung</li>
+          <li>Alle Auswertungen, Mietkontrolle, Tools</li>
+        </ul>
+        <button class="btn btn-g btn-block" type="button" data-warte="Basic">Für Basic vormerken</button>
+        <div class="plan-note">30 Tage kostenlos testen</div>
+      </article>
+      <article class="plan top rv d1">
+        <div class="plan-flag">Für wachsende Portfolios</div>
+        <div class="plan-n">Premium</div>
+        <div class="plan-p">29,99 €<span>/ Monat</span></div>
+        <p class="plan-d">Wenn mehr dazukommt als nur Wohnungen.</p>
+        <ul>
+          <li>Unbegrenzt Objekte und Einheiten</li>
+          <li>Ferienwohnung und Kurzzeitvermietung</li>
+          <li>Landpacht und Pachtverträge</li>
+          <li>Volles Controlling über alles</li>
+        </ul>
+        <button class="btn btn-p btn-block" type="button" data-warte="Premium">Für Premium vormerken</button>
+        <div class="plan-note">30 Tage kostenlos testen</div>
+      </article>
+      <article class="plan life rv d2">
+        <div class="plan-flag">Nur 100 Plätze</div>
+        <div class="plan-n">Lifetime</div>
+        <div class="plan-p">199,99 €<span>einmalig</span></div>
+        <p class="plan-d">Einmal zahlen, dauerhaft nutzen. Danach gibt es ESTRIQ nur noch im Monatstarif.</p>
+        <ul>
+          <li>Alles aus Premium</li>
+          <li>Keine monatlichen Kosten – nie</li>
+          <li>Alle künftigen Funktionen inklusive</li>
+          <li>Streng limitiert auf 100 Zugänge</li>
+        </ul>
+        <button class="btn btn-g btn-block" type="button" data-warte="Lifetime" style="border-color:rgba(245,158,11,.5)">Lifetime-Platz reservieren</button>
+        <div class="plan-note">Wird nach der Startphase dauerhaft eingestellt.</div>
+      </article>
+    </div>
+    <div class="plans-note rv">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Sichere Zahlung über Stripe</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Kündbar zum Monatsende</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Warteliste zuerst, dann Start</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FAQ ============================ -->
+<section class="sec" id="faq">
+  <div class="wrap">
+    <div class="sec-h center rv">
+      <div class="eyebrow">Noch Fragen</div>
+      <h2 class="h2">Kurz und ehrlich beantwortet.</h2>
+    </div>
+    <div class="faq rv">
+      <details>
+        <summary>Für wen ist ESTRIQ gemacht?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Für private Vermieter mit 1 bis 30 Einheiten: Eigentumswohnungen, Mehrfamilienhäuser, Ferienwohnungen, Pachtland. Für alle, die ihren Bestand bisher in Excel, in der Bank-App oder im Kopf führen – und es genauer wissen wollen.</p>
+      </details>
+      <details>
+        <summary>Was unterscheidet ESTRIQ von Excel?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Excel zeigt, was du eingibst. ESTRIQ rechnet mit: Cashflow nach Rate, Rendite, Restschuld, Vermögensaufbau – automatisch, jeden Monat, für jedes Objekt. Und es fragt am Zahltag von selbst nach, ob die Mieten da sind. Excel tut das nicht.</p>
+      </details>
+      <details>
+        <summary>Ist ESTRIQ eine Hausverwaltungssoftware?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Nein, und das ist Absicht. ESTRIQ ersetzt keine Verwaltung – es ist das Cockpit darüber: die Zahlen, die dich als Eigentümer interessieren, ohne den Ballast einer Software für 300 Einheiten.</p>
+      </details>
+      <details>
+        <summary>Wo liegen meine Daten – und wer sieht sie?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Deine Immobiliendaten werden verschlüsselt gespeichert und sind ausschließlich deinem Konto zugeordnet. Zahlungen laufen über Stripe – Kartendaten sehen wir nie. Details stehen in der Datenschutzerklärung unten.</p>
+      </details>
+      <details>
+        <summary>Brauche ich eine App aus dem App Store?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Nein. ESTRIQ läuft im Browser und lässt sich auf iPhone, iPad und Desktop mit zwei Tipps auf den Home-Bildschirm legen – dann fühlt es sich an wie eine App und öffnet sich wie eine.</p>
+      </details>
+      <details>
+        <summary>Was bedeutet „Beta“ und „Warteliste“?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Wir öffnen ESTRIQ Schritt für Schritt, damit jeder Nutzer in der Startphase gut betreut ist. Wer auf der Warteliste steht, bekommt in Reihenfolge der Eintragung Zugang – und richtet sein Portfolio als Erstes ein.</p>
+      </details>
+      <details>
+        <summary>Was passiert nach den 30 Tagen?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
+        <p>Der gewählte Monatstarif läuft weiter und ist zum Monatsende kündbar. Lifetime hat keine Laufzeit – einmal gezahlt, dauerhaft dabei, inklusive aller künftigen Funktionen.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ ABSCHLUSS ============================ -->
+<section class="final" id="warteliste">
+  <div class="wrap">
+    <div class="rv">
+      <div class="eyebrow" style="justify-content:center">Warteliste</div>
+      <h2 class="h2">Sei dabei, wenn ESTRIQ startet.</h2>
+      <p class="lead">Wir öffnen ESTRIQ Schritt für Schritt. Wer auf der Liste steht, richtet sein Portfolio als Erstes ein – und sichert sich die Startkonditionen.</p>
+    </div>
+    <form class="wl rv d1" data-notiz="Abschluss" novalidate>
+      <div class="fld">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
+        <input type="email" name="email" placeholder="deine@e-mail.de" autocomplete="email" inputmode="email" aria-label="E-Mail-Adresse">
+      </div>
+      <button class="btn btn-p btn-lg" type="submit">Platz auf der Warteliste sichern
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <div class="wl-msg" aria-live="polite" style="text-align:center"></div>
+    </form>
+    <div class="cta-note rv d2">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Kostenlos und unverbindlich</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Keine Werbung, nur die Einladung</span>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================ FUSSZEILE ============================ -->
+<footer class="foot">
+  <div class="wrap foot-in">
+    <a class="logo" href="#top" aria-label="ESTRIQ"><img src="estriq.PNG" alt="ESTRIQ"><span class="logo-tx">ESTRIQ</span></a>
+    <div class="foot-tx">
+      <b>ESTRIQ – Das Cockpit für private Vermieter</b>
+      <span>Bücking Immobilien GmbH &amp; Co. KG · Ganderkesee</span>
+    </div>
+    <div class="foot-links">
+      <a href="#" data-impressum>Impressum &amp; Datenschutz</a>
+      <button type="button" data-login>Beta-Login</button>
+    </div>
+  </div>
+</footer>
+
+<!-- Fester Knopf am Handy -->
+<div class="sticky" id="sticky" aria-hidden="true">
+  <div class="sticky-tx"><b>ESTRIQ startet bald</b><span>Jetzt kostenlos vormerken</span></div>
+  <button class="btn btn-p" type="button" data-warte>Vormerken</button>
+</div>
+
+<!-- ============================ POPUP: WARTELISTE ============================ -->
+<div class="modal" id="wlModal" role="dialog" aria-modal="true" aria-labelledby="wlTitle" aria-hidden="true">
+  <div class="mbox">
+    <button class="mclose" type="button" aria-label="Schließen">×</button>
+    <h3 id="wlTitle">Platz auf der Warteliste sichern</h3>
+    <p class="msub">Kostenlos und unverbindlich. Wir melden uns, sobald dein Zugang bereit ist – in Reihenfolge der Eintragung.</p>
+    <form class="wl mform" data-notiz="Popup" novalidate style="display:grid;max-width:none">
+      <div>
+        <label for="wlMail">E-Mail-Adresse</label>
+        <input type="email" id="wlMail" name="email" placeholder="deine@e-mail.de" autocomplete="email" inputmode="email" style="padding-left:14px;height:50px">
+      </div>
+      <div>
+        <label for="wlPlan">Welcher Tarif interessiert dich?</label>
+        <select id="wlPlan" name="plan">
+          <option value="Unentschieden">Noch unentschieden</option>
+          <option value="Basic">Basic – 19,99 € / Monat</option>
+          <option value="Premium">Premium – 29,99 € / Monat</option>
+          <option value="Lifetime">Lifetime – 199,99 € einmalig</option>
+        </select>
+      </div>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Eintragen</button>
+      <div class="wl-msg" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================ POPUP: BETA-LOGIN ============================ -->
+<div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="lgTitle" aria-hidden="true">
+  <div class="mbox">
+    <button class="mclose" type="button" aria-label="Schließen">×</button>
+    <h3 id="lgTitle">Beta-Login</h3>
+    <p class="msub">Der Zugang zur Beta ist auf Einladung. Du hast deine Zugangsdaten? Dann geht es hier ins Cockpit.</p>
+    <form class="mform" id="loginForm" novalidate>
+      <div>
+        <label for="lgMail">E-Mail-Adresse</label>
+        <input type="email" id="lgMail" autocomplete="username" inputmode="email" placeholder="deine@e-mail.de">
+      </div>
+      <div>
+        <label for="lgPass">Passwort</label>
+        <input type="password" id="lgPass" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Anmelden</button>
+      <div class="wl-msg" id="lgMsg" aria-live="polite"></div>
+    </form>
+    <p class="mlink">Noch keinen Zugang? <button type="button" data-warte>Auf die Warteliste</button></p>
+  </div>
+</div>
+
+<!-- ============================ POPUP: IMPRESSUM & DATENSCHUTZ ============================ -->
+<div class="modal" id="impModal" role="dialog" aria-modal="true" aria-labelledby="impTitle" aria-hidden="true">
+  <div class="mbox wide legal">
+    <button class="mclose" type="button" aria-label="Schließen">×</button>
+    <h2 id="impTitle">Impressum</h2>
+    <p><strong>Bücking Immobilien GmbH &amp; Co. KG</strong><br>Baumstraße 35A<br>27777 Ganderkesee<br>Deutschland</p>
+    <p>Telefon: +49 176 57960759<br>E-Mail: info@buecking-immobilien.de</p>
+    <p>Vertreten durch die Komplementärin<br><strong>Bücking Beteiligungs GmbH</strong><br>Geschäftsführung: Tobias Bücking und Bernfried Bücking.</p>
+    <p>Registergericht: Amtsgericht Oldenburg<br>Handelsregister-Nr. HRA 208530</p>
+    <p>Bücking Beteiligungs GmbH<br>Registergericht: Amtsgericht Oldenburg<br>Handelsregister-Nr. HRB 221223</p>
+    <p>USt-IdNr.: DE folgt</p>
+    <p>Zuständige Aufsichtsbehörde:<br>IHK Oldenburg, Moslestraße 6, 26122 Oldenburg</p>
+
+    <h3>Haftung für Inhalte</h3>
+    <p>Als Diensteanbieter sind wir gemäß § 7 Abs. 1 TMG für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach §§ 8 bis 10 TMG sind wir jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen zu überwachen oder nach Umständen zu forschen, die auf eine rechtswidrige Tätigkeit hinweisen. Verpflichtungen zur Entfernung oder Sperrung der Nutzung von Informationen nach den allgemeinen Gesetzen bleiben hiervon unberührt.</p>
+    <h3>Haftung für Links</h3>
+    <p>Unser Angebot enthält Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Deshalb können wir für diese fremden Inhalte auch keine Gewähr übernehmen. Für die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber verantwortlich.</p>
+    <h3>Urheberrecht</h3>
+    <p>Die durch die Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen dem deutschen Urheberrecht. Beiträge Dritter sind als solche gekennzeichnet. Die Vervielfältigung, Bearbeitung, Verbreitung und jede Art der Verwertung außerhalb der Grenzen des Urheberrechts bedürfen der schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers.</p>
+
+    <h2>Datenschutzerklärung</h2>
+    <p>Wir nehmen den Schutz Ihrer persönlichen Daten sehr ernst. Ihre personenbezogenen Daten werden vertraulich und gemäß den gesetzlichen Datenschutzvorschriften sowie dieser Datenschutzerklärung behandelt.</p>
+    <h3>1. Verantwortlicher</h3>
+    <p>Bücking Immobilien GmbH &amp; Co. KG<br>Baumstraße 35A, 27777 Ganderkesee<br>E-Mail: info@buecking-immobilien.de</p>
+    <h3>2. Erhebung und Speicherung personenbezogener Daten</h3>
+    <p>Beim Besuch unserer Website werden automatisch technische Daten durch Ihren Browser übermittelt (z. B. IP-Adresse, Datum und Uhrzeit des Zugriffs, verwendeter Browser, Betriebssystem, Referrer-URL). Diese Daten dienen ausschließlich der technischen Bereitstellung, Systemsicherheit und statistischen Auswertung und erlauben uns in der Regel keinen Rückschluss auf Ihre Person.</p>
+    <h3>3. Warteliste</h3>
+    <p>Wenn Sie sich auf die Warteliste eintragen, speichern wir Ihre E-Mail-Adresse, den Zeitpunkt der Eintragung, die Herkunftsseite sowie – falls angegeben – Ihr Tarifinteresse. Wir nutzen diese Daten ausschließlich, um Sie zum Start von ESTRIQ zu informieren und Ihren Zugang bereitzustellen. Eine Weitergabe an Dritte erfolgt nicht. Sie können die Löschung jederzeit per E-Mail verlangen.</p>
+    <h3>4. Konto und gespeicherte Inhalte</h3>
+    <p>Für die Nutzung von ESTRIQ legen Sie ein Konto mit E-Mail-Adresse und Passwort an. Die von Ihnen eingetragenen Immobiliendaten werden verschlüsselt gespeichert und sind ausschließlich Ihrem Konto zugeordnet. Eine Einsicht durch Dritte findet nicht statt.</p>
+    <h3>5. Zahlungsabwicklung</h3>
+    <p>Die Abwicklung kostenpflichtiger Abonnements erfolgt über Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland. Zahlungsdaten werden ausschließlich dort verarbeitet und nicht bei uns gespeichert.</p>
+    <h3>6. Kontaktaufnahme</h3>
+    <p>Wenn Sie uns per E-Mail kontaktieren, werden Ihre Angaben zur Bearbeitung der Anfrage sowie für den Fall von Anschlussfragen gespeichert. Eine Weitergabe dieser Daten erfolgt nicht ohne Ihre ausdrückliche Einwilligung.</p>
+    <h3>7. Ihre Rechte</h3>
+    <p>Sie haben das Recht auf Auskunft über Ihre bei uns gespeicherten personenbezogenen Daten, deren Herkunft und Empfänger sowie den Zweck der Datenverarbeitung, das Recht auf Berichtigung, Löschung, Einschränkung der Verarbeitung, Widerspruch sowie auf Datenübertragbarkeit (Art. 15 ff. DSGVO). Zudem steht Ihnen das Recht auf Beschwerde bei einer Aufsichtsbehörde zu.</p>
+    <p>Für Anfragen wenden Sie sich bitte schriftlich an die oben genannte verantwortliche Stelle.</p>
+    <p class="stand">Stand: August 2026</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- Datenbank (öffentlicher Schlüssel, darf im Frontend stehen) ---------- */
+  const SB_URL = "https://lxigpeasfnnmfvipckxp.supabase.co";
+  const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4aWdwZWFzZm5ubWZ2aXBja3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2Mjc3MjMsImV4cCI6MjEwMDIwMzcyM30.XRN3fHbwTJt1qweyRgRdUFqdXq5-ZyKD_JyNuMO92LI";
+  let sb = null;
+  try { if (window.supabase) sb = window.supabase.createClient(SB_URL, SB_KEY); } catch (e) { console.warn("Supabase:", e); }
+
+  /* ---------- Bilder mit Rückfall ---------- */
+  $$(".logo img").forEach(img => {
+    img.addEventListener("error", () => img.closest(".logo").classList.add("noimg"));
+    if (img.complete && img.naturalWidth === 0) img.closest(".logo").classList.add("noimg");
+  });
+  const grImg = $("#grImg"), grBox = $("#grPhoto");
+  if (grImg && grBox) {
+    const ok = () => grBox.classList.add("hasimg");
+    grImg.addEventListener("load", ok);
+    grImg.addEventListener("error", () => { grImg.style.display = "none"; grBox.classList.remove("hasimg"); });
+    if (grImg.complete) { if (grImg.naturalWidth > 0) ok(); else grImg.style.display = "none"; }
+  }
+
+  /* ---------- Navigation: Hintergrund nach dem ersten Scrollen ---------- */
+  const nav = $("#nav");
+  const navPruefen = () => nav.classList.toggle("on", window.scrollY > 24);
+  window.addEventListener("scroll", navPruefen, { passive: true });
+  navPruefen();
+
+  /* ---------- Zahlen hochzählen ---------- */
+  const fmt = n => n.toLocaleString("de-DE");
+  function zaehlen(el) {
+    if (el.dataset.fertig) return;
+    el.dataset.fertig = "1";
+    const ziel = parseInt(el.dataset.count, 10), suffix = el.dataset.suffix || "";
+    const kleiner = el.querySelector("small");
+    const setzen = txt => { if (kleiner) { el.firstChild.nodeValue = txt; } else { el.textContent = txt; } };
+    if (ruhig) { setzen(fmt(ziel) + suffix); return; }
+    const dauer = 1500, t0 = performance.now();
+    const tick = t => {
+      const p = Math.min(1, (t - t0) / dauer), e = 1 - Math.pow(1 - p, 3);
+      setzen(fmt(Math.round(ziel * e)) + suffix);
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+  // Held: kurz nach dem Laden
+  setTimeout(() => $$("#cockpit [data-count]").forEach(zaehlen), 600);
+
+  /* ---------- Einblenden beim Scrollen ---------- */
+  const rvIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add("in");
+    $$("[data-count]", e.target).forEach(zaehlen);
+    rvIO.unobserve(e.target);
+  }), { threshold: .15, rootMargin: "0px 0px -6% 0px" });
+  $$(".rv").forEach(el => rvIO.observe(el));
+
+  // Stationen im Monatsverlauf: Karte aufrichten, Häkchen setzen, Balken wachsen
+  const stIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const st = e.target;
+    st.classList.add("on");
+    $$(".ui-row[data-tick]", st).forEach((r, i) => setTimeout(() => r.classList.add("done"), 500 + i * 420));
+    $$("[data-count]", st).forEach(el => setTimeout(() => zaehlen(el), 250));
+    stIO.unobserve(st);
+  }), { threshold: .35 });
+  $$(".st").forEach(el => stIO.observe(el));
+
+  /* ---------- Cockpit richtet sich beim Scrollen auf (nur Desktop) ---------- */
+  const cockpit = $("#cockpit");
+  if (cockpit && !ruhig && window.innerWidth > 960) {
+    let warten = false;
+    const anpassen = () => {
+      warten = false;
+      const p = Math.max(0, Math.min(1, window.scrollY / 520));
+      cockpit.style.transform = `rotateY(${(-10 * (1 - p)).toFixed(2)}deg) rotateX(${(4 * (1 - p)).toFixed(2)}deg)`;
+    };
+    window.addEventListener("scroll", () => { if (!warten) { warten = true; requestAnimationFrame(anpassen); } }, { passive: true });
+    anpassen();
+  }
+
+  /* ---------- Zeitstrahl füllt sich beim Scrollen ---------- */
+  const tl = $("#tl"), tlFill = $("#tlFill");
+  if (tl && tlFill) {
+    let warten = false;
+    const anpassen = () => {
+      warten = false;
+      const r = tl.getBoundingClientRect(), vh = window.innerHeight;
+      const p = Math.max(0, Math.min(1, (vh * .62 - r.top) / r.height));
+      tlFill.style.height = (p * 100).toFixed(1) + "%";
+    };
+    window.addEventListener("scroll", () => { if (!warten) { warten = true; requestAnimationFrame(anpassen); } }, { passive: true });
+    anpassen();
+  }
+
+  /* ---------- Fester Knopf am Handy ---------- */
+  const sticky = $("#sticky"), hero = $("#hero");
+  if (sticky) {
+    let warten = false;
+    const pruefen = () => {
+      warten = false;
+      const grenze = hero ? hero.offsetHeight - 120 : 600;
+      const nahAmEnde = window.innerHeight + window.scrollY > document.body.scrollHeight - 260;
+      sticky.classList.toggle("on", window.scrollY > grenze && !nahAmEnde && !document.body.classList.contains("modal-open"));
+    };
+    window.addEventListener("scroll", () => { if (!warten) { warten = true; requestAnimationFrame(pruefen); } }, { passive: true });
+    pruefen();
+  }
+
+  /* ---------- Popups ---------- */
+  function oeffnen(id) {
+    const m = $(id); if (!m) return;
+    m.classList.add("open"); m.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    if (sticky) sticky.classList.remove("on");
+    setTimeout(() => { const inp = m.querySelector("input"); if (inp && window.innerWidth > 600) inp.focus(); }, 160);
+  }
+  function schliessen(m) {
+    m.classList.remove("open"); m.setAttribute("aria-hidden", "true");
+    if (!$$(".modal.open").length) document.body.classList.remove("modal-open");
+  }
+  $$(".modal").forEach(m => {
+    m.addEventListener("click", e => { if (e.target === m) schliessen(m); });
+    $$(".mclose", m).forEach(b => b.addEventListener("click", () => schliessen(m)));
+  });
+  window.addEventListener("keydown", e => { if (e.key === "Escape") $$(".modal.open").forEach(schliessen); });
+
+  let angemeldet = false;
+  $$("[data-warte]").forEach(b => b.addEventListener("click", () => {
+    $$(".modal.open").forEach(schliessen);
+    const plan = b.getAttribute("data-warte"), sel = $("#wlPlan");
+    if (sel) sel.value = (plan && Array.from(sel.options).some(o => o.value === plan)) ? plan : "Unentschieden";
+    oeffnen("#wlModal");
+  }));
+  $$("[data-impressum]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); oeffnen("#impModal"); }));
+  $$("[data-login]").forEach(b => b.addEventListener("click", e => {
+    e.preventDefault();
+    if (angemeldet) { window.location.href = "index.html"; return; }
+    oeffnen("#loginModal");
+  }));
+
+  /* ---------- Warteliste ---------- */
+  function quelle() {
+    try {
+      const u = new URL(window.location.href);
+      const s = u.searchParams.get("utm_source") || u.searchParams.get("quelle");
+      if (s) return s.slice(0, 60);
+      if (document.referrer) {
+        const h = new URL(document.referrer).hostname.replace(/^www\./, "");
+        if (h && h !== window.location.hostname.replace(/^www\./, "")) return h.slice(0, 60);
+      }
+    } catch (e) { /* egal */ }
+    return "landing";
+  }
+  const gueltig = w => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(w);
+  async function eintragen(email, notiz) {
+    if (!sb) throw new Error("Keine Verbindung zur Datenbank.");
+    const { error } = await sb.from("warteliste").insert({ email, quelle: quelle(), notiz: notiz || null });
+    const txt = String((error && (error.message || error.details)) || "");
+    const schonDrin = /duplicate|unique|23505/i.test(txt);
+    if (error && !schonDrin) throw error;
+    return schonDrin ? "schon" : "neu";
+  }
+  $$("form.wl").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const inp = form.querySelector("input[type=email]"), btn = form.querySelector("button[type=submit]");
+      const msg = form.querySelector(".wl-msg"), sel = form.querySelector("select");
+      const wert = (inp.value || "").trim().toLowerCase();
+      if (!gueltig(wert)) { msg.textContent = "Bitte gib eine gültige E-Mail-Adresse ein."; msg.className = "wl-msg bad"; inp.focus(); return; }
+      const alt = btn.innerHTML;
+      btn.disabled = true; btn.textContent = "Wird eingetragen …";
+      try {
+        const notiz = sel ? ("Interesse: " + sel.value) : (form.dataset.notiz ? "Eintrag über: " + form.dataset.notiz : null);
+        const r = await eintragen(wert, notiz);
+        msg.textContent = r === "schon"
+          ? "Du stehst bereits auf der Liste – wir melden uns zum Start."
+          : "Danke! Du stehst auf der Liste – wir melden uns zum Start.";
+        msg.className = "wl-msg ok";
+        btn.textContent = "Eingetragen ✓";
+        inp.value = "";
+      } catch (err) {
+        console.error("Warteliste:", err);
+        const d = String((err && (err.message || err.details)) || "");
+        msg.textContent = /permission|denied|row-level|policy|42501/i.test(d)
+          ? "Eintragen ist gerade nicht möglich. Schreib uns an info@buecking-immobilien.de."
+          : "Das hat leider nicht geklappt: " + (d || "unbekannter Fehler");
+        msg.className = "wl-msg bad";
+        btn.disabled = false; btn.innerHTML = alt;
+      }
+    });
+  });
+
+  /* ---------- Beta-Login → Dashboard ---------- */
+  const lf = $("#loginForm");
+  if (lf) {
+    lf.addEventListener("submit", async e => {
+      e.preventDefault();
+      const em = ($("#lgMail").value || "").trim(), pw = $("#lgPass").value || "";
+      const msg = $("#lgMsg"), btn = lf.querySelector("button[type=submit]");
+      if (!gueltig(em) || !pw) { msg.textContent = "Bitte E-Mail-Adresse und Passwort eingeben."; msg.className = "wl-msg bad"; return; }
+      if (!sb) { msg.textContent = "Keine Verbindung zur Datenbank."; msg.className = "wl-msg bad"; return; }
+      btn.disabled = true; btn.textContent = "Anmelden …";
+      const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
+      if (error) {
+        msg.textContent = /invalid/i.test(error.message) ? "E-Mail-Adresse oder Passwort stimmt nicht." : "Anmeldung fehlgeschlagen: " + error.message;
+        msg.className = "wl-msg bad";
+        btn.disabled = false; btn.textContent = "Anmelden";
+        return;
+      }
+      msg.textContent = ""; btn.textContent = "Weiter ins Cockpit …";
+      window.location.href = "index.html";
+    });
+  }
+  // Wer schon angemeldet ist, kommt direkt ins Cockpit
+  if (sb) {
+    sb.auth.getSession().then(({ data }) => {
+      if (data && data.session) {
+        angemeldet = true;
+        $$("[data-login]").forEach(b => { b.textContent = "Zum Cockpit"; });
+      }
+    }).catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
