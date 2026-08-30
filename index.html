@@ -616,31 +616,44 @@
 .lp-gr-sig{margin-top:24px;font-family:"Space Grotesk",sans-serif;font-size:20px;
   color:#1F6B4A;font-style:italic}
 
-/* ===== TUNNEL: Eintauchen ins Produkt ===== */
-.lp-tunnel{height:520vh;position:relative;background:#0E1114}
-.lp-tn-halt{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  perspective:1100px;perspective-origin:50% 46%}
-/* Sog-Wirkung: Licht am Ende des Tunnels */
-.lp-tn-halt:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
-  background:radial-gradient(48% 44% at 50% 46%,rgba(31,107,74,.30),transparent 72%)}
+/* ===== TUNNEL: Der Inhalt liegt im Tunnel (heller Grund, dunkle Karten) ===== */
+/* Grundzustand ohne Skript: sichtbare Liste – nie eine leere Fläche */
+.lp-tunnel{position:relative;background:#FAFBFC;padding:60px 20px}
+.lp-tn-halt{display:flex;flex-direction:column;align-items:center;gap:18px}
+.lp-tunnel .lp-tn-szene{display:flex;flex-direction:column;gap:18px;align-items:center;width:100%}
+.lp-tunnel .lp-tn-karte{position:static;opacity:1;margin:0;width:min(430px,100%);transform:none}
+.lp-tunnel .lp-tn-fort{display:none}
+
+/* 3D-Tunnel aktiv */
+.lp-tunnel.tn-aktiv{height:660vh;padding:0}
+.lp-tunnel.tn-aktiv .lp-tn-halt{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  perspective:1200px;perspective-origin:50% 46%}
+/* Sog: heller Lichtkegel in der Tiefe */
+.lp-tunnel.tn-aktiv .lp-tn-halt:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:radial-gradient(42% 40% at 50% 48%,rgba(31,107,74,.10),transparent 70%)}
+.lp-tunnel.tn-aktiv .lp-tn-szene{position:absolute;inset:0;display:block;
+  transform-style:preserve-3d;z-index:4}
+.lp-tunnel.tn-aktiv .lp-tn-karte{position:absolute;left:50%;top:50%;
+  width:min(430px,84vw);margin-left:min(-215px,-42vw);margin-top:-160px;opacity:0}
+.lp-tunnel.tn-aktiv .lp-tn-fort{display:block}
+
 .lp-tn-kopf{position:relative;z-index:6;text-align:center;padding:0 24px;
-  max-width:620px;margin-bottom:clamp(20px,4vh,44px)}
-.lp-tn-zaehler{display:flex;align-items:baseline;justify-content:center;gap:6px;margin-bottom:14px}
-.lp-tn-zaehler b{font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:600;color:#7DD3A6}
-.lp-tn-zaehler span{font-size:12px;color:rgba(220,226,235,.4)}
-.lp-tn-h{font-family:"Space Grotesk",sans-serif;font-size:clamp(26px,4vw,42px);
-  font-weight:600;letter-spacing:-.03em;color:#fff;margin:0 0 12px;
+  max-width:660px;margin-bottom:clamp(18px,3.5vh,40px)}
+.lp-tn-zaehler{display:flex;align-items:baseline;justify-content:center;gap:6px;margin-bottom:12px}
+.lp-tn-zaehler b{font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:600;color:#1F6B4A}
+.lp-tn-zaehler span{font-size:12px;color:#A6AEB8}
+.lp-tn-h{font-family:"Space Grotesk",sans-serif;font-size:clamp(25px,3.8vw,40px);
+  font-weight:600;letter-spacing:-.03em;color:#101418;margin:0 0 11px;
   transition:opacity .3s,transform .3s}
-.lp-tn-p{font-size:clamp(14.5px,1.5vw,17px);line-height:1.6;color:rgba(220,226,235,.62);
+.lp-tn-p{font-size:clamp(14.5px,1.5vw,17px);line-height:1.6;color:#5A6472;
   margin:0;transition:opacity .3s}
-.lp-tn-szene{position:absolute;inset:0;transform-style:preserve-3d;z-index:4}
-.lp-tn-karte{position:absolute;left:50%;top:50%;width:min(430px,84vw);
-  margin-left:min(-215px,-42vw);margin-top:-150px;
-  background:#181B21;border:1px solid rgba(180,190,205,.14);border-radius:20px;padding:24px;
+
+/* Karten: dunkel auf hellem Grund */
+.lp-tn-karte{background:#16181d;border:1px solid rgba(180,190,205,.14);border-radius:20px;padding:24px;
   color:#eef1f5;font-family:"Inter",sans-serif;
-  box-shadow:0 40px 90px -24px rgba(0,0,0,.7);
-  opacity:0;will-change:transform,opacity;backface-visibility:hidden}
+  box-shadow:0 34px 76px -20px rgba(16,20,24,.42),0 6px 18px rgba(16,20,24,.12);
+  will-change:transform,opacity;backface-visibility:hidden}
 .lp-tk-kopf{margin-bottom:16px}
 .lp-tk-kopf span{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:#7DD3A6;margin-bottom:5px}
@@ -650,20 +663,27 @@
 .lp-tk-sub{font-size:12.5px;color:rgba(220,226,235,.5);margin-top:8px}
 .lp-tk-bal{display:flex;align-items:flex-end;gap:7px;height:58px;margin-top:18px}
 .lp-tk-bal i{flex:1;background:linear-gradient(180deg,#4CAF7D,#1F6B4A);border-radius:4px 4px 0 0}
+.lp-tk-wf{display:flex;align-items:flex-end;gap:14px;height:150px;padding-top:8px}
+.lp-tk-wf > div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+.lp-tk-wf i{width:100%;border-radius:6px 6px 0 0;background:#4CAF7D;min-height:6px}
+.lp-tk-wf i.minus{background:rgba(224,90,69,.72)}
+.lp-tk-wf i.rest{background:#7DD3A6}
+.lp-tk-wf span{font-size:11px;color:rgba(220,226,235,.5);margin-top:8px}
+.lp-tk-wf em{font-style:normal;font-family:"Space Grotesk",sans-serif;font-size:12.5px;margin-top:3px}
 .lp-tk-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
 .lp-tk-grid div{background:rgba(48,52,60,.44);border:1px solid rgba(180,190,205,.1);
   border-radius:12px;padding:14px}
 .lp-tk-grid b{display:block;font-family:"Space Grotesk",sans-serif;font-size:20px;font-weight:600}
 .lp-tk-grid small{display:block;font-size:11px;color:rgba(220,226,235,.48);margin-top:4px}
 .lp-tk-liste{display:flex;flex-direction:column;gap:8px}
-.lp-tk-liste div{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;
+.lp-tk-liste > div{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;
   background:rgba(48,52,60,.4);border:1px solid rgba(180,190,205,.1);font-size:12.5px}
 .lp-tk-liste span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lp-tk-liste b{font-family:"Space Grotesk",sans-serif;font-size:13px}
+.lp-tk-liste b{font-family:"Space Grotesk",sans-serif;font-size:13px;color:#7DD3A6}
 .lp-tk-liste i{font-style:normal;font-size:11px}
 .lp-tk-liste .ok i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
   background:rgba(76,175,125,.22);color:#7DD3A6}
-.lp-tk-liste .offen{border-color:rgba(201,162,39,.36);background:rgba(201,162,39,.1)}
+.lp-tk-liste .offen{border-color:rgba(201,162,39,.36)!important;background:rgba(201,162,39,.1)!important}
 .lp-tk-liste .offen i{color:#D9B23F;font-weight:600}
 .lp-tk-zeile{display:flex;align-items:center;gap:11px;margin-top:12px;font-size:12.5px;
   color:rgba(220,226,235,.6)}
@@ -674,44 +694,45 @@
 .lp-tk-tags{display:flex;flex-wrap:wrap;gap:8px}
 .lp-tk-tags span{font-size:12px;background:rgba(76,175,125,.14);
   border:1px solid rgba(125,211,166,.24);color:#c8e8d6;border-radius:8px;padding:7px 12px}
-.lp-tn-fort{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);z-index:6;
-  width:min(240px,50vw);height:3px;border-radius:99px;background:rgba(180,190,205,.16);overflow:hidden}
+.lp-tk-info{font-size:14px;line-height:1.55;color:rgba(220,226,235,.78)}
+.lp-tk-formel{margin-top:14px;background:rgba(48,52,60,.5);border:1px solid rgba(180,190,205,.12);
+  border-radius:10px;padding:12px 14px;font-family:"Space Grotesk",sans-serif;
+  font-size:13.5px;color:#7DD3A6}
+.lp-tk-merke{margin-top:12px;border-left:3px solid #4CAF7D;padding:10px 13px;
+  background:rgba(76,175,125,.1);border-radius:0 10px 10px 0;font-size:12.5px;line-height:1.55}
+.lp-tn-fort{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:6;
+  width:min(240px,50vw);height:3px;border-radius:99px;background:rgba(16,20,24,.1);overflow:hidden}
 .lp-tn-fort i{display:block;height:100%;width:0;border-radius:99px;
-  background:linear-gradient(90deg,#1F6B4A,#7DD3A6)}
+  background:linear-gradient(90deg,#1F6B4A,#4CAF7D)}
 
 /* Der Ausgang: reißerischer Abschluss direkt nach dem Tunnel */
 .lp-schluss{position:relative;overflow:hidden}
-.lp-schluss.tunnel-exit{background:#0E1114;border-top:none;color:#fff}
-.lp-schluss.tunnel-exit:before{content:"";position:absolute;left:50%;top:-42%;
+.lp-schluss.tunnel-exit{background:#F2F5F8;border-top:1px solid #E8ECF1;color:#101418}
+.lp-schluss.tunnel-exit:before{content:"";position:absolute;left:50%;top:-40%;
   width:130%;height:100%;transform:translateX(-50%);pointer-events:none;
-  background:radial-gradient(48% 50% at 50% 50%,rgba(31,107,74,.4),transparent 70%)}
+  background:radial-gradient(46% 50% at 50% 50%,rgba(31,107,74,.13),transparent 70%)}
 .lp-schluss.tunnel-exit > *{position:relative;z-index:2}
-.lp-schluss.tunnel-exit .lp-h2{color:#fff;max-width:15em}
-.lp-schluss.tunnel-exit p{color:rgba(220,226,235,.66)}
+.lp-schluss.tunnel-exit .lp-h2{color:#101418;max-width:15em}
+.lp-schluss.tunnel-exit p{color:#5A6472}
 .lp-exit-badge{display:inline-flex;align-items:center;gap:9px;margin-bottom:18px;
-  background:rgba(76,175,125,.16);border:1px solid rgba(125,211,166,.3);color:#7DD3A6;
+  background:#E7F2EC;border:1px solid rgba(31,107,74,.24);color:#1F6B4A;
   font-size:12.5px;font-weight:600;padding:8px 16px;border-radius:20px}
-.lp-exit-note{font-size:12.5px;color:rgba(220,226,235,.45);margin-top:16px}
+.lp-exit-note{font-size:12.5px;color:#8A939F;margin-top:16px}
 
 @media(max-width:900px){
   .lp-gruender{grid-template-columns:1fr;gap:24px}
   .lp-gr-bild{max-width:260px;aspect-ratio:1/1}
-  .lp-tunnel{height:440vh}
-  .lp-tn-karte{width:min(360px,86vw);margin-left:min(-180px,-43vw)}
+  .lp-tunnel.tn-aktiv{height:440vh}
+  .lp-tunnel.tn-aktiv .lp-tn-karte{width:min(360px,86vw);margin-left:min(-180px,-43vw)}
 }
 @media(max-width:560px){
   .lp-tn-kopf{margin-bottom:14px}
   .lp-tk-zahl{font-size:36px}
-  .lp-tn-karte{padding:19px;margin-top:-134px}
+  .lp-tn-karte{padding:19px}
+  .lp-tunnel.tn-aktiv .lp-tn-karte{margin-top:-134px}
   .lp-gr-fakten{gap:12px}
 }
-@media(prefers-reduced-motion:reduce){
-  .lp-tunnel{height:auto}
-  .lp-tn-halt{position:static;height:auto;padding:60px 20px;perspective:none;display:block}
-  .lp-tn-szene{position:static;display:flex;flex-direction:column;gap:18px;align-items:center}
-  .lp-tn-karte{position:static;opacity:1!important;transform:none!important;
-    margin:0;width:min(430px,100%)}
-}
+
 
 /* ============================ SMYRNA GREEN THEME ============================ */
 :root{
@@ -1675,8 +1696,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
   <header class="lp-nav">
     <img src="estriq.PNG" alt="ESTRIQ" class="lp-nav-logo" onerror="this.style.display='none'">
     <nav class="lp-nav-links">
-      <a href="#funktionen">Funktionen</a>
-      <a href="#einblick">Einblick</a>
+      <a href="#tunnel">Produkt</a>
       <a href="#ablauf">So funktioniert's</a>
       <a href="#gruender">Über mich</a>
       <a href="#preise">Preise</a>
@@ -1786,33 +1806,94 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
     </div>
   </section>
 
-  <section class="lp-sec" id="funktionen">
-    <div class="lp-sec-h">
-      <div class="lp-eyebrow">Funktionen</div>
-      <h2 class="lp-h2">Die Zahlen, die wirklich zählen</h2>
-      <p class="lp-sec-lead">Du trägst deine Objekte einmal ein. Ab dann rechnet ESTRIQ mit.</p>
-    </div>
-    <div class="lp-cards">
-      <article class="lp-card">
-        <h3>Einnahmen und Cashflow</h3>
-        <p>Kaltmiete, Nebenkosten und Kreditrate werden gegenübergestellt. Du siehst,
-          was am Monatsende tatsächlich übrig bleibt — nicht nur, was reinkommt.</p>
-      </article>
-      <article class="lp-card">
-        <h3>Rendite je Objekt</h3>
-        <p>Brutto- und Nettorendite, Cashflow-ROI und eingesetztes Kapital.
-          So erkennst du, welches Objekt trägt und welches nur Arbeit macht.</p>
-      </article>
-      <article class="lp-card">
-        <h3>Mieteingänge im Griff</h3>
-        <p>Du hinterlegst je Wohnung den Zahltag. Ist er erreicht, fragt ESTRIQ beim
-          Anmelden nach, ob die Miete da ist — und du hakst sie ab.</p>
-      </article>
-      <article class="lp-card">
-        <h3>Kredite und Tilgung</h3>
-        <p>Restschuld, Zinsanteil und Sondertilgungen laufen mit.
-          Du weißt jederzeit, wie weit du bist.</p>
-      </article>
+  <!-- TUNNEL · Der Inhalt liegt im Tunnel -->
+  <section class="lp-tunnel" id="tunnel">
+    <div class="lp-tn-halt">
+      <div class="lp-tn-kopf">
+        <div class="lp-tn-zaehler"><b id="tnNr">01</b><span id="tnVon">/ 08</span></div>
+        <h2 class="lp-tn-h" id="tnTitel">Alles an einem Ort</h2>
+        <p class="lp-tn-p" id="tnText">Scroll weiter — und sieh, was ESTRIQ dir zeigt.</p>
+      </div>
+
+      <div class="lp-tn-szene" id="tnSzene">
+
+        <div class="lp-tn-karte" data-titel="Deine Einnahmen, zusammengerechnet"
+             data-text="Alle Mieten aus allen Objekten. Nicht in vier Tabellen, sondern in einer Zahl.">
+          <div class="lp-tk-kopf"><span>Portfolio</span><b>Einnahmen / Monat</b></div>
+          <div class="lp-tk-zahl">8.326 €</div>
+          <div class="lp-tk-sub">6 von 7 Einheiten vermietet</div>
+          <div class="lp-tk-bal"><i style="height:62%"></i><i style="height:74%"></i><i style="height:70%"></i><i style="height:88%"></i><i style="height:82%"></i><i style="height:95%"></i></div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Was am Monatsende übrig bleibt"
+             data-text="Kaltmiete minus Kreditrate minus Kosten. Die ehrlichste Zahl im Dashboard.">
+          <div class="lp-tk-kopf"><span>Cashflow</span><b>Nach allen Abzügen</b></div>
+          <div class="lp-tk-wf">
+            <div><i class="plus" style="height:100%"></i><span>Miete</span><em>4.180 €</em></div>
+            <div><i class="minus" style="height:56%"></i><span>Rate</span><em>2.338 €</em></div>
+            <div><i class="rest" style="height:44%"></i><span>übrig</span><em>1.842 €</em></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Rendite je Objekt"
+             data-text="Welches Objekt trägt sich — und welches kostet dich nur Arbeit?">
+          <div class="lp-tk-kopf"><span>Vermietung</span><b>Haus Bergstraße 12</b></div>
+          <div class="lp-tk-grid">
+            <div><b>6,11 %</b><small>Bruttorendite</small></div>
+            <div><b>1.842 €</b><small>Netto-Cashflow</small></div>
+            <div><b>4.180 €</b><small>Einnahmen</small></div>
+            <div><b>820.000 €</b><small>Investition</small></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Mieteingänge einfach abhaken"
+             data-text="Am Zahltag fragt ESTRIQ von selbst nach. Ein Tipp pro Wohnung, und der Monat ist sauber.">
+          <div class="lp-tk-kopf"><span>Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div>
+          <div class="lp-tk-liste">
+            <div class="ok"><span>EG links · Familie Müller</span><b>830 €</b><i>✓</i></div>
+            <div class="ok"><span>1. OG rechts · M. Schneider</span><b>905 €</b><i>✓</i></div>
+            <div class="offen"><span>Dachgeschoss · K. Weber</span><b>650 €</b><i>offen</i></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Kredite und Tilgung"
+             data-text="Restschuld, Zinsanteil und Sondertilgungen laufen automatisch mit.">
+          <div class="lp-tk-kopf"><span>Finanzierung</span><b>Restschuld gesamt</b></div>
+          <div class="lp-tk-zahl">939.883 €</div>
+          <div class="lp-tk-zeile"><span>Entschuldet</span><i class="lp-tk-bar"><b style="width:34%"></b></i><em>34 %</em></div>
+          <div class="lp-tk-zeile"><span>Tilgung / Monat</span><em class="stark">4.760 €</em></div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Auch Ferienwohnung und Pachtland"
+             data-text="Drei Vermietungsarten in einem Portfolio — nicht in drei Programmen.">
+          <div class="lp-tk-kopf"><span>Alle Objekte</span><b>Dein Bestand</b></div>
+          <div class="lp-tk-liste">
+            <div><span>⌂ Haus Bergstraße 12</span><b>4.180 €</b></div>
+            <div><span>⌂ Wohnung Parkallee</span><b>2.940 €</b></div>
+            <div><span>✦ Ferienwohnung See</span><b>1.206 €</b></div>
+          </div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Erklärt statt nur angezeigt"
+             data-text="Hinter jeder Kennzahl steckt ein „i“: was sie bedeutet, wie sie gerechnet wird, was ein guter Wert ist.">
+          <div class="lp-tk-kopf"><span>Bruttomietrendite</span><b>Was bedeutet das?</b></div>
+          <div class="lp-tk-info">Wie viel Prozent deines Kaufpreises die Miete jährlich einbringt.</div>
+          <div class="lp-tk-formel">(Jahreskaltmiete ÷ Investition) × 100</div>
+          <div class="lp-tk-merke">Unter 4 % wird positiver Cashflow schwierig. Ab 6 % wird es interessant.</div>
+        </div>
+
+        <div class="lp-tn-karte" data-titel="Rechner und Wissen"
+             data-text="Elf Rechner und acht Themen — vom Zinseszins bis zur Mieterhöhung.">
+          <div class="lp-tk-kopf"><span>Tools</span><b>Rechner &amp; Wissen</b></div>
+          <div class="lp-tk-tags">
+            <span>Rendite</span><span>Kredit</span><span>Zinseszins</span>
+            <span>Sondertilgung</span><span>Kaufnebenkosten</span><span>Cashflow</span>
+            <span>Mieterhöhung</span><span>Kaufpreisfaktor</span>
+          </div>
+        </div>
+
+      </div>
+      <div class="lp-tn-fort"><i id="tnFort"></i></div>
     </div>
   </section>
 
@@ -1847,80 +1928,6 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
         </div>
       </li>
     </ol>
-  </section>
-
-  <section class="lp-sec lp-sec-alt" id="einblick">
-    <div class="lp-sec-h">
-      <div class="lp-eyebrow">Einblick</div>
-      <h2 class="lp-h2">So sieht ESTRIQ von innen aus</h2>
-      <p class="lp-sec-lead">Drei Ansichten, die du täglich nutzen wirst.</p>
-    </div>
-
-    <div class="lp-einblick">
-      <div class="lp-ein-tx">
-        <h3>Jedes Objekt einzeln durchleuchtet</h3>
-        <p>Für jede Immobilie siehst du Cashflow nach Kreditrate, Bruttorendite und
-          eingesetztes Kapital. Farbige Kennzahlen zeigen sofort, wo es rundläuft
-          und wo nicht.</p>
-      </div>
-      <div class="lp-ein-vis">
-        <div class="lp-mini">
-          <div class="lp-mini-h"><span class="lp-mini-e">Vermietung</span><b>Haus Bergstraße 12</b></div>
-          <div class="lp-mini-grid">
-            <div class="lp-mk"><span>1.842 €</span><small>Netto-Cashflow</small></div>
-            <div class="lp-mk"><span>6,11 %</span><small>Bruttorendite</small></div>
-            <div class="lp-mk"><span>4.180 €</span><small>Einnahmen</small></div>
-            <div class="lp-mk"><span>820.000 €</span><small>Investition</small></div>
-          </div>
-          <div class="lp-mini-row">
-            <span>Vermietet</span>
-            <span class="lp-mini-bar"><i style="width:80%"></i></span>
-            <b>4/5</b>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="lp-einblick lp-ein-dreh">
-      <div class="lp-ein-tx">
-        <h3>Mieteingänge abhaken statt suchen</h3>
-        <p>Ist der Zahltag erreicht, fragt ESTRIQ beim Anmelden nach — gruppiert nach
-          Objekt, mit Mieter und Sollbetrag. Ein Tipp pro Wohnung, und der Monat ist sauber.</p>
-      </div>
-      <div class="lp-ein-vis">
-        <div class="lp-mini">
-          <div class="lp-mini-h"><span class="lp-mini-e">Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div>
-          <div class="lp-mini-liste">
-            <div class="lp-ml"><span class="lp-ml-n">EG links<small>Familie Müller</small></span><b>830 €</b><i class="lp-ml-ok">✓</i></div>
-            <div class="lp-ml"><span class="lp-ml-n">1. OG rechts<small>M. Schneider</small></span><b>905 €</b><i class="lp-ml-ok">✓</i></div>
-            <div class="lp-ml lp-ml-offen"><span class="lp-ml-n">Dachgeschoss<small>K. Weber</small></span><b>650 €</b><i>offen</i></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="lp-einblick">
-      <div class="lp-ein-tx">
-        <h3>Kredite und Tilgung im Blick</h3>
-        <p>Restschuld, Zinsanteil und geplante Sondertilgungen laufen automatisch mit.
-          Du siehst, wie schnell du entschuldest — und was das monatlich kostet.</p>
-      </div>
-      <div class="lp-ein-vis">
-        <div class="lp-mini">
-          <div class="lp-mini-h"><span class="lp-mini-e">Finanzierung</span><b>Restschuld gesamt</b></div>
-          <div class="lp-mini-gross">939.883 €</div>
-          <div class="lp-mini-liste">
-            <div class="lp-ml"><span class="lp-ml-n">Tilgung / Monat</span><b>4.760 €</b></div>
-            <div class="lp-ml"><span class="lp-ml-n">Sondertilgung Dezember</span><b>10.000 €</b></div>
-          </div>
-          <div class="lp-mini-row">
-            <span>Entschuldet</span>
-            <span class="lp-mini-bar"><i style="width:34%"></i></span>
-            <b>34 %</b>
-          </div>
-        </div>
-      </div>
-    </div>
   </section>
 
   <section class="lp-sec" id="preise">
@@ -2004,63 +2011,6 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
         </div>
         <div class="lp-gr-sig">Tobias Bücking</div>
       </div>
-    </div>
-  </section>
-
-  <!-- TUNNEL · Eintauchen ins Produkt -->
-  <section class="lp-tunnel" id="tunnel">
-    <div class="lp-tn-halt">
-      <div class="lp-tn-kopf">
-        <div class="lp-tn-zaehler"><b id="tnNr">01</b><span id="tnVon">/ 05</span></div>
-        <h2 class="lp-tn-h" id="tnTitel">Alles an einem Ort</h2>
-        <p class="lp-tn-p" id="tnText">Scroll weiter und sieh, was ESTRIQ dir zeigt.</p>
-      </div>
-      <div class="lp-tn-szene" id="tnSzene">
-
-        <div class="lp-tn-karte" data-titel="Deine Einnahmen" data-text="Alle Mieten aus allen Objekten, zusammengerechnet auf einen Blick.">
-          <div class="lp-tk-kopf"><span>Portfolio</span><b>Einnahmen / Monat</b></div>
-          <div class="lp-tk-zahl">8.326 €</div>
-          <div class="lp-tk-sub">6 von 7 Einheiten vermietet</div>
-          <div class="lp-tk-bal"><i style="height:62%"></i><i style="height:74%"></i><i style="height:70%"></i><i style="height:88%"></i><i style="height:82%"></i><i style="height:95%"></i></div>
-        </div>
-
-        <div class="lp-tn-karte" data-titel="Rendite je Objekt" data-text="Welches Objekt trägt sich — und welches kostet dich Geld?">
-          <div class="lp-tk-kopf"><span>Vermietung</span><b>Haus Bergstraße 12</b></div>
-          <div class="lp-tk-grid">
-            <div><b>6,11 %</b><small>Bruttorendite</small></div>
-            <div><b>1.842 €</b><small>Netto-Cashflow</small></div>
-            <div><b>4.180 €</b><small>Einnahmen</small></div>
-            <div><b>820.000 €</b><small>Investition</small></div>
-          </div>
-        </div>
-
-        <div class="lp-tn-karte" data-titel="Mieteingänge abhaken" data-text="Am Zahltag fragt ESTRIQ nach. Ein Tipp pro Wohnung, und der Monat ist sauber.">
-          <div class="lp-tk-kopf"><span>Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div>
-          <div class="lp-tk-liste">
-            <div class="ok"><span>EG links · Familie Müller</span><b>830 €</b><i>✓</i></div>
-            <div class="ok"><span>1. OG rechts · M. Schneider</span><b>905 €</b><i>✓</i></div>
-            <div class="offen"><span>Dachgeschoss · K. Weber</span><b>650 €</b><i>offen</i></div>
-          </div>
-        </div>
-
-        <div class="lp-tn-karte" data-titel="Kredite und Tilgung" data-text="Restschuld, Zinsanteil und Sondertilgungen laufen automatisch mit.">
-          <div class="lp-tk-kopf"><span>Finanzierung</span><b>Restschuld gesamt</b></div>
-          <div class="lp-tk-zahl">939.883 €</div>
-          <div class="lp-tk-zeile"><span>Entschuldet</span><i class="lp-tk-bar"><b style="width:34%"></b></i><em>34 %</em></div>
-          <div class="lp-tk-zeile"><span>Tilgung / Monat</span><em class="stark">4.760 €</em></div>
-        </div>
-
-        <div class="lp-tn-karte" data-titel="Rechner und Wissen" data-text="Elf Rechner und acht Themen, die erklären, was hinter den Zahlen steckt.">
-          <div class="lp-tk-kopf"><span>Tools</span><b>Rechner &amp; Wissen</b></div>
-          <div class="lp-tk-tags">
-            <span>Rendite</span><span>Kredit</span><span>Zinseszins</span>
-            <span>Sondertilgung</span><span>Kaufnebenkosten</span><span>Cashflow</span>
-            <span>Mieterhöhung</span><span>Kaufpreisfaktor</span>
-          </div>
-        </div>
-
-      </div>
-      <div class="lp-tn-fort"><i id="tnFort"></i></div>
     </div>
   </section>
 
@@ -2312,9 +2262,9 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=40"></script>
-<script src="./data-save.js?v=40"></script>
-<script src="./finance-engine.js?v=40"></script>
-<script src="./app.js?v=40"></script>
+<script src="./data-loader.js?v=41"></script>
+<script src="./data-save.js?v=41"></script>
+<script src="./finance-engine.js?v=41"></script>
+<script src="./app.js?v=41"></script>
 </body>
 </html>
