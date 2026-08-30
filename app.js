@@ -1,5 +1,7 @@
 /* ============================================================================
-   app.js — Bücking Einnahmen-Dashboard (Visualisierung)
+   app.js — ESTRIQ Cockpit (Visualisierung)
+   Premium-Pass: Vermögensaufbau, Cashflow-Wasserfall, Monatsabschluss,
+   neue Objektkarten, Mietkontrolle auf der Startseite, Ladebalken, Wisch-Sheets.
    ============================================================================ */
 (function () {
   "use strict";
@@ -34,7 +36,9 @@
     plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
     calendar: '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 9h16M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     user: '<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    check: '<path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    growth: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
   };
   const svg = (k, cls) => `<svg viewBox="0 0 24 24" fill="none" class="${cls || ''}">${IC[k] || IC.grid}</svg>`;
 
@@ -83,9 +87,13 @@
   async function tryLogin() {
     const msg = $("#loginMsg"), v = $("#pw").value;
     const mail = ($("#mail") && $("#mail").value.trim()) || "";
+    const btn = $("#loginBtn");
     if (!mail) { msg.textContent = "Bitte E-Mail eingeben."; msg.className = "login-msg bad"; return; }
     if (!v) { msg.textContent = "Bitte Passwort eingeben."; msg.className = "login-msg bad"; return; }
     msg.textContent = "Anmeldung läuft…"; msg.className = "login-msg";
+    const alt = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "Anmeldung läuft…"; }
+    const zurueck = () => { if (btn) { btn.disabled = false; btn.textContent = alt; } };
 
     const { data, error } = await window.sb.auth.signInWithPassword({
       email: mail, password: v
@@ -95,17 +103,21 @@
       msg.className = "login-msg bad";
       $("#pw").select();
       console.error(error);
+      zurueck();
       return;
     }
     try {
+      if (btn) btn.textContent = "Cockpit wird geladen…";
       await ladeProfil(data.session);
       await window.ladeDaten();
       D = window.DASHBOARD_DATA;
       enterApp();
+      zurueck();
     } catch (e) {
       msg.textContent = window.fehlerText(e);
       msg.className = "login-msg bad";
       console.error(e);
+      zurueck();
     }
   }
 
@@ -117,10 +129,10 @@
 
   /* ---------- DESIGN / THEME ---------- */
   const THEMES = [
-    { id: "graphit", name: "Graphit", bg: "#1c1f26" },
+    { id: "graphit", name: "Graphit", bg: "#111A2B" },
     { id: "hell",    name: "Hell",    bg: "#f4f6f9" },
     { id: "smaragd", name: "Smaragd", bg: "#0a1f1a" },
-    { id: "marine",  name: "Marine",  bg: "#111a2b" }
+    { id: "marine",  name: "Marine",  bg: "#141d33" }
   ];
   const AKZENTE = [
     { id: "buecking",  name: "Bücking",   farbe: "#4CAF7D" },
@@ -767,7 +779,7 @@
     document.documentElement.classList.remove("pre-login");
     const lp = $("#landing"); if (lp) lp.classList.add("hide");
     const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute("content", "#16181d");
+    if (tc) tc.setAttribute("content", "#0B1220");
     $("#login").classList.add("hide"); $("#app").classList.remove("hide");
     buildRail(); route("overview");
     // Rückkehr von der Stripe-Bezahlseite auswerten
@@ -831,8 +843,9 @@
         setTimeout(() => openFarbwahlSheet({ onboarding: true }), 400);
         return;
       }
-      // Sonst: fällige Mieten prüfen, danach ggf. ein Verbesserungs-Tipp
-      setTimeout(() => { if (!pruefeMieteingaenge()) zeigeTippWennFaellig(); }, 600);
+      // Fällige Mieten stehen als Karte auf der Startseite – kein Popup mehr.
+      // Nach dem Ankommen ggf. ein Verbesserungs-Vorschlag.
+      setTimeout(() => zeigeTippWennFaellig(), 900);
     } catch (_) {}
   }
 
@@ -1237,105 +1250,107 @@
     return offen;
   }
 
-  // Beim Login: fällige Mieten abfragen. Gibt true zurück, wenn ein Fenster geöffnet wurde.
-  function pruefeMieteingaenge() {
-    // "Später erinnern" gilt bis zum nächsten Login
-    if (sessionStorage.getItem("estriq_miete_spaeter") === "1") return false;
-    const offen = offeneMieten();
-    if (!offen.length) return false;
-    openMietCheckSheet(offen);
-    return true;
+  // Gemeinsame Bestätigung (Sheet und Startseiten-Karte)
+  async function mieteBestaetigen(einheitId, betrag, zeile, msg) {
+    const jetzt = new Date();
+    try {
+      await window.mietEingangSetzen(einheitId, jetzt.getFullYear(), jetzt.getMonth() + 1, "eingegangen", betrag);
+      if (zeile) { zeile.classList.add("erledigt"); const b = zeile.querySelector(".mk-ok"); if (b) { b.textContent = "Bestätigt"; b.disabled = true; } }
+      return true;
+    } catch (e) {
+      if (msg) { msg.textContent = window.fehlerText(e); msg.className = "ef-msg bad"; }
+      return false;
+    }
   }
 
-  function openMietCheckSheet(offen) {
-    const monatName = new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" });
-    // Nach Objekt gruppieren
+  // maxSichtbar: alles darüber wird zunächst versteckt (Startseite bleibt kompakt)
+  function mkZeilen(offen, maxSichtbar) {
     const gruppen = {};
     offen.forEach(o => {
       const k = o.objekt._id;
       if (!gruppen[k]) gruppen[k] = { name: o.objekt.name, icon: o.objekt.icon || "home", zeilen: [] };
       gruppen[k].zeilen.push(o);
     });
-    const summe = offen.reduce((a, o) => a + o.soll, 0);
+    let n = 0;
+    const versteckt = (m) => (maxSichtbar && m > maxSichtbar) ? " mk-mehr" : "";
+    return Object.keys(gruppen).map(k => `
+      <div class="mk-obj${versteckt(n + 1)}">
+        <div class="mk-obj-h">${svg(gruppen[k].icon)}<span>${esc(gruppen[k].name)}</span></div>
+        ${gruppen[k].zeilen.map(o => { n++; return `
+          <div class="mk-row${versteckt(n)}" data-einheit="${o.einheit._id}">
+            <div class="mk-tx">
+              <div class="mk-n">${esc(o.einheit.wohnung || "Einheit")}</div>
+              <div class="mk-m">${esc(o.einheit.mieter || "ohne Mieter")} · fällig am ${Number(o.einheit.zahltag) || 1}.</div>
+            </div>
+            <div class="mk-soll">${eur(o.soll)}</div>
+            <button class="mk-ok" data-einheit="${o.einheit._id}" data-betrag="${o.soll}">Eingegangen</button>
+          </div>`; }).join("")}
+      </div>`).join("");
+  }
 
-    const body = `
-      <div class="wc-hero" style="padding-bottom:14px">
-        <div class="wc-badge">Mietkontrolle · ${esc(monatName)}</div>
-        <div class="wc-t">Sind diese Mieten eingegangen?</div>
-        <div class="wc-d">${offen.length} ${offen.length === 1 ? "Zahlung ist" : "Zahlungen sind"} fällig · zusammen ${eur(summe)}</div>
-      </div>
-      <div id="mkListe">
-        ${Object.keys(gruppen).map(k => `
-          <div class="mk-obj">
-            <div class="mk-obj-h">${svg(gruppen[k].icon)}<span>${esc(gruppen[k].name)}</span></div>
-            ${gruppen[k].zeilen.map(o => `
-              <div class="mk-row" data-einheit="${o.einheit._id}">
-                <div class="mk-tx">
-                  <div class="mk-n">${esc(o.einheit.wohnung || "Einheit")}</div>
-                  <div class="mk-m">${esc(o.einheit.mieter || "ohne Mieter")} · fällig am ${Number(o.einheit.zahltag) || 1}.</div>
-                </div>
-                <div class="mk-soll">${eur(o.soll)}</div>
-                <button class="mk-ok" data-einheit="${o.einheit._id}" data-betrag="${o.soll}">Eingegangen</button>
-              </div>`).join("")}
-          </div>`).join("")}
-      </div>
-      <div class="ef-msg" id="mkMsg"></div>
-      <div class="mk-actions">
-        <button class="wc-cta prem" id="mkAlle">Alle als eingegangen bestätigen</button>
-        <button class="wc-cta" id="mkSpaeter">Später erinnern</button>
-      </div>`;
-    const sheet = openSheet("Mieteingänge", "", body);
-    const msg = sheet.querySelector("#mkMsg");
-
-    async function bestaetige(einheitId, betrag, zeile) {
-      const jetzt = new Date();
-      try {
-        await window.mietEingangSetzen(einheitId, jetzt.getFullYear(), jetzt.getMonth() + 1, "eingegangen", betrag);
-        if (zeile) { zeile.classList.add("erledigt"); const b = zeile.querySelector(".mk-ok"); if (b) { b.textContent = "Bestätigt"; b.disabled = true; } }
-        return true;
-      } catch (e) {
-        msg.textContent = window.fehlerText(e); msg.className = "ef-msg bad";
-        return false;
-      }
+  // Mietkontrolle direkt auf der Startseite: offene Mieten bestätigen, ohne ein Fenster zu öffnen
+  function mietkontrolleKarte() {
+    const streams = (D.streams || []).filter(s => s.kind === "miete");
+    const vermietet = [];
+    streams.forEach(s => (s.einheiten || []).forEach(u => { if (u.status === "vermietet") vermietet.push(u); }));
+    if (!vermietet.length) return null;
+    const jetzt = new Date();
+    const monat = jetzt.toLocaleDateString("de-DE", { month: "long" });
+    const offen = offeneMieten();
+    if (!offen.length) {
+      const bestaetigt = (D.zahlungen || []).filter(z => z.status === "eingegangen").length;
+      const kommende = vermietet.map(u => Number(u.zahltag) || 1).filter(t => t > jetzt.getDate());
+      const naechster = kommende.length ? Math.min(...kommende) : null;
+      const text = bestaetigt
+        ? `${bestaetigt} von ${vermietet.length} ${vermietet.length === 1 ? "Zahlung" : "Zahlungen"} bestätigt` + (naechster ? ` · die nächste ist ab dem ${naechster}. fällig` : " · alles da")
+        : (naechster ? `Noch keine Miete fällig – die erste ab dem ${naechster}.` : "Keine offenen Zahlungen");
+      return el(`<div class="card pad mk-done">
+        <div class="tile-ic mk-done-ic">${svg("check")}</div>
+        <div class="mk-done-tx"><div class="card-t">Mieten im ${esc(monat)}</div><div class="card-s">${esc(text)}</div></div>
+      </div>`);
     }
-
-    sheet.querySelectorAll(".mk-ok").forEach(b => b.onclick = async () => {
+    const summe = offen.reduce((a, o) => a + o.soll, 0);
+    const card = el(`<div class="card mk-card">
+      <div class="card-h"><div><div class="card-t">Mietkontrolle · ${esc(monat)}</div>
+        <div class="card-s">${offen.length} ${offen.length === 1 ? "Zahlung ist" : "Zahlungen sind"} fällig · zusammen ${eur(summe)}</div></div>
+        <div class="head-pill mk-pill" style="padding:7px 13px">${offen.length} offen</div></div>
+      <div class="card-b">
+        ${mkZeilen(offen, 3)}
+        ${offen.length > 3 ? `<button class="mk-mehr-btn" id="mkMehr">${offen.length - 3} weitere anzeigen</button>` : ""}
+        <div class="ef-msg" id="mkKarteMsg"></div>
+        <button class="wc-cta prem mk-ok-all" id="mkKarteAlle">Alle als eingegangen bestätigen</button>
+      </div></div>`);
+    const mehr = card.querySelector("#mkMehr");
+    if (mehr) mehr.onclick = () => {
+      card.querySelectorAll(".mk-mehr").forEach(n => n.classList.remove("mk-mehr"));
+      mehr.remove();
+    };
+    const msg = card.querySelector("#mkKarteMsg");
+    const fertigWenn = async () => {
+      if (card.querySelectorAll(".mk-row:not(.erledigt)").length) return;
+      await window.nachSpeichern();
+      showToast("Alle Mieteingänge bestätigt.");
+      route("overview");
+    };
+    card.querySelectorAll(".mk-ok").forEach(b => b.onclick = async () => {
       b.disabled = true; b.textContent = "…";
-      const ok = await bestaetige(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"));
+      const ok = await mieteBestaetigen(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"), msg);
       if (!ok) { b.disabled = false; b.textContent = "Eingegangen"; return; }
-      // Wenn alle erledigt sind, Fenster schließen
-      if (!sheet.querySelectorAll(".mk-row:not(.erledigt)").length) {
-        await window.nachSpeichern(); closeSheet(); showToast("Mieteingänge gespeichert.");
-      }
+      showToast("Mieteingang gespeichert.");
+      await fertigWenn();
     });
-
-    sheet.querySelector("#mkAlle").onclick = async (e) => {
+    card.querySelector("#mkKarteAlle").onclick = async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true; btn.textContent = "Speichere…";
-      let ok = 0, fehler = 0;
-      for (const b of sheet.querySelectorAll(".mk-row:not(.erledigt) .mk-ok")) {
-        const r = await bestaetige(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"));
-        r ? ok++ : fehler++;
+      let fehler = 0;
+      for (const b of card.querySelectorAll(".mk-row:not(.erledigt) .mk-ok")) {
+        const r = await mieteBestaetigen(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"), msg);
+        if (!r) fehler++;
       }
-      if (fehler) {
-        // Nicht schließen und keinen Erfolg melden, wenn etwas schiefging
-        btn.disabled = false; btn.textContent = "Erneut versuchen";
-        return;
-      }
-      await window.nachSpeichern();
-      // Gegenprobe: steht es wirklich in der Datenbank?
-      const nochOffen = offeneMieten().length;
-      closeSheet();
-      showToast(nochOffen
-        ? "Gespeichert, aber es sind noch " + nochOffen + " Zahlungen offen."
-        : "Alle Mieteingänge bestätigt.");
+      if (fehler) { btn.disabled = false; btn.textContent = "Erneut versuchen"; return; }
+      await fertigWenn();
     };
-
-    sheet.querySelector("#mkSpaeter").onclick = () => {
-      sessionStorage.setItem("estriq_miete_spaeter", "1");
-      closeSheet();
-      showToast("Wir erinnern dich beim nächsten Login.");
-    };
+    return card;
   }
 
   // Entfernt ?bezahlt / ?abbruch aus der Adresszeile
@@ -1351,6 +1366,36 @@
     t.classList.add("on");
     clearTimeout(t._timer);
     t._timer = setTimeout(() => t.classList.remove("on"), 3500);
+  }
+
+  // Dünner Ladebalken am oberen Rand – zeigt, dass gerade Daten geladen oder gespeichert werden
+  function ladeBalken(an) {
+    let b = $("#ladebalken");
+    if (!b) { b = el(`<div id="ladebalken" aria-hidden="true"></div>`); document.body.appendChild(b); }
+    clearTimeout(b._t);
+    if (an) {
+      b.classList.remove("fertig");
+      void b.offsetWidth;               // Übergang neu starten
+      b.classList.add("on");
+    } else {
+      b.classList.remove("on");
+      b.classList.add("fertig");
+      b._t = setTimeout(() => b.classList.remove("fertig"), 900);
+    }
+  }
+  // Laden und Speichern automatisch mit dem Ladebalken verbinden
+  function ladeBalkenVerdrahten() {
+    ["ladeDaten", "nachSpeichern"].forEach(name => {
+      const orig = window[name];
+      if (typeof orig !== "function" || orig._mitBalken) return;
+      const neu = async function () {
+        ladeBalken(true);
+        try { return await orig.apply(this, arguments); }
+        finally { ladeBalken(false); }
+      };
+      neu._mitBalken = true;
+      window[name] = neu;
+    });
   }
 
   // Willkommen: Abo wählen (30 Tage Test)
@@ -2342,6 +2387,14 @@
       merke: "Ein negativer Cashflow ist nicht automatisch schlecht: Tilgung ist Vermögensaufbau. Aber du musst ihn dir leisten können.",
       grafik: "wasserfall"
     },
+    vermoegen: {
+      titel: "Vermögensaufbau pro Monat",
+      kurz: "Was du in diesem Monat wirklich an Vermögen aufbaust.",
+      text: "Der Cashflow ist das Geld, das übrig bleibt. Die Tilgung ist das Geld, das deine Schulden senkt — es ist nicht weg, es steckt jetzt in der Immobilie. Beides zusammen ist dein <b>Vermögensaufbau</b>: die Zahl, wegen der du überhaupt vermietest.",
+      formel: "Cashflow nach Kreditrate + Tilgungsanteil der Rate",
+      merke: "Ein Objekt mit knappem Cashflow, aber hoher Tilgung baut oft mehr Vermögen auf als eines, das viel Cashflow abwirft, aber kaum tilgt.",
+      grafik: "vermoegen"
+    },
     rendite: {
       titel: "Bruttomietrendite",
       kurz: "Wie viel Prozent deines Kaufpreises die Miete jährlich einbringt.",
@@ -2418,6 +2471,9 @@
           <div class="ig-wf-i"><b>=</b><i class="rest" style="height:42%"></i><span>übrig</span></div>
         </div>
         <div class="ig-cap">Von der Miete zur Rate zum Rest</div>`);
+      case "vermoegen": return g(`
+        <div class="ig-anteil"><i style="width:28%">Cashflow</i><i class="nk" style="width:72%">Tilgung</i></div>
+        <div class="ig-cap">Beides zusammen ist dein Vermögensaufbau</div>`);
       case "skala": return g(`
         <div class="ig-skala"><div class="ig-sk-bar"><i></i></div>
           <div class="ig-sk-marks"><span>0 %</span><span>4 %</span><span>6 %</span><span>10 %</span></div></div>
@@ -2583,7 +2639,36 @@
     bd.addEventListener("click", e => { if (e.target === bd) closeSheet(); });
     bd.querySelector(".sheet-x").onclick = closeSheet;
     document.addEventListener("keydown", sheetEsc);
+    sheetWischen(bd);
     return bd;
+  }
+  // Am Handy: Sheet am Kopf nach unten wischen, um es zu schließen
+  function sheetWischen(bd) {
+    const sheet = bd.querySelector(".sheet");
+    const griffe = [bd.querySelector(".sheet-grip"), bd.querySelector(".sheet-h")].filter(Boolean);
+    let y0 = null, dy = 0;
+    const start = (e) => {
+      if (window.innerWidth > 560) return;
+      y0 = e.touches[0].clientY; dy = 0;
+      sheet.style.transition = "none";
+    };
+    const move = (e) => {
+      if (y0 == null) return;
+      dy = Math.max(0, e.touches[0].clientY - y0);
+      sheet.style.transform = `translateY(${dy}px)`;
+    };
+    const ende = () => {
+      if (y0 == null) return;
+      sheet.style.transition = "";
+      if (dy > 90) closeSheet(); else sheet.style.transform = "";
+      y0 = null;
+    };
+    griffe.forEach(g => {
+      g.addEventListener("touchstart", start, { passive: true });
+      g.addEventListener("touchmove", move, { passive: true });
+      g.addEventListener("touchend", ende);
+      g.addEventListener("touchcancel", ende);
+    });
   }
   function sheetEsc(e) { if (e.key === "Escape") closeSheet(); }
   function closeSheet() {
@@ -2722,6 +2807,9 @@
         "einnahmen jahr jaehrlich jährlich hochgerechnet", () => route("overview"));
     add("Netto-Cashflow", eur(t.ist - debtMonth), "nach allen Kreditraten",
         "netto cashflow überschuss gewinn nach tilgung übrig bleibt",
+        () => route("overview"));
+    add("Vermögensaufbau", eur(portfolioZahlen().vermoegen), "Cashflow + Tilgung pro Monat",
+        "vermögen vermoegen aufbau vermögensaufbau tilgung cashflow zusammen",
         () => route("overview"));
     add("Auslastung", Math.round(let_ / (units || 1) * 100) + " %",
         let_ + " von " + units + " Einheiten vermietet",
@@ -2967,6 +3055,8 @@
     if (tilgMonat > 0) f.push(`Jeden Monat wandern <b>${eur(tilgMonat)}</b> in die Tilgung – das ist Vermögensaufbau.`);
     if (tilgGetilgt > 0) f.push(`Bereits <b>${eur(tilgGetilgt)}</b> Schulden getilgt.`);
     if (nkJahr > 0) f.push(`<b>${eur(nkJahr)}</b> Nebenkosten-Rücklage pro Jahr sorgen für Puffer.`);
+    const vz = portfolioZahlen();
+    if (vz.vermoegen > 0) f.push(`Diesen Monat baust du <b>${eur(vz.vermoegen)}</b> Vermögen auf – Cashflow plus Tilgung.`);
 
     // objektbezogene Fakten
     (D.streams || []).forEach(s => {
@@ -3010,6 +3100,291 @@
       </div></div>`);
   }
 
+  /* ---------- PORTFOLIO-ZAHLEN (eine Quelle für alle Ansichten) ---------- */
+
+  // Zins- und Tilgungsanteil eines Kredits im laufenden Monat.
+  // Grundlage ist die heutige Restschuld – so rechnet auch die Bank.
+  function kreditHeute(kr) {
+    const plan = FE.creditPlan(kr);
+    const rate = Number(kr.abtragMonat) || 0;
+    const rest = plan ? plan.restAktuell : (Number(kr.summe) || 0);
+    const zins = rest * (Number(kr.zinsPa) || 0) / 100 / 12;
+    const tilgung = Math.max(0, Math.min(rate - zins, rest));
+    return { rate, rest, zins: Math.max(0, Math.min(zins, rate)), tilgung, plan };
+  }
+
+  // Alle wichtigen Kennzahlen des Portfolios an einer Stelle
+  function portfolioZahlen() {
+    const t = FE.totals(D);
+    let rate = 0, zins = 0, tilgung = 0, restschuld = 0, urspruenglich = 0, getilgt = 0;
+    let units = 0, let_ = 0, nkPuffer = 0, invest = 0;
+    (D.streams || []).forEach(s => {
+      const m = FE.streamMonthly(s);
+      nkPuffer += m.nkPuffer || 0;
+      invest += Number(s.invest) || 0;
+      (s.einheiten || []).forEach(u => { units++; if (u.status === "vermietet") let_++; });
+      FE.creditsOf(s).forEach(kr => {
+        const k = kreditHeute(kr);
+        rate += k.rate; zins += k.zins; tilgung += k.tilgung;
+        restschuld += k.rest;
+        urspruenglich += Number(kr.summe) || 0;
+        getilgt += k.plan ? k.plan.getilgtBisher : 0;
+      });
+    });
+    const ist = t.ist, potenzial = t.potenzial;
+    const cashflow = ist - rate;
+    return {
+      t, ist, potenzial, upside: potenzial - ist, jahrIst: t.jahrIst,
+      warm: ist + nkPuffer, nkPuffer,
+      rate, zins, tilgung, cashflow,
+      vermoegen: cashflow + tilgung,           // Cashflow + Tilgung = echter Vermögenszuwachs
+      restschuld, urspruenglich, getilgt,
+      entschuldet: urspruenglich ? Math.round(getilgt / urspruenglich * 100) : 0,
+      units, let_, occ: units ? Math.round(let_ / units * 100) : 0,
+      invest, cashflowPot: potenzial - rate
+    };
+  }
+
+  // Zwölf Monate des laufenden Jahres, aus den echten Tilgungsplänen abgeleitet
+  function jahresReihe() {
+    const jahr = new Date().getFullYear();
+    const p = portfolioZahlen();
+    // Zins/Tilgung/Sondertilgung je Monat aus den Kreditplänen zusammentragen
+    const proMonat = {};
+    for (let m = 1; m <= 12; m++) proMonat[m] = { zins: 0, tilgung: 0, sonder: 0, rate: 0 };
+    (D.streams || []).forEach(s => FE.creditsOf(s).forEach(kr => {
+      const plan = FE.creditPlan(kr);
+      if (!plan) return;
+      plan.rows.forEach(r => {
+        if (r.monat.slice(0, 4) !== String(jahr)) return;
+        const m = Number(r.monat.slice(5, 7));
+        proMonat[m].zins += r.zins; proMonat[m].tilgung += r.tilgung;
+        proMonat[m].sonder += r.sonder; proMonat[m].rate += Number(kr.abtragMonat) || 0;
+      });
+    }));
+    const heute = new Date().getMonth() + 1;
+    const reihe = [];
+    for (let m = 1; m <= 12; m++) {
+      const x = proMonat[m];
+      const rate = x.rate || p.rate;                  // ohne Plan: laufende Rate annehmen
+      const zins = x.zins, tilgung = x.tilgung, sonder = x.sonder;
+      const cashflow = p.ist - rate - sonder;
+      // Vermögensaufbau = Cashflow + Tilgung + Sondertilgung = Einnahmen − Zinsen
+      const vermoegen = cashflow + tilgung + sonder;
+      reihe.push({
+        m, name: ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"][m - 1],
+        einnahmen: p.ist, rate, zins, tilgung, sonder, cashflow, vermoegen,
+        vergangen: m < heute, aktuell: m === heute
+      });
+    }
+    return reihe;
+  }
+
+  /* ---------- CASHFLOW-WASSERFALL ---------- */
+  // Vom Mieteingang bis zu dem, was wirklich bleibt – in einer Grafik
+  function wasserfallKarte(p) {
+    const stufen = [
+      { l: "Mieteingang", v: p.warm, typ: "plus", info: "alle vermieteten Einheiten" },
+      { l: "Kreditraten", v: p.rate, typ: "minus", info: "Zins und Tilgung" }
+    ];
+    if (p.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: p.nkPuffer, typ: "minus", info: "durchlaufender Posten" });
+    stufen.push({ l: "Cashflow", v: Math.abs(p.cashflow), typ: p.cashflow >= 0 ? "rest" : "neg", info: "bleibt dir übrig" });
+
+    const max = Math.max(...stufen.map(x => x.v), 1);
+    const balken = stufen.map(x => `
+      <div class="wf-i">
+        <i class="${x.typ}" style="height:${Math.max(6, x.v / max * 100).toFixed(1)}%"></i>
+        <span class="wf-l">${esc(x.l)}</span>
+        <b class="wf-v ${x.typ}">${x.typ === "minus" ? "−" : ""}${eur(x.v)}</b>
+      </div>`).join("");
+
+    const card = el(`<div class="card wf-card clickable" data-act="wf">
+      <div class="card-h"><div><div class="card-t">Vom Mieteingang zum Cashflow</div>
+        <div class="card-s">Was diesen Monat wirklich übrig bleibt</div></div>
+        <div class="head-pill" style="padding:7px 13px">${esc(new Date().toLocaleDateString("de-DE", { month: "long" }))}</div></div>
+      <div class="card-b">
+        <div class="wf">${balken}</div>
+        <div class="wf-fuss">
+          <div class="wf-fuss-i"><span>Tilgung in der Rate</span><b>${eur(p.tilgung)}</b></div>
+          <div class="wf-fuss-i"><span>Zinsen an die Bank</span><b>${eur(p.zins)}</b></div>
+          <div class="wf-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(p.vermoegen)}</b></div>
+        </div>
+        <div class="note" style="margin-top:12px">${p.cashflow >= 0
+          ? "Nach allen Raten bleiben dir " + eur(p.cashflow) + " im Monat. Zusätzlich senken " + eur(p.tilgung) + " deine Schulden."
+          : "Du legst monatlich " + eur(Math.abs(p.cashflow)) + " zu. Gleichzeitig tilgst du " + eur(p.tilgung) + " – unterm Strich baust du " + eur(p.vermoegen) + " Vermögen auf."}</div>
+      </div></div>`);
+    card.onclick = () => openWasserfallSheet(p);
+    return card;
+  }
+
+  function openWasserfallSheet(p) {
+    const body = `
+      <div class="stat-strip" style="margin-bottom:18px">
+        <div class="s"><span>Mieteingang</span><b>${eur(p.warm)}</b></div>
+        <div class="s"><span>Kreditraten</span><b>−${eur(p.rate)}</b></div>
+        <div class="s"><span>Cashflow</span><b style="color:${p.cashflow >= 0 ? "var(--mint-2)" : "var(--danger)"}">${eur(p.cashflow)}</b></div>
+        <div class="s"><span>Vermögensaufbau</span><b style="color:var(--mint-2)">${eur(p.vermoegen)}</b></div>
+      </div>
+      <div class="card-t" style="font-size:14px;margin-bottom:10px">Schritt für Schritt</div>
+      ${kv("Mieteingang aller vermieteten Einheiten", eur(p.warm))}
+      ${p.nkPuffer > 0 ? kv("− Nebenkosten-Rücklage", "−" + eur(p.nkPuffer)) : ""}
+      ${kv("= Ertrag", eur(p.ist))}
+      ${kv("− Kreditraten", "−" + eur(p.rate))}
+      ${kv("= Cashflow", eur(p.cashflow))}
+      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Was davon Vermögen ist</div>
+      ${miniBars([
+        { label: "Tilgung", value: p.tilgung, color: PALETTE[0] },
+        { label: "Zinsen", value: p.zins, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
+      ])}
+      <div class="note" style="margin-top:10px">Von ${eur(p.rate)} Kreditrate sind ${eur(p.tilgung)} Tilgung – dieses Geld ist nicht weg, es steckt in der Immobilie. Nur ${eur(p.zins)} gehen als Zins an die Bank.</div>
+      <div class="card-t" style="font-size:14px;margin:20px 0 6px">Aufs Jahr gerechnet</div>
+      ${kv("Cashflow", eur(p.cashflow * 12))}
+      ${kv("Tilgung", eur(p.tilgung * 12))}
+      ${kv("Vermögensaufbau", eur(p.vermoegen * 12))}`;
+    openSheet("Cashflow im Detail", "Von der Miete bis zum Vermögen", body);
+  }
+
+  /* ---------- MONATSABSCHLUSS & JAHRESBLICK ---------- */
+  function jahresblickKarte(p) {
+    const reihe = jahresReihe();
+    const jahr = new Date().getFullYear();
+    const summeV = reihe.reduce((a, r) => a + r.vermoegen, 0);
+    const summeC = reihe.reduce((a, r) => a + r.cashflow, 0);
+    const summeS = reihe.reduce((a, r) => a + r.sonder, 0);
+    // Aufgelaufener Vermögensaufbau – so wird die Entwicklung übers Jahr sichtbar
+    let lauf = 0;
+    const kumuliert = reihe.map(r => { lauf += r.vermoegen; return lauf; });
+    const maxV = kumuliert[kumuliert.length - 1] || 1;
+    const bisHeute = kumuliert[reihe.findIndex(r => r.aktuell)] || 0;
+    const balken = reihe.map((r, i) => `
+      <div class="jb-i${r.aktuell ? " jetzt" : ""}${r.vergangen ? " weg" : ""}" title="${esc(r.name)}: ${eur(kumuliert[i])} aufgelaufen">
+        <i style="height:${Math.max(4, kumuliert[i] / maxV * 100).toFixed(1)}%"></i>
+        ${r.sonder > 0 ? `<em class="jb-sonder" title="Sondertilgung ${eur(r.sonder)}"></em>` : ""}
+        <span>${esc(r.name.slice(0, 1))}</span>
+      </div>`).join("");
+
+    const card = el(`<div class="card jb-card clickable">
+      <div class="card-h"><div><div class="card-t">Jahresblick ${jahr}</div>
+        <div class="card-s">Vermögensaufbau, aufgelaufen seit Januar</div></div>
+        <div class="head-pill" style="padding:7px 13px">bis heute <b>${eur(bisHeute)}</b></div></div>
+      <div class="card-b">
+        <div class="jb">${balken}</div>
+        <div class="jb-leg">
+          <div class="jb-leg-i"><span>Vermögensaufbau ${jahr}</span><b style="color:var(--mint-2)">${eur(summeV)}</b></div>
+          <div class="jb-leg-i"><span>davon Cashflow</span><b>${eur(summeC)}</b></div>
+          <div class="jb-leg-i"><span>davon Tilgung</span><b>${eur(summeV - summeC)}${summeS > 0 ? `<small> inkl. ${eur(summeS)} Sondertilgung</small>` : ""}</b></div>
+        </div>
+        <div class="note" style="margin-top:12px">Rechnerisch auf Basis deiner heutigen Mieten und Kreditpläne. Mit jedem Monat sinkt der Zinsanteil – dein Vermögensaufbau wächst von allein.</div>
+      </div></div>`);
+    card.onclick = () => openJahresSheet(reihe, p);
+    return card;
+  }
+
+  function openJahresSheet(reihe, p) {
+    const summeV = reihe.reduce((a, r) => a + r.vermoegen, 0);
+    const summeC = reihe.reduce((a, r) => a + r.cashflow, 0);
+    const summeZ = reihe.reduce((a, r) => a + r.zins, 0);
+    const trs = reihe.map(r => `<tr${r.aktuell ? ' class="jetzt"' : ""}>
+      <td>${esc(r.name)}</td><td>${eur(r.einnahmen)}</td><td>${eur(r.rate + r.sonder)}</td>
+      <td>${eur(r.cashflow)}</td><td class="hl">${eur(r.vermoegen)}</td></tr>`).join("");
+    const body = `
+      <div class="stat-strip" style="margin-bottom:18px">
+        <div class="s"><span>Einnahmen ${new Date().getFullYear()}</span><b>${eur(p.jahrIst)}</b></div>
+        <div class="s"><span>Cashflow</span><b>${eur(summeC)}</b></div>
+        <div class="s"><span>Zinsen</span><b>−${eur(summeZ)}</b></div>
+        <div class="s"><span>Vermögensaufbau</span><b style="color:var(--mint-2)">${eur(summeV)}</b></div>
+      </div>
+      <div class="card-t" style="font-size:14px;margin-bottom:10px">Monat für Monat</div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Monat</th><th>Einnahmen</th><th>Raten</th><th>Cashflow</th><th>Vermögen</th></tr></thead>
+        <tbody>${trs}</tbody></table></div>
+      <div class="note" style="margin-top:12px">Die Spalte „Raten" enthält Sondertilgungen. Sie drücken den Cashflow, erhöhen aber die Tilgung im gleichen Umfang – dein Vermögensaufbau bleibt davon unberührt.</div>`;
+    openSheet("Jahresblick", "Prognose auf Basis deiner aktuellen Zahlen", body);
+  }
+
+  // Monatsabschluss: was dieser Monat gebracht hat
+  function monatsabschlussKarte(p) {
+    const monat = new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+    const bestaetigt = (D.zahlungen || []).filter(z => z.status === "eingegangen").length;
+    const vermietet = p.let_;
+    const anteilTilgung = p.vermoegen ? Math.round(p.tilgung / p.vermoegen * 100) : 0;
+    const card = el(`<div class="card ma-card clickable">
+      <div class="card-h"><div><div class="card-t">Monatsabschluss</div>
+        <div class="card-s">${esc(monat)}</div></div>
+        <div class="head-pill" style="padding:7px 13px">${vermietet ? bestaetigt + " / " + vermietet + " Mieten bestätigt" : "keine Mieteinheiten"}</div></div>
+      <div class="card-b">
+        <div class="ma-zahl">${eur(p.vermoegen)}</div>
+        <div class="ma-sub">Vermögensaufbau in diesem Monat</div>
+        <div class="ma-split">
+          <div class="ma-split-bar">
+            <i class="cf" style="width:${Math.max(0, 100 - anteilTilgung)}%"></i>
+            <i class="tg" style="width:${anteilTilgung}%"></i>
+          </div>
+          <div class="ma-split-leg">
+            <span><b class="cf"></b>Cashflow ${eur(p.cashflow)}</span>
+            <span><b class="tg"></b>Tilgung ${eur(p.tilgung)}</span>
+          </div>
+        </div>
+        <div class="ma-rows">
+          ${kv("Einnahmen", eur(p.warm))}
+          ${kv("Kreditraten", "−" + eur(p.rate))}
+          ${kv("Restschuld heute", eur(p.restschuld))}
+          ${kv("Entschuldet", p.entschuldet + " %")}
+        </div>
+      </div></div>`);
+    card.onclick = () => openWasserfallSheet(p);
+    return card;
+  }
+
+  /* ---------- OBJEKTKARTE (neuer Look) ---------- */
+  function objektKarte(s) {
+    const m = FE.streamMonthly(s);
+    const k = s.kind === "miete" ? FE.immoKPIs(s) : null;
+    let rate = 0, tilgung = 0;
+    FE.creditsOf(s).forEach(kr => { const x = kreditHeute(kr); rate += x.rate; tilgung += x.tilgung; });
+    const cashflow = m.gesamt - rate;
+    const vermoegen = cashflow + tilgung;
+    const occ = m.einheiten ? Math.round(m.vermietet / m.einheiten * 100) : (s.kind === "miete" ? 0 : 100);
+    const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+    const rendite = k && s.invest ? k.bruttoRendite : null;
+    const pill = rendite != null
+      ? `<span class="ok-pill${rendite >= 5 ? " gut" : rendite >= 3.5 ? " mittel" : " schwach"}">${rendite.toLocaleString("de-DE")} % Rendite</span>`
+      : (s.kind === "miete" ? `<span class="ok-pill leer" data-fix="invest">Rendite eintragen</span>` : "");
+    // Ohne Kredit sagen Cashflow und Vermögensaufbau dasselbe – dann lieber Jahr und Anteil zeigen
+    const gesamtIst = FE.totals(D).ist || 1;
+    const kacheln = rate > 0
+      ? `<div class="ok-k"><span>Cashflow n. Rate</span><b class="${cashflow >= 0 ? "gut" : "minus"}">${eur(cashflow)}</b></div>
+         <div class="ok-k"><span>Vermögensaufbau</span><b class="gut">${eur(vermoegen)}</b></div>`
+      : `<div class="ok-k"><span>Einnahmen / Jahr</span><b>${eur(m.gesamt * 12)}</b></div>
+         <div class="ok-k"><span>Anteil Portfolio</span><b class="gut">${Math.round(m.gesamt / gesamtIst * 100)} %</b></div>`;
+    const meta = s.kind === "airbnb"
+      ? `<span class="pillet on">${(m.detail && m.detail.naechte || 0).toLocaleString("de-DE")} Nächte/Mon.</span><span class="pillet">${(s.airbnb && s.airbnb.auslastung) || 0} % Auslastung</span>`
+      : s.kind === "pacht"
+        ? `<span class="pillet on">${m.anzahl} Verträge</span><span class="pillet">${(m.flaeche || 0).toLocaleString("de-DE")} ha</span>`
+        : `<span class="pillet on">${m.vermietet}/${m.einheiten} vermietet</span>${flaeche ? `<span class="pillet">${flaeche} m²</span>` : ""}`;
+
+    const card = el(`<div class="card ok-card clickable" data-id="${esc(s.id)}">
+      <div class="ok-top">
+        <div class="tile-ic">${svg(s.icon || "home")}</div>
+        <div class="ok-name"><div class="tile-name">${esc(s.name)}</div>
+          <div class="tile-loc">${esc(s.ort || ART_INFO[s.kind] && ART_INFO[s.kind].name || "")}</div></div>
+        ${pill}
+      </div>
+      <div class="ok-zahl">${eur(m.gesamt)}<small>/ Monat</small></div>
+      ${s.kind === "miete" && m.einheiten ? `<div class="ok-bar" title="Auslastung ${occ} %" aria-label="Auslastung ${occ} Prozent">
+        <i style="width:${occ}%"></i></div>` : ""}
+      <div class="ok-grid">${kacheln}</div>
+      <div class="tile-meta">${meta}</div>
+      <span class="tapme">Öffnen ›</span>
+    </div>`);
+    card.onclick = (e) => {
+      const fix = e.target.closest && e.target.closest("[data-fix]");
+      if (fix) { e.stopPropagation(); pflegeInvest(s); return; }
+      route(s.id);
+    };
+    return card;
+  }
+
   /* ---------- SAMMELSEITE VERMIETUNG ---------- */
   function renderVermietung(host) {
     $("#eyebrow").textContent = "Vermietung";
@@ -3017,48 +3392,29 @@
     const streams = mietStreams();
     $("#pageSub").textContent = streams.length + " Objekte im Bestand";
 
-    let ist = 0, pot = 0, tilg = 0, rest = 0, units = 0, let_ = 0, nkP = 0, invest = 0;
+    let ist = 0, pot = 0, rate = 0, tilgung = 0, rest = 0, units = 0, let_ = 0, nkP = 0, invest = 0;
     streams.forEach(s => {
       const m = FE.streamMonthly(s);
-      ist += m.gesamt; pot += m.gesamtPotenzial; tilg += m.kreditAbtrag; nkP += m.nkPuffer;
+      ist += m.gesamt; pot += m.gesamtPotenzial; nkP += m.nkPuffer;
       units += m.einheiten; let_ += m.vermietet; invest += Number(s.invest) || 0;
-      FE.creditsOf(s).forEach(kr => { const p = FE.creditPlan(kr); rest += p ? p.restAktuell : (kr.summe || 0); });
+      FE.creditsOf(s).forEach(kr => {
+        const k = kreditHeute(kr);
+        rate += k.rate; tilgung += k.tilgung; rest += k.rest;
+      });
     });
-    const netto = ist - tilg, occ = units ? Math.round(let_ / units * 100) : 0;
+    const netto = ist - rate, occ = units ? Math.round(let_ / units * 100) : 0;
+    const vermoegen = netto + tilgung;
 
     host.appendChild(el(`<div class="grid g-kpi">
       ${kpiCard("euro", eur(ist), "Einnahmen / Monat", "alle Objekte", true, null, "einnahmen")}
-      ${kpiCard("layers", eur(pot), "Potenzial / Monat", "+" + eur(pot - ist) + " ungenutzt", false, null, "potenzial")}
-      ${kpiCard("wallet", eur(netto), "Netto-Cashflow", "nach Tilgung", netto >= 0, null, "cashflow")}
-      ${kpiCard("home", occ + " %", "Auslastung", let_ + " / " + units + " Einheiten", occ >= 60, null, "auslastung")}
+      ${kpiCard("wallet", eur(netto), "Cashflow nach Rate", "nach Kreditraten", false, null, "cashflow")}
+      ${kpiCard("growth", eur(vermoegen), "Vermögensaufbau", "Cashflow + Tilgung", true, null, "vermoegen")}
+      ${kpiCard("home", occ + " %", "Auslastung", let_ + " / " + units + " Einheiten", false, null, "auslastung")}
     </div>`));
 
-    // Kerninsights je Objekt
-    const cards = streams.map(s => {
-      const m = FE.streamMonthly(s);
-      const k = FE.immoKPIs(s);
-      const o = m.einheiten ? Math.round(m.vermietet / m.einheiten * 100) : 0;
-      const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
-      return `<div class="card pad clickable obj-card" data-id="${s.id}">
-        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "home")}</div>
-          <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
-        <div class="stat-strip" style="margin-bottom:14px">
-          <div class="s"><span>Einnahmen</span><b>${eur(m.gesamt)}</b></div>
-          <div class="s"><span>Netto n. Tilgung</span><b style="color:${m.netto >= 0 ? "var(--mint-2)" : "var(--danger)"}">${eur(m.netto)}</b></div>
-          <div class="s"><span>Auslastung</span><b>${o} %</b></div>
-          <div class="s"><span>Fläche</span><b>${flaeche} m²</b></div>
-        </div>
-        <div class="mini">
-          <div class="mini-row"><span class="mini-lab">Vermietet</span>
-            <span class="mini-track"><span style="width:${m.einheiten > 0 ? Math.round(m.vermietet / m.einheiten * 100) : 0}%"></span></span>
-            <span class="mini-val">${m.vermietet}/${m.einheiten}</span></div>
-          <div class="mini-row"><span class="mini-lab">Rendite</span>
-            <span class="mini-track"><span style="width:${Math.max(2, Math.min(100, k.bruttoRendite / 10 * 100))}%"></span></span>
-            <span class="mini-val">${k.bruttoRendite.toLocaleString("de-DE")} %</span></div>
-        </div></div>`;
-    }).join("");
-    const grid = el(`<div class="grid g-objekte">${cards}</div>`);
-    grid.querySelectorAll(".obj-card").forEach(c => c.onclick = () => route(c.dataset.id));
+    // Objektkarten im neuen Look
+    const grid = el(`<div class="grid g-objekte"></div>`);
+    streams.forEach(s => grid.appendChild(objektKarte(s)));
     host.appendChild(grid);
 
     const addObj = el(`<div class="card pad add-card"><button class="add-btn wide" id="addObjekt">+ Objekt anlegen</button></div>`);
@@ -3077,63 +3433,63 @@
         <div class="card-s" style="margin-bottom:14px">Über alle Mietobjekte</div>
         ${kv("Investition", eur(invest))}
         ${kv("Restschuld heute", eur(rest))}
-        ${kv("Tilgung / Monat", eur(tilg))}
-        ${kv("NK-Puffer / Monat", eur(nkP))}
-        ${kv("Einnahmen / Jahr", eur(ist * 12))}
-        ${kv("Netto / Jahr", eur(netto * 12))}
+        ${kv("Kreditrate / Monat", eur(rate))}
+        ${kv("davon Tilgung", eur(tilgung))}
+        ${kv("NK-Rücklage / Monat", eur(nkP))}
+        ${kv("Vermögensaufbau / Jahr", eur(vermoegen * 12))}
       </div></div>`));
   }
 
   /* ---------- OVERVIEW ---------- */
   function renderOverview(host) {
-    const t = FE.totals(D);
-    // Portfolio-Kredite + Einheiten aggregieren
-    let debtMonth = 0, debtRest = 0, debtOrig = 0, paidSoFar = 0;
-    let unitsTotal = 0, unitsLet = 0;
-    (D.streams || []).forEach(s => {
-      FE.creditsOf(s).forEach(kr => {
-        debtMonth += Number(kr.abtragMonat) || 0;
-        debtOrig += Number(kr.summe) || 0;
-        const pl = FE.creditPlan(kr);
-        debtRest += pl ? pl.restAktuell : (Number(kr.summe) || 0);
-        paidSoFar += pl ? pl.getilgtBisher : 0;
-      });
-      (s.einheiten || []).forEach(u => { unitsTotal++; if (u.status === "vermietet") unitsLet++; });
-    });
-    const nettoMonth = t.ist - debtMonth;
-    const occ = unitsTotal ? Math.round(unitsLet / unitsTotal * 100) : 0;
-    const upside = t.potenzial - t.ist;          // ungenutztes Einnahmenpotenzial
-    const nettoPot = t.potenzial - debtMonth;    // Netto bei Vollvermietung
+    const p = portfolioZahlen();
+    const t = p.t;
 
     $("#eyebrow").textContent = "Portfolio";
     $("#pageTitle").textContent = "Übersicht";
-    $("#pageSub").textContent = "Alle Einnahmequellen auf einen Blick · Stand " + ((D.meta && D.meta.version) || "");
+    $("#pageSub").textContent = (D.streams || []).length + " Objekte · " + p.units + " Einheiten · Stand " + ((D.meta && D.meta.version) || "");
 
-    const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside };
+    const ctx = { t, debtMonth: p.rate, debtRest: p.restschuld, paidSoFar: p.getilgt,
+      debtOrig: p.urspruenglich, unitsTotal: p.units, unitsLet: p.let_,
+      nettoMonth: p.cashflow, nettoPot: p.cashflowPot, upside: p.upside, p };
 
-    // Persönliche Begrüßung + Suche
+    // Persönliche Begrüßung
     host.appendChild(begruessungsKarte());
+
+    // Fällige Mieten direkt bestätigen – ohne Umweg über ein Popup
+    const mk = mietkontrolleKarte();
+    if (mk) host.appendChild(mk);
+
     host.appendChild(searchCard());
 
-    // KPI-Reihe 1 — Einnahmen & Cashflow
+    // KPI-Reihe 1 — die vier Zahlen, auf die es ankommt
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
-      ${kpiCard("euro", eur(t.ist), "Einnahmen / Monat", "aktuell vermietet", true, "einnahmen", "einnahmen")}
-      ${kpiCard("layers", eur(t.potenzial), "Potenzial / Monat", "+" + eur(upside) + " ungenutzt", false, "potenzial", "potenzial")}
-      ${kpiCard("wallet", eur(nettoMonth), "Netto-Cashflow", "nach Tilgung", nettoMonth >= 0, "netto", "cashflow")}
-      ${kpiCard("home", occ + " %", "Auslastung", unitsLet + " / " + unitsTotal + " Einheiten", occ >= 60, "auslastung", "auslastung")}
+      ${kpiCard("euro", eur(t.ist), "Einnahmen / Monat", p.let_ + " von " + p.units + " Einheiten", true, "einnahmen", "einnahmen")}
+      ${kpiCard("wallet", eur(p.cashflow), "Cashflow nach Rate", "nach allen Kreditraten", false, "netto", "cashflow")}
+      ${kpiCard("growth", eur(p.vermoegen), "Vermögensaufbau / Mon.", "Cashflow + " + eur(p.tilgung) + " Tilgung", true, "vermoegen", "vermoegen")}
+      ${kpiCard("home", p.occ + " %", "Auslastung", p.upside > 0 ? "+" + eur(p.upside) + " möglich" : "voll vermietet", false, "auslastung", "auslastung")}
     </div>`), {
       einnahmen: () => openPortfolioSheet("einnahmen", ctx),
-      potenzial: () => openPortfolioSheet("potenzial", ctx),
       netto: () => openPortfolioSheet("netto", ctx),
+      vermoegen: () => openWasserfallSheet(p),
       auslastung: () => openPortfolioSheet("auslastung", ctx)
     }));
+
+    // Wasserfall + Monatsabschluss
+    const row1 = el(`<div class="grid g-2"></div>`);
+    row1.appendChild(wasserfallKarte(p));
+    row1.appendChild(monatsabschlussKarte(p));
+    host.appendChild(row1);
+
+    // Jahresblick
+    host.appendChild(jahresblickKarte(p));
 
     // KPI-Reihe 2 — Jahr, Tilgung, Schuldenstand
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
       ${kpiCard("trend", eur(t.jahrIst), "Einnahmen / Jahr", "hochgerechnet", false, "jahr")}
-      ${kpiCard("chart", eur(nettoPot), "Netto-Potenzial / Mon.", "bei Vollvermietung", nettoPot >= 0, "potenzial")}
-      ${kpiCard("bank", eur(debtMonth), "Tilgung / Monat", eur(debtMonth * 12) + " / Jahr", false, "tilgung", "tilgung")}
-      ${kpiCard("debt", eur(debtRest), "Restschuld heute", "exakt " + eur2(debtRest), false, "schuld", "restschuld")}
+      ${kpiCard("layers", eur(t.potenzial), "Potenzial / Monat", p.upside > 0 ? "+" + eur(p.upside) + " ungenutzt" : "voll ausgeschöpft", false, "potenzial", "potenzial")}
+      ${kpiCard("bank", eur(p.tilgung), "Tilgung / Monat", "von " + eur(p.rate) + " Rate", false, "tilgung", "tilgung")}
+      ${kpiCard("debt", eur(p.restschuld), "Restschuld heute", p.entschuldet + " % entschuldet", false, "schuld", "restschuld")}
     </div>`), {
       jahr: () => openPortfolioSheet("einnahmen", ctx),
       potenzial: () => openPortfolioSheet("potenzial", ctx),
@@ -3141,54 +3497,44 @@
       schuld: () => openPortfolioSheet("schuld", ctx)
     }));
 
+    // Objektkarten im neuen Look
+    if ((D.streams || []).length) {
+      const grid = el(`<div class="grid g-objekte"></div>`);
+      (D.streams || []).forEach(s => grid.appendChild(objektKarte(s)));
+      host.appendChild(grid);
+    } else {
+      const leer = el(`<div class="card pad add-card" style="text-align:center">
+        <div class="card-t" style="margin-bottom:6px">Noch kein Objekt angelegt</div>
+        <div class="note" style="margin-bottom:16px">Leg dein erstes Objekt an – ESTRIQ rechnet sofort Einnahmen, Cashflow und Rendite.</div>
+        <button class="add-btn wide" id="leerAdd">+ Erstes Objekt anlegen</button></div>`);
+      leer.querySelector("#leerAdd").onclick = () => { if (pruefeObjekt("miete")) assistentObjekt("miete"); };
+      host.appendChild(leer);
+    }
+
     // Composition donut + legend (nur echte Einnahmen)
     const segs = (D.streams || []).map((s, i) => {
       const m = FE.streamMonthly(s);
       return { id: s.id, name: s.name, value: m.gesamt, color: PALETTE[i % PALETTE.length], kind: s.kind };
     }).filter(x => x.value > 0);
-    const legend = segs.map(s => `<div class="leg clickable" data-sid="${esc(s.id)}">
-      <span class="sw" style="background:${s.color}"></span>
-      <span class="lt">${esc(s.name)}</span>
-      <span class="lv">${eur(s.value)}</span></div>`).join("");
-    const compCard = el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
-      <div class="card-s" style="margin-bottom:18px">Beitrag je Einnahmequelle / Monat</div>
-      <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`);
-    compCard.querySelectorAll(".leg[data-sid]").forEach(l =>
-      l.onclick = () => route(l.dataset.sid));
-    host.appendChild(compCard);
+    if (segs.length) {
+      const legend = segs.map(s => `<div class="leg clickable" data-sid="${esc(s.id)}">
+        <span class="sw" style="background:${s.color}"></span>
+        <span class="lt">${esc(s.name)}</span>
+        <span class="lv">${eur(s.value)}</span></div>`).join("");
+      const compCard = el(`<div class="card pad">
+        <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
+        <div class="card-s" style="margin-bottom:18px">Beitrag je Einnahmequelle / Monat</div>
+        <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`);
+      compCard.querySelectorAll(".leg[data-sid]").forEach(l =>
+        l.onclick = () => route(l.dataset.sid));
+      host.appendChild(compCard);
+    }
 
     // Kalender + Wetter nebeneinander
     const row = el(`<div class="grid g-2"></div>`);
     row.appendChild(calendarCard());
     row.appendChild(weatherCard());
     host.appendChild(row);
-
-    // Stream tiles
-    const tiles = el(`<div class="tiles"></div>`);
-    (D.streams || []).forEach(s => {
-      const m = FE.streamMonthly(s);
-      let meta = "";
-      if (s.kind === "miete") {
-        const kr = FE.creditsOf(s);
-        if (kr.length) {
-          const k = FE.immoKPIs(s);
-          meta = `<span class="pillet on">Netto ${eur(m.netto)}</span><span class="pillet">${kr.length} Kredit${kr.length > 1 ? "e" : ""}</span>`;
-        }
-        else meta = `<span class="pillet on">${m.vermietet}/${m.einheiten} vermietet</span><span class="pillet">Potenzial ${eur(m.gesamtPotenzial)}</span>`;
-      }
-      else if (s.kind === "airbnb") meta = `<span class="pillet on">${m.detail.naechte} Nächte/Mon.</span><span class="pillet">${s.airbnb.auslastung}% Auslastung</span>`;
-      else if (s.kind === "pacht") meta = `<span class="pillet on">${m.anzahl} Verträge</span><span class="pillet">${m.flaeche.toLocaleString("de-DE")} ha</span>`;
-      const t = el(`<div class="tile" data-id="${s.id}">
-        <div class="tile-go">${svg("trend")}</div>
-        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "euro")}</div>
-          <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
-        <div class="tile-num">${eur(m.gesamt)} <small>/ Mon.</small></div>
-        <div class="tile-meta">${meta}</div></div>`);
-      t.onclick = () => route(s.id);
-      tiles.appendChild(t);
-    });
-    host.appendChild(tiles);
   }
 
   /* ---------- KALENDER (Monatsansicht) ---------- */
@@ -3323,10 +3669,7 @@
       // Termin anlegen / bearbeiten
       const neuBtn = card.querySelector("#calAdd");
       if (neuBtn) neuBtn.onclick = () => {
-        const vor = calSelected
-          ? { titel: "", datum: calSelected, typ: "termin" }
-          : null;
-        openTerminEdit(vor ? { titel: "", datum: calSelected, typ: "termin" } : null, true);
+        openTerminEdit(calSelected ? { titel: "", datum: calSelected, typ: "termin" } : null, true);
       };
       detail.querySelectorAll(".cal-ev[data-ti]").forEach(n => n.onclick = (ev) => {
         ev.stopPropagation();
@@ -3682,7 +4025,7 @@
     }).sort((a, b) => a.kuend - b.kuend);
     host.appendChild(el(`<div class="grid g-2">
       <div class="card pad"><div class="card-t" style="margin-bottom:4px">Pachtpreis je Hektar</div>
-        <div class="card-s" style="margin-bottom:16px">Ø ${eur(proHa)} · Spanne ${eur(Math.min(...proHaListe.map(x => x.value)))} – ${eur(Math.max(...proHaListe.map(x => x.value)))}</div>
+        <div class="card-s" style="margin-bottom:16px">Ø ${eur(proHa)}${proHaListe.length ? " · Spanne " + eur(Math.min(...proHaListe.map(x => x.value))) + " – " + eur(Math.max(...proHaListe.map(x => x.value))) : ""}</div>
         ${miniBars(proHaListe)}
         <div class="note" style="margin-top:12px">Ackerland erzielt höhere Pachten als Grünland – die Unterschiede spiegeln die Flächenart wider.</div></div>
       <div class="card pad"><div class="card-t" style="margin-bottom:4px">Laufzeiten & Fristen</div>
@@ -3764,6 +4107,7 @@
     const hasSt = !!kr.sondertilgung;
     const stTxt = hasSt ? `${eur(kr.sondertilgung.betrag)} zum 01.06. & 01.12.` : "keine";
     const title = kr.name || "Kredit";
+    const heute = kreditHeute(kr);
     const restNow = plan ? plan.restAktuell : kr.summe;
     const paid = plan ? plan.getilgtBisher : 0;
     const startTxt = plan && plan.startKey ? monthYear(plan.startKey) : "";
@@ -3778,12 +4122,13 @@
           <div class="s"><span>Restschuld heute</span><b>${eur2(restNow)}</b></div>
           <div class="s"><span>getilgt bisher</span><b>${startFuture ? "—" : eur2(paid)}</b></div>
           <div class="s"><span>Rate/Monat</span><b>${eur2(kr.abtragMonat)}</b></div>
+          <div class="s"><span>davon Tilgung</span><b style="color:var(--mint-2)">${eur(heute.tilgung)}</b></div>
           ${hasSt ? `<div class="s"><span>Sondertilgung</span><b>${eur(kr.sondertilgung.betrag)}</b></div>` : ""}
           <div class="s"><span>Laufzeit</span><b>${months} Mon. (bis ${endTxt})</b></div>
           ${hasSt ? `<div class="s"><span>Σ Sondertilgung</span><b>${eur(plan.sonderGesamt)}</b></div>` : ""}
         </div>
         ${areaChart(curve.length ? curve : [kr.summe, 0], chartLabels, startFuture ? null : markerIdx)}
-        <div class="note" style="margin-top:8px">${startFuture ? "Tilgung beginnt " + startTxt + ". " : "Der Punkt markiert die heutige Restschuld. "}Restschuld inkl. ${kr.zinsPa ? kr.zinsPa.toLocaleString("de-DE") + " % Zins p.a." : "Zins"}${hasSt ? " und Sondertilgung (" + stTxt + ")" : ""}. Nach Tilgung steigt der Netto-Cashflow um ${eur(kr.abtragMonat)}/Monat.</div>
+        <div class="note" style="margin-top:8px">${startFuture ? "Tilgung beginnt " + startTxt + ". " : "Der Punkt markiert die heutige Restschuld. "}Von ${eur(kr.abtragMonat)} Rate sind aktuell ${eur(heute.tilgung)} Tilgung und ${eur(heute.zins)} Zins${hasSt ? " – dazu Sondertilgung (" + stTxt + ")" : ""}. Nach vollständiger Tilgung steigt dein Cashflow um ${eur(kr.abtragMonat)}/Monat.</div>
       </div></div>`);
   }
   function monthYear(key) { const d = new Date(key + "-01"); return d.toLocaleDateString("de-DE", { month: "2-digit", year: "numeric" }); }
@@ -3792,43 +4137,36 @@
     const kredite = FE.creditsOf(s);
     const hasImmo = s.invest || kredite.length || s.nkAlsPuffer;
     const k = hasImmo ? FE.immoKPIs(s) : null;
+    let rate = 0, tilgung = 0, zins = 0, rest = 0;
+    kredite.forEach(kr => { const x = kreditHeute(kr); rate += x.rate; tilgung += x.tilgung; zins += x.zins; rest += x.rest; });
+    const cashflow = m.gesamt - rate;
+    const vermoegen = cashflow + tilgung;
 
-    // KPIs
-    if (k && s.invest) {
-      // Rendite-Kennzahlen für alle Objekte
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("wallet", eur(m.netto), "Netto-Cashflow / Monat", "nach Kreditrate", m.netto >= 0, "cf", "cashflow")}
-        ${kpiCard("trend", k.bruttoRendite.toLocaleString("de-DE") + " %", "Bruttomietrendite", "Kaltmiete / Invest", false, null, "rendite")}
-        ${kpiCard("chart", k.cashflowRoi.toLocaleString("de-DE") + " %", "Cashflow-ROI", "netto / Invest p.a.", false, null, "roi")}
-        ${kpiCard("coins", eur(k.invest), "Investition", "eingesetztes Kapital", false, null, "invest")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-      // Zweite Reihe mit Einnahmen/Tilgung/Restschuld (nützlich bei mehreren Krediten)
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", kredite.length + (kredite.length === 1 ? " Kredit" : " Kredite"), false, null, "tilgung")}
-        ${kpiCard("debt", eur(k.restschuldGesamt), "Restschuld heute", "exakt " + eur2(k.restschuldGesamt), false, null, "restschuld")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-    } else if (k && kredite.length) {
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", kredite.length + " Kredite")}
-        ${kpiCard("wallet", eur(m.netto), "Netto-Cashflow", "nach Tilgung", m.netto >= 0, "cf")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("home", m.einheiten, "Einheiten", (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0) + " m² gesamt")}
-        ${kpiCard("debt", eur(k.restschuldGesamt), "Restschuld gesamt", "exakt " + eur2(k.restschuldGesamt))}
-        ${kpiCard("layers", eur(m.nkPuffer), "NK-Puffer / Monat", "Rücklage")}
-        ${kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "aktuell vermietet")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-    } else {
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("home", m.einheiten, "Einheiten", (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0) + " m² gesamt")}
-        ${kpiCard("trend", eur(m.gesamt * 12), "pro Jahr", "aktuell vermietet")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
+    // KPIs — Einnahmen, Cashflow, Vermögensaufbau, Rendite
+    host.appendChild(wireActs(el(`<div class="grid g-kpi">
+      ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true, "cf", "einnahmen")}
+      ${kpiCard("wallet", eur(cashflow), "Cashflow nach Rate", kredite.length ? "nach " + eur(rate) + " Rate" : "keine Kredite", false, "cf", "cashflow")}
+      ${kpiCard("growth", eur(vermoegen), "Vermögensaufbau", "Cashflow + " + eur(tilgung) + " Tilgung", true, "cf", "vermoegen")}
+      ${s.invest && k
+        ? kpiCard("trend", k.bruttoRendite.toLocaleString("de-DE") + " %", "Bruttomietrendite", "Kaltmiete / Investition", false, null, "rendite")
+        : kpiCard("home", m.einheiten, "Einheiten", (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0) + " m² gesamt")}
+    </div>`), { cf: () => openCashflowSheet(s) }));
+
+    // Zweite Reihe: Potenzial, Investition/ROI, Tilgung, Restschuld
+    host.appendChild(wireActs(el(`<div class="grid g-kpi">
+      ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung", false, null, "potenzial")}
+      ${s.invest && k
+        ? kpiCard("chart", k.cashflowRoi.toLocaleString("de-DE") + " %", "Cashflow-ROI", "netto / Investition p. a.", false, null, "roi")
+        : kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "aktuell vermietet")}
+      ${kpiCard("bank", eur(tilgung), "Tilgung / Monat", kredite.length + (kredite.length === 1 ? " Kredit" : " Kredite"), false, null, "tilgung")}
+      ${kredite.length
+        ? kpiCard("debt", eur(rest), "Restschuld heute", "exakt " + eur2(rest), false, null, "restschuld")
+        : kpiCard("coins", s.invest ? eur(s.invest) : "—", "Investition", "eingesetztes Kapital", false, null, "invest")}
+    </div>`), { cf: () => openCashflowSheet(s) }));
+
+    // Cashflow-Wasserfall für dieses Objekt
+    if (rate > 0 || m.nkPuffer > 0) {
+      host.appendChild(objektWasserfall(s, m, { rate, tilgung, zins, cashflow, vermoegen }));
     }
 
     // Kredit-Tilgung Karten — eine je Kredit
@@ -3858,14 +4196,16 @@
 
     // Per-unit horizontal bars
     const maxUnit = Math.max(...(s.einheiten || []).map(u => FE.unitIncome(u).gesamt), 1);
+    const bezahlt = new Set((D.zahlungen || []).filter(z => z.status === "eingegangen").map(z => z.einheit_id));
     const bars = (s.einheiten || []).map(u => {
       const inc = FE.unitIncome(u);
       const on = u.status === "vermietet";
       const w = Math.round(inc.gesamt / maxUnit * 100);
       const mieterTxt = u.mieter ? ` · ${esc(u.mieter)}` : "";
+      const bez = on && bezahlt.has(u._id) ? `<span class="badge b-on">Miete da</span>` : "";
       return `<div class="unit-bar clickable" data-i="${(s.einheiten||[]).indexOf(u)}" style="padding:2px 0">
         <div class="hbar-top"><div class="hbar-name">${esc(u.wohnung)}<span class="loc">${u.flaeche} m²${mieterTxt}</span></div>
-          <div class="hbar-val">${eur(inc.gesamt)} ${on ? '<span class="badge b-on">vermietet</span>' : '<span class="badge b-off">frei</span>'}</div></div>
+          <div class="hbar-val">${eur(inc.gesamt)} ${on ? (bez || '<span class="badge b-on">vermietet</span>') : '<span class="badge b-off">frei</span>'}</div></div>
         <div class="track ${on ? '' : 'ghost'}"><span style="width:${w}%"></span></div></div>`;
     }).join("");
     const barCard = el(`<div class="card pad">
@@ -3913,6 +4253,35 @@
     host.appendChild(tblCard);
   }
 
+  // Wasserfall für ein einzelnes Objekt
+  function objektWasserfall(s, m, z) {
+    const warm = m.gesamt + m.nkPuffer;
+    const stufen = [
+      { l: "Mieteingang", v: warm, typ: "plus" },
+      { l: "Kreditrate", v: z.rate, typ: "minus" }
+    ];
+    if (m.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: m.nkPuffer, typ: "minus" });
+    stufen.push({ l: "Cashflow", v: Math.abs(z.cashflow), typ: z.cashflow >= 0 ? "rest" : "neg" });
+    const max = Math.max(...stufen.map(x => x.v), 1);
+    const card = el(`<div class="card wf-card clickable">
+      <div class="card-h"><div><div class="card-t">Vom Mieteingang zum Cashflow</div>
+        <div class="card-s">${esc(s.name)} · ${esc(new Date().toLocaleDateString("de-DE", { month: "long" }))}</div></div>
+        <div class="head-pill" style="padding:7px 13px"><b>${eur(z.vermoegen)}</b> Vermögen</div></div>
+      <div class="card-b">
+        <div class="wf">${stufen.map(x => `
+          <div class="wf-i"><i class="${x.typ}" style="height:${Math.max(6, x.v / max * 100).toFixed(1)}%"></i>
+            <span class="wf-l">${esc(x.l)}</span>
+            <b class="wf-v ${x.typ}">${x.typ === "minus" ? "−" : ""}${eur(x.v)}</b></div>`).join("")}</div>
+        <div class="wf-fuss">
+          <div class="wf-fuss-i"><span>Tilgung in der Rate</span><b>${eur(z.tilgung)}</b></div>
+          <div class="wf-fuss-i"><span>Zinsen</span><b>${eur(z.zins)}</b></div>
+          <div class="wf-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(z.vermoegen)}</b></div>
+        </div>
+      </div></div>`);
+    card.onclick = () => openCashflowSheet(s);
+    return card;
+  }
+
   /* ---------- DETAIL-SHEETS ---------- */
   function openUnitSheet(s, u) {
     if (!u) return;
@@ -3926,6 +4295,7 @@
     }, 0) / ((s.einheiten || []).length || 1);
     const v = u.vertrag || {};
     const on = u.status === "vermietet";
+    const bezahlt = (D.zahlungen || []).some(z => z.einheit_id === u._id && z.status === "eingegangen");
 
     // Mietdauer
     let dauer = "—";
@@ -3943,6 +4313,7 @@
       { label: "Stellplatz", value: inc.stell, color: PALETTE[5] }
     ].filter(x => x.value > 0);
 
+    const monatName = new Date().toLocaleDateString("de-DE", { month: "long" });
     const body = `
       <div class="stat-strip" style="margin-bottom:18px">
         <div class="s"><span>Warmmiete</span><b>${eur(inc.gesamt)}</b></div>
@@ -3950,7 +4321,13 @@
         <div class="s"><span>€ / m²</span><b>${proM2.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
         <div class="s"><span>Anteil Objekt</span><b>${anteil} %</b></div>
       </div>
-      <div class="card-t" style="font-size:14px;margin-bottom:10px">Zusammensetzung</div>
+      ${on ? `<div class="mk-row${bezahlt ? " erledigt" : ""}" id="uMiete" data-einheit="${esc(u._id)}">
+        <div class="mk-tx"><div class="mk-n">Miete ${esc(monatName)}</div>
+          <div class="mk-m">fällig am ${Number(u.zahltag) || 1}. · ${esc(u.mieter || "ohne Mieter")}</div></div>
+        <div class="mk-soll">${eur(inc.gesamt)}</div>
+        <button class="mk-ok" id="uMieteOk" data-betrag="${inc.gesamt}"${bezahlt ? " disabled" : ""}>${bezahlt ? "Bestätigt" : "Eingegangen"}</button>
+      </div><div class="ef-msg" id="uMsg"></div>` : ""}
+      <div class="card-t" style="font-size:14px;margin:18px 0 10px">Zusammensetzung</div>
       ${miniBars(parts)}
       <div class="card-t" style="font-size:14px;margin:20px 0 6px">Mieter</div>
       ${kv("Name", on ? esc(u.mieter || "—") : '<span style="color:var(--gold)">frei</span>')}
@@ -3968,11 +4345,20 @@
       <button class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet(u.wohnung + " · " + u.flaeche + " m²", s.name, body);
     sh.querySelector("#efEdit").onclick = () => openUnitEdit(s, u, false);
+    const ok = sh.querySelector("#uMieteOk");
+    if (ok && !ok.disabled) ok.onclick = async () => {
+      ok.disabled = true; ok.textContent = "…";
+      const r = await mieteBestaetigen(u._id, Number(ok.dataset.betrag), sh.querySelector("#uMiete"), sh.querySelector("#uMsg"));
+      if (!r) { ok.disabled = false; ok.textContent = "Eingegangen"; return; }
+      await window.nachSpeichern();
+      showToast("Mieteingang gespeichert.");
+    };
   }
 
   function openCreditSheet(kr) {
     const p = FE.creditPlan(kr);
     if (!p) return;
+    const heute = kreditHeute(kr);
     const rows = p.rows;
     // Jahresweise verdichten
     const byYear = {};
@@ -3995,15 +4381,21 @@
         <div class="s"><span>Zinsen gesamt</span><b>${eur(p.zinsGesamt)}</b></div>
         <div class="s"><span>Laufzeit</span><b>${p.jahre.toLocaleString("de-DE")} J.</b></div>
       </div>
-      <div class="card-t" style="font-size:14px;margin-bottom:10px">Kostenverteilung</div>
+      <div class="card-t" style="font-size:14px;margin-bottom:10px">Deine Rate in diesem Monat</div>
+      ${miniBars([
+        { label: "Tilgung", value: heute.tilgung, color: PALETTE[0] },
+        { label: "Zins", value: heute.zins, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
+      ])}
+      <div class="note" style="margin-top:8px">Von ${eur(heute.rate)} Rate sind ${eur(heute.tilgung)} Vermögensaufbau. Der Tilgungsanteil steigt mit jeder Rate.</div>
+      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Kostenverteilung über die Laufzeit</div>
       ${miniBars([
         { label: "Darlehen", value: Number(kr.summe) || 0, color: "linear-gradient(90deg,var(--deep),var(--mint))" },
         { label: "Zinskosten", value: p.zinsGesamt, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
       ])}
       <div class="note" style="margin-top:8px">${zinsAnteil.toFixed(1)} % der Gesamtkosten sind Zinsen.</div>
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgung je Jahr</div>
-      <table class="tbl"><thead><tr><th>Jahr</th><th>Zins</th><th>Tilgung</th><th>Restschuld</th></tr></thead>
-      <tbody>${trs}</tbody></table>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jahr</th><th>Zins</th><th>Tilgung</th><th>Restschuld</th></tr></thead>
+      <tbody>${trs}</tbody></table></div>
       <button class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet(kr.name || "Kredit", eur(kr.summe) + " · " + (kr.zinsPa || 0).toLocaleString("de-DE") + " % · " + eur(kr.abtragMonat) + "/Monat", body);
     const kstream = (D.streams || []).find(x => FE.creditsOf(x).some(c => c._id === kr._id));
@@ -4012,20 +4404,36 @@
 
   function openCashflowSheet(s) {
     const m = FE.streamMonthly(s);
-    const k = FE.immoKPIs(s);
     const kredite = FE.creditsOf(s);
+    let rate = 0, tilgung = 0, zins = 0;
+    kredite.forEach(kr => { const x = kreditHeute(kr); rate += x.rate; tilgung += x.tilgung; zins += x.zins; });
+    const cashflow = m.gesamt - rate;
+    const vermoegen = cashflow + tilgung;
     const body = `
+      <div class="stat-strip" style="margin-bottom:18px">
+        <div class="s"><span>Ertrag</span><b>${eur(m.gesamt)}</b></div>
+        <div class="s"><span>Kreditrate</span><b>−${eur(rate)}</b></div>
+        <div class="s"><span>Cashflow</span><b style="color:${cashflow >= 0 ? "var(--mint-2)" : "var(--danger)"}">${eur(cashflow)}</b></div>
+        <div class="s"><span>Vermögensaufbau</span><b style="color:var(--mint-2)">${eur(vermoegen)}</b></div>
+      </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
       ${kv("Ertrag" + (s.nkAlsPuffer ? " (ohne NK)" : ""), eur(m.gesamt))}
       ${kredite.map(kr => kv("− " + (kr.name || "Kredit"), "−" + eur(kr.abtragMonat))).join("")}
-      ${kv("Netto-Cashflow", eur(m.netto))}
+      ${kv("Cashflow nach Rate", eur(cashflow))}
+      ${kv("+ Tilgungsanteil der Rate", "+" + eur(tilgung))}
+      ${kv("= Vermögensaufbau", eur(vermoegen))}
       ${s.nkAlsPuffer ? `<div class="note" style="margin-top:12px">Zusätzlich ${eur(m.nkPuffer)}/Monat Nebenkosten als Rücklage (nicht im Ertrag).</div>` : ""}
+      ${zins > 0 ? `<div class="card-t" style="font-size:14px;margin:20px 0 10px">Rate aufgeteilt</div>
+      ${miniBars([
+        { label: "Tilgung", value: tilgung, color: PALETTE[0] },
+        { label: "Zins", value: zins, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
+      ])}` : ""}
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Wenn alles vermietet wäre</div>
       ${kv("Potenzial-Ertrag", eur(m.gesamtPotenzial))}
-      ${kv("Netto-Cashflow", eur(m.gesamtPotenzial - m.kreditAbtrag))}
-      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - m.kreditAbtrag) * 12 / s.invest * 100).toFixed(2) + " %" : "—")}
+      ${kv("Cashflow", eur(m.gesamtPotenzial - rate))}
+      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - rate) * 12 / s.invest * 100).toFixed(2) + " %" : "—")}
       <div class="note" style="margin-top:14px">Differenz zu heute: ${eur(m.gesamtPotenzial - m.gesamt)}/Monat aus leerstehenden Einheiten.</div>`;
-    openSheet("Netto-Cashflow", s.name, body);
+    openSheet("Cashflow & Vermögen", s.name, body);
   }
 
   function openNkSheet(s, m) {
@@ -4128,6 +4536,7 @@
 
   function openPortfolioSheet(kind, c) {
     const t = c.t;
+    const p = c.p || portfolioZahlen();
     const streams = (D.streams || []);
     if (kind === "einnahmen") {
       const rows = streams.map((s, i) => {
@@ -4174,8 +4583,8 @@
         ${frei.map(f => kv(f.u.wohnung + " · " + f.u.flaeche + " m² (" + shortLabel(f.s.name) + ")",
           eur(f.s.nkAlsPuffer ? f.inc.gesamt - f.inc.nk : f.inc.gesamt))).join("")}` : ""}
         <div class="card-t" style="font-size:14px;margin:20px 0 6px">Auswirkung bei Vollvermietung</div>
-        ${kv("Netto-Cashflow heute", eur(c.nettoMonth))}
-        ${kv("Netto-Cashflow voll", eur(c.nettoPot))}
+        ${kv("Cashflow heute", eur(c.nettoMonth))}
+        ${kv("Cashflow voll vermietet", eur(c.nettoPot))}
         ${kv("Zuwachs je Jahr", eur((c.nettoPot - c.nettoMonth) * 12))}`;
       return openSheet("Einnahmen-Potenzial", "Was bei Vollvermietung möglich ist", body);
     }
@@ -4183,9 +4592,11 @@
       const body = `
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
         ${kv("Einnahmen gesamt", eur(t.ist))}
-        ${kv("− Tilgung alle Kredite", "−" + eur(c.debtMonth))}
-        ${kv("Netto-Cashflow", eur(c.nettoMonth))}
-        <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgungsanteil je Kredit</div>
+        ${kv("− Kreditraten", "−" + eur(c.debtMonth))}
+        ${kv("= Cashflow", eur(c.nettoMonth))}
+        ${kv("+ Tilgungsanteil", "+" + eur(p.tilgung))}
+        ${kv("= Vermögensaufbau", eur(p.vermoegen))}
+        <div class="card-t" style="font-size:14px;margin:20px 0 10px">Rate je Kredit</div>
         ${miniBars((() => {
           const out = [];
           streams.forEach((s, si) => FE.creditsOf(s).forEach((kr, ki) => out.push({
@@ -4194,12 +4605,12 @@
           })));
           return out;
         })())}
-        <div class="note" style="margin-top:12px">Die Tilgung ist kein Verlust – sie baut Eigenkapital auf. Aktuell fließen ${eur(c.debtMonth)}/Monat in die Entschuldung.</div>
+        <div class="note" style="margin-top:12px">Von ${eur(c.debtMonth)} Kreditrate sind ${eur(p.tilgung)} Tilgung – dieses Geld baut Eigenkapital auf. Nur ${eur(p.zins)} gehen als Zins an die Bank.</div>
         <div class="card-t" style="font-size:14px;margin:20px 0 6px">Zeitraum</div>
-        ${kv("je Monat", eur(c.nettoMonth))}
-        ${kv("je Jahr", eur(c.nettoMonth * 12))}
-        ${kv("bei Vollvermietung / Jahr", eur(c.nettoPot * 12))}`;
-      return openSheet("Netto-Cashflow", "Nach allen Kreditraten", body);
+        ${kv("Cashflow je Monat", eur(c.nettoMonth))}
+        ${kv("Cashflow je Jahr", eur(c.nettoMonth * 12))}
+        ${kv("Vermögensaufbau je Jahr", eur(p.vermoegen * 12))}`;
+      return openSheet("Cashflow", "Nach allen Kreditraten", body);
     }
     if (kind === "auslastung") {
       const rows = [];
@@ -4212,7 +4623,7 @@
         <div class="stat-strip" style="margin-bottom:18px">
           <div class="s"><span>Vermietet</span><b style="color:var(--mint-2)">${c.unitsLet}</b></div>
           <div class="s"><span>Frei</span><b style="color:var(--gold)">${c.unitsTotal - c.unitsLet}</b></div>
-          <div class="s"><span>Quote</span><b>${Math.round(c.unitsLet / c.unitsTotal * 100)} %</b></div>
+          <div class="s"><span>Quote</span><b>${Math.round(c.unitsLet / (c.unitsTotal || 1) * 100)} %</b></div>
           <div class="s"><span>Fläche gesamt</span><b>${rows.reduce((a, r) => a + (Number(r.u.flaeche) || 0), 0)} m²</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Alle Einheiten</div>
@@ -4226,8 +4637,8 @@
     if (kind === "schuld") {
       const list = [];
       streams.forEach(s => FE.creditsOf(s).forEach(kr => {
-        const p = FE.creditPlan(kr);
-        list.push({ s, kr, p });
+        const pl = FE.creditPlan(kr);
+        list.push({ s, kr, p: pl, heute: kreditHeute(kr) });
       }));
       const quote = c.debtOrig ? (c.paidSoFar / c.debtOrig * 100) : 0;
       const trs = list.map(x => `<tr><td>${esc(x.kr.name || "Kredit")}</td>
@@ -4238,16 +4649,21 @@
         <div class="stat-strip" style="margin-bottom:18px">
           <div class="s"><span>Restschuld</span><b>${eur(c.debtRest)}</b></div>
           <div class="s"><span>getilgt</span><b style="color:var(--mint-2)">${eur(c.paidSoFar)}</b></div>
-          <div class="s"><span>Tilgungsquote</span><b>${quote.toFixed(1)} %</b></div>
-          <div class="s"><span>Rate/Monat</span><b>${eur(c.debtMonth)}</b></div>
+          <div class="s"><span>entschuldet</span><b>${quote.toFixed(1)} %</b></div>
+          <div class="s"><span>Tilgung/Monat</span><b>${eur(p.tilgung)}</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Restschuld je Kredit</div>
         ${miniBars(list.map((x, i) => ({ label: x.kr.name || "Kredit", value: x.p.restAktuell, color: PALETTE[i % PALETTE.length] })))}
+        <div class="card-t" style="font-size:14px;margin:20px 0 10px">Rate aufgeteilt</div>
+        ${miniBars([
+          { label: "Tilgung", value: p.tilgung, color: PALETTE[0] },
+          { label: "Zins", value: p.zins, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
+        ])}
         <div class="card-t" style="font-size:14px;margin:20px 0 10px">Konditionen</div>
         <div class="tbl-wrap"><table class="tbl">
           <thead><tr><th>Kredit</th><th>Ursprung</th><th>Rest</th><th>Zins</th><th>Laufzeit</th></tr></thead>
           <tbody>${trs}</tbody></table></div>
-        <div class="note" style="margin-top:12px">Tilgung ${eur(c.debtMonth * 12)}/Jahr. Die Restschuld sinkt mit jeder Rate, der Tilgungsanteil steigt dabei kontinuierlich.</div>`;
+        <div class="note" style="margin-top:12px">Du zahlst ${eur(c.debtMonth * 12)} im Jahr an die Bank – davon sind ${eur(p.tilgung * 12)} Vermögensaufbau. Der Tilgungsanteil steigt mit jeder Rate.</div>`;
       return openSheet("Restschuld", "Alle Kredite im Portfolio", body);
     }
   }
@@ -4466,7 +4882,6 @@
       opt.nachOnboarding ? () => {
         // Nach dem Objekt: bei Vermietung direkt eine Einheit anlegen (füllt das Dashboard),
         // bei AirBNB/Pacht geht es weiter zu den Fragen.
-        // Das gerade angelegte Objekt ist das zuletzt erstellte (höchste created_at bzw. letztes in der Liste).
         const streams = (D.streams || []);
         const neuesObj = streams[streams.length - 1];
         if (art === "miete" && neuesObj) {
@@ -4635,259 +5050,23 @@
       if (e.key === "Escape" && lg && !lg.classList.contains("hide")) loginSchliessen();
     });
 
-    // Sanftes Scrollen zu den Ankern
-    document.querySelectorAll('.lp-nav-links a[href^="#"]').forEach(a =>
-      a.addEventListener("click", (e) => {
-        const ziel = document.querySelector(a.getAttribute("href"));
-        if (ziel) { e.preventDefault(); ziel.scrollIntoView({ behavior: "smooth", block: "start" }); }
-      }));
-
-    zaehleHoch();
-    kippBeimScrollen();
-    tunnelVerdrahten();
-    stickyKnopf();
-    impressumVerdrahten();
-    wartelisteVerdrahten();
-  }
-
-  /* ---------- TUNNEL: Eintauchen ins Produkt ---------- */
-  function tunnelVerdrahten() {
-    const lp = $("#landing"), tn = $("#tunnel"), szene = $("#tnSzene");
-    if (!lp || !tn || !szene) return;
-    const karten = Array.from(szene.querySelectorAll(".lp-tn-karte"));
-    if (!karten.length) return;
-
-    const ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (ruhig) return;   // Ohne 3D bleibt die sichtbare Liste stehen
-    tn.classList.add("tn-aktiv");
-
-    const titelEl = $("#tnTitel"), textEl = $("#tnText");
-    const nrEl = $("#tnNr"), vonEl = $("#tnVon"), fortEl = $("#tnFort");
-    if (vonEl) vonEl.textContent = "/ " + String(karten.length).padStart(2, "0");
-
-    let aktiv = -1, warten = false;
-
-    const zeichne = () => {
-      warten = false;
-      const box = tn.getBoundingClientRect();
-      const hoehe = lp.clientHeight || window.innerHeight;
-      // Fortschritt durch den Tunnel: 0 beim Eintritt, 1 beim Austritt
-      const gesamt = tn.offsetHeight - hoehe;
-      const p = Math.max(0, Math.min(1, -box.top / (gesamt || 1)));
-      if (fortEl) fortEl.style.width = (p * 100).toFixed(1) + "%";
-
-      // Jede Karte hat ihren eigenen Abschnitt auf der Strecke
-      const n = karten.length;
-      karten.forEach((k, i) => {
-        // relative Position: 0 = genau vorn, negativ = noch fern, positiv = vorbei
-        const eigen = (p * n) - i;
-        // Tiefe: von weit hinten (-1800) nach ganz nah (+900)
-        const z = -2100 + eigen * 3000;
-        // Sichtbar nur im Fenster um die Mitte
-        const sicht = 1 - Math.min(1, Math.abs(eigen - 0.5) / 0.8);
-        if (sicht <= 0) { k.style.opacity = "0"; k.style.visibility = "hidden"; return; }
-        k.style.visibility = "visible";
-        k.style.opacity = sicht.toFixed(3);
-        // Leichte Drehung für Raumgefühl, nimmt beim Näherkommen ab
-        const dreh = (1 - Math.min(1, Math.max(0, eigen))) * 8;
-        const seit = (i % 2 === 0 ? 1 : -1) * dreh;
-        k.style.transform = `translate3d(0,0,${z.toFixed(0)}px) rotateY(${seit.toFixed(1)}deg) rotateX(${(dreh * 0.4).toFixed(1)}deg)`;
-        k.style.filter = eigen < 0.15 ? `blur(${((0.15 - eigen) * 14).toFixed(1)}px)` : "none";
-      });
-
-      // Überschrift wechselt mit der Karte, die gerade vorn ist
-      const idx = Math.max(0, Math.min(n - 1, Math.floor(p * n)));
-      if (idx !== aktiv) {
-        aktiv = idx;
-        const k = karten[idx];
-        if (titelEl) {
-          titelEl.style.opacity = "0"; titelEl.style.transform = "translateY(8px)";
-          if (textEl) textEl.style.opacity = "0";
-          setTimeout(() => {
-            titelEl.textContent = k.dataset.titel || "";
-            if (textEl) textEl.textContent = k.dataset.text || "";
-            titelEl.style.opacity = "1"; titelEl.style.transform = "translateY(0)";
-            if (textEl) textEl.style.opacity = "1";
-          }, 160);
-        }
-        if (nrEl) nrEl.textContent = String(idx + 1).padStart(2, "0");
-      }
-    };
-
-    lp.addEventListener("scroll", () => {
-      if (!warten) { warten = true; requestAnimationFrame(zeichne); }
-    }, { passive: true });
-    window.addEventListener("resize", zeichne);
-    zeichne();
-  }
-
-  /* ---------- WARTELISTE (Beta-Phase) ---------- */
-
-  async function wartelisteEintragen(mail, feld, msg, btn) {
-    const wert = (mail || "").trim().toLowerCase();
-    if (!wert || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wert)) {
-      msg.textContent = "Bitte gib eine gültige E-Mail-Adresse ein.";
-      msg.className = "lp-warte-msg bad";
-      return false;
-    }
-    const alt = btn.textContent;
-    btn.disabled = true; btn.textContent = "Moment…";
-    try {
-      // Woher kommt der Besuch? (für die Auswertung eurer Werbung)
-      const p = new URLSearchParams(location.search);
-      const quelle = p.get("utm_source") || p.get("quelle") || (document.referrer ? "web" : "direkt");
-      if (!window.sb) throw new Error("Keine Verbindung zur Datenbank.");
-      const { error } = await window.sb.from("warteliste").insert({ email: wert, quelle: quelle });
-      // Doppelte Eintragung ist für den Besucher kein Fehler
-      const txt = String((error && (error.message || error.details)) || "");
-      const schonDrin = /duplicate|unique|23505/i.test(txt);
-      if (error && !schonDrin) throw error;
-      msg.textContent = schonDrin
-        ? "Du stehst bereits auf der Liste — wir melden uns zum Start."
-        : "Danke! Du stehst auf der Liste — wir melden uns zum Start.";
-      msg.className = "lp-warte-msg ok";
-      if (feld) feld.classList.add("fertig");
-      return true;
-    } catch (e) {
-      btn.disabled = false; btn.textContent = alt;
-      const detail = String((e && (e.message || e.details)) || "");
-      console.error("Warteliste:", e);
-      // Klartext statt Rätselraten
-      msg.textContent = /permission|denied|row-level|policy|42501/i.test(detail)
-        ? "Eintragen ist gerade nicht möglich (Zugriff). Bitte melde dich unter info@buecking-immobilien.de."
-        : "Das hat leider nicht geklappt: " + (detail || "unbekannter Fehler");
-      msg.className = "lp-warte-msg bad";
-      return false;
-    }
-  }
-
-  function wartelisteVerdrahten() {
-    // Formular im Heldenbereich
-    const f1 = $("#warteForm");
-    if (f1) f1.addEventListener("submit", (e) => {
-      e.preventDefault();
-      wartelisteEintragen($("#warteMail").value, f1, $("#warteMsg"), $("#warteBtn"));
-    });
-
-    // Popup-Formular
-    const box = $("#warteBox"), f2 = $("#warteForm2"), zu = $("#wbZu");
-    if (f2) f2.addEventListener("submit", (e) => {
-      e.preventDefault();
-      wartelisteEintragen($("#warteMail2").value, f2, $("#warteMsg2"), $("#warteBtn2"));
-    });
-    if (zu) zu.addEventListener("click", () => box.classList.add("hide"));
-    if (box) box.addEventListener("click", (e) => { if (e.target === box) box.classList.add("hide"); });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && box && !box.classList.contains("hide")) box.classList.add("hide");
-    });
-
-    // Alle Knöpfe mit data-warte öffnen das Popup
-    document.querySelectorAll("[data-warte]").forEach(b =>
-      b.addEventListener("click", () => {
-        box.classList.remove("hide");
-        setTimeout(() => { const i = $("#warteMail2"); if (i) i.focus(); }, 180);
-      }));
-
-    // Aus dem Login heraus zur Warteliste
+    // Aus dem Login heraus zur Warteliste (die Landing öffnet das Popup selbst)
     const bw = $("#betaWarte");
     if (bw) bw.addEventListener("click", (e) => {
       e.preventDefault();
       loginSchliessen();
-      box.classList.remove("hide");
-      setTimeout(() => { const i = $("#warteMail2"); if (i) i.focus(); }, 200);
-    });
-  }
-
-  // Impressum & Datenschutz
-  function impressumVerdrahten() {
-    const link = $("#lpImpressum"), box = $("#impressum"), zu = $("#impZu");
-    if (!link || !box) return;
-    link.addEventListener("click", (e) => { e.preventDefault(); box.classList.remove("hide"); });
-    if (zu) zu.addEventListener("click", () => box.classList.add("hide"));
-    box.addEventListener("click", (e) => { if (e.target === box) box.classList.add("hide"); });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !box.classList.contains("hide")) box.classList.add("hide");
-    });
-  }
-
-  // Fester Handlungsknopf auf dem Handy: erscheint, sobald der Held vorbei ist
-  function stickyKnopf() {
-    const bar = $("#lpSticky"), lp = $("#landing");
-    if (!bar || !lp) return;
-    let warten = false;
-    const pruefen = () => {
-      warten = false;
-      bar.classList.toggle("an", lp.scrollTop > 420);
-    };
-    lp.addEventListener("scroll", () => {
-      if (!warten) { warten = true; requestAnimationFrame(pruefen); }
-    }, { passive: true });
-    pruefen();
-  }
-
-  // Die Produktvorschau richtet sich beim Scrollen langsam auf
-  function kippBeimScrollen() {
-    const shot = $("#lpShot"), lp = $("#landing");
-    if (!lp) return;
-    const minis = Array.from(document.querySelectorAll(".lp-mini"));
-    const ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const schmal = window.innerWidth <= 900;
-    if (ruhig || schmal) {
-      if (shot) shot.style.transform = "none";
-      minis.forEach(m => m.style.transform = "none");
-      return;
-    }
-    let warten = false;
-    const anpassen = () => {
-      warten = false;
-      // Heldenbereich: über die ersten 520 Pixel aufrichten
-      if (shot) {
-        const p = Math.max(0, Math.min(1, lp.scrollTop / 520));
-        shot.style.transform = `rotateY(${(-9 * (1 - p)).toFixed(2)}deg) rotateX(${(5 * (1 - p)).toFixed(2)}deg)`;
+      const box = $("#warteBox");
+      if (box) {
+        box.classList.remove("hide");
+        setTimeout(() => { const i = box.querySelector("input[type=email]"); if (i && window.innerWidth > 600) i.focus(); }, 200);
       }
-      // Einblick-Karten: aufrichten, während sie durchs Bild wandern
-      const hoehe = lp.clientHeight || window.innerHeight;
-      minis.forEach(m => {
-        const r = m.getBoundingClientRect();
-        const mitte = r.top + r.height / 2;
-        // 0 = weit unten, 1 = auf Höhe der Bildmitte
-        const p = Math.max(0, Math.min(1, (hoehe - mitte) / (hoehe * 0.55)));
-        const seite = m.closest(".lp-ein-dreh") ? -7 : 7;
-        m.style.transform = `rotateY(${(seite * (1 - p)).toFixed(2)}deg) rotateX(${(4 * (1 - p)).toFixed(2)}deg)`;
-      });
-    };
-    lp.addEventListener("scroll", () => {
-      if (!warten) { warten = true; requestAnimationFrame(anpassen); }
-    }, { passive: true });
-    anpassen();
-  }
-
-  // Die Zahl im Heldenbereich zählt beim Laden hoch — das Versprechen des Produkts
-  function zaehleHoch() {
-    const el1 = $("#lpZahl"), el2 = $("#lpRendite");
-    if (!el1) return;
-    const kurz = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const zielB = 8326, zielR = 6.11;
-    if (kurz) {
-      el1.textContent = zielB.toLocaleString("de-DE") + " €";
-      if (el2) el2.textContent = zielR.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " %";
-      return;
-    }
-    const start = performance.now(), dauer = 1500;
-    const lauf = (t) => {
-      const p = Math.min(1, (t - start) / dauer);
-      const e = 1 - Math.pow(1 - p, 3);   // weich auslaufend
-      el1.textContent = Math.round(zielB * e).toLocaleString("de-DE") + " €";
-      if (el2) el2.textContent = (zielR * e).toLocaleString("de-DE",
-        { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %";
-      if (p < 1) requestAnimationFrame(lauf);
-    };
-    requestAnimationFrame(lauf);
+    });
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
     blockZoom();
     landingVerdrahten();
+    ladeBalkenVerdrahten();
     // Erklär-Knöpfe an Kennzahlen (gilt auch für später gezeichnete Karten)
     document.addEventListener("click", (e) => {
       const b = e.target.closest && e.target.closest("[data-info]");
@@ -4913,7 +5092,8 @@
     if ($("#avaFile")) $("#avaFile").addEventListener("change", avatarGewaehlt);
     if ($("#datenschutzLink")) $("#datenschutzLink").addEventListener("click", (e) => {
       e.preventDefault();
-      alert("Datenschutzerklärung\n\nDeine Daten werden verschlüsselt gespeichert und sind ausschließlich für dich zugänglich. Der Betreiber kann deine Immobiliendaten nicht einsehen.\n\n(Dies ist ein Platzhalter. Eine vollständige Datenschutzerklärung wird vor dem öffentlichen Start hinterlegt.)");
+      const imp = $("#impressum");
+      if (imp) imp.classList.remove("hide");
     });
 
     if (await sessionOK()) {
