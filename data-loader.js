@@ -142,12 +142,14 @@ async function ladeDaten() {
   let zahlungen = [];
   try {
     const jetzt = new Date();
-    const { data: zData } = await window.sb.from('mietzahlungen')
+    const { data: zData, error: zErr } = await window.sb.from('mietzahlungen')
       .select('*')
       .eq('jahr', jetzt.getFullYear())
       .eq('monat', jetzt.getMonth() + 1);
+    // Fehler nicht verschlucken – sonst sieht die App bestätigte Zahlungen nie
+    if (zErr) console.error('Mietzahlungen konnten nicht geladen werden:', zErr.message || zErr);
     zahlungen = zData || [];
-  } catch (_) {}
+  } catch (e) { console.error('Mietzahlungen:', e); }
 
   window.DASHBOARD_DATA = {
     meta: { ...LOKAL.meta, version: new Date().toISOString().slice(0, 10) },
