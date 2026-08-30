@@ -465,9 +465,9 @@
       <div class="ef-msg" id="pMsg"></div>
       ${efTitel("Darstellung")}
       <div class="ef-l">Hintergrund</div>
-      <div class="theme-row" id="themeRow">
-        ${THEMES.map(t => `<button type="button" class="theme-chip" data-theme="${t.id}" style="--sw:${t.bg}">
-          <span class="theme-sw"></span>${esc(t.name)}</button>`).join("")}
+      <div class="accent-row" id="themeRow">
+        ${THEMES.map(t => `<button type="button" class="accent-dot theme-dot" data-theme="${t.id}"
+          style="--ac:${t.bg}" title="${esc(t.name)}" aria-label="${esc(t.name)}"></button>`).join("")}
       </div>
       <div class="ef-l" style="margin-top:14px">Akzentfarbe</div>
       <div class="accent-row" id="accentRow">
@@ -544,12 +544,12 @@
     // Design: Hintergrund + Akzent, sofortige Vorschau, direkt gespeichert
     function markiere() {
       const tid = aktThemeId(), aid = aktAccentId();
-      sheet.querySelectorAll("#themeRow .theme-chip").forEach(b =>
+      sheet.querySelectorAll("#themeRow .accent-dot").forEach(b =>
         b.classList.toggle("active", b.dataset.theme === tid));
       sheet.querySelectorAll("#accentRow .accent-dot").forEach(b =>
         b.classList.toggle("active", b.dataset.accent === aid));
     }
-    sheet.querySelectorAll("#themeRow .theme-chip").forEach(b => b.onclick = () => {
+    sheet.querySelectorAll("#themeRow .accent-dot").forEach(b => b.onclick = () => {
       themeAnwenden(b.dataset.theme, aktAccentId());
       themeSpeichern(b.dataset.theme, aktAccentId());
       themeInDB(b.dataset.theme, aktAccentId());
@@ -1357,8 +1357,8 @@
   // Onboarding-Schritt 1: Farbschema wählen
   function openFarbwahlSheet(opt) {
     opt = opt || {};
-    const themeChips = THEMES.map(t => `<button type="button" class="theme-chip" data-theme="${t.id}" style="--sw:${t.bg}">
-      <span class="theme-sw"></span>${esc(t.name)}</button>`).join("");
+    const themeChips = THEMES.map(t => `<button type="button" class="accent-dot theme-dot" data-theme="${t.id}"
+      style="--ac:${t.bg}" title="${esc(t.name)}" aria-label="${esc(t.name)}"></button>`).join("");
     const accentDots = AKZENTE.map(a => `<button type="button" class="accent-dot" data-accent="${a.id}"
       style="--ac:${a.farbe}" title="${esc(a.name)}" aria-label="${esc(a.name)}"></button>`).join("");
     const body = `
@@ -1370,7 +1370,7 @@
         <div class="wc-d">Wähle Hintergrund und Akzentfarbe. Du kannst das jederzeit im Profil ändern — die Auswahl gilt auf all deinen Geräten.</div>
       </div>
       <div class="ef-l">Hintergrund</div>
-      <div class="theme-row" id="wcTheme">${themeChips}</div>
+      <div class="accent-row" id="wcTheme">${themeChips}</div>
       <div class="ef-l" style="margin-top:16px">Akzentfarbe</div>
       <div class="accent-row" id="wcAccent">${accentDots}</div>
       <button class="wc-cta prem" id="wcDone" style="margin-top:24px">${opt.onboarding ? "Weiter" : "Speichern"}</button>`;
@@ -1378,10 +1378,10 @@
 
     function markiere() {
       const tid = aktThemeId(), aid = aktAccentId();
-      sheet.querySelectorAll("#wcTheme .theme-chip").forEach(b => b.classList.toggle("active", b.dataset.theme === tid));
+      sheet.querySelectorAll("#wcTheme .accent-dot").forEach(b => b.classList.toggle("active", b.dataset.theme === tid));
       sheet.querySelectorAll("#wcAccent .accent-dot").forEach(b => b.classList.toggle("active", b.dataset.accent === aid));
     }
-    sheet.querySelectorAll("#wcTheme .theme-chip").forEach(b => b.onclick = () => {
+    sheet.querySelectorAll("#wcTheme .accent-dot").forEach(b => b.onclick = () => {
       themeAnwenden(b.dataset.theme, aktAccentId()); themeSpeichern(b.dataset.theme, aktAccentId()); markiere();
     });
     sheet.querySelectorAll("#wcAccent .accent-dot").forEach(b => b.onclick = () => {
@@ -4644,9 +4644,80 @@
 
     zaehleHoch();
     kippBeimScrollen();
+    tunnelVerdrahten();
     stickyKnopf();
     impressumVerdrahten();
     wartelisteVerdrahten();
+  }
+
+  /* ---------- TUNNEL: Eintauchen ins Produkt ---------- */
+  function tunnelVerdrahten() {
+    const lp = $("#landing"), tn = $("#tunnel"), szene = $("#tnSzene");
+    if (!lp || !tn || !szene) return;
+    const karten = Array.from(szene.querySelectorAll(".lp-tn-karte"));
+    if (!karten.length) return;
+
+    const ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (ruhig) return;   // Statische Darstellung übernimmt das CSS
+
+    const titelEl = $("#tnTitel"), textEl = $("#tnText");
+    const nrEl = $("#tnNr"), vonEl = $("#tnVon"), fortEl = $("#tnFort");
+    if (vonEl) vonEl.textContent = "/ " + String(karten.length).padStart(2, "0");
+
+    let aktiv = -1, warten = false;
+
+    const zeichne = () => {
+      warten = false;
+      const box = tn.getBoundingClientRect();
+      const hoehe = lp.clientHeight || window.innerHeight;
+      // Fortschritt durch den Tunnel: 0 beim Eintritt, 1 beim Austritt
+      const gesamt = tn.offsetHeight - hoehe;
+      const p = Math.max(0, Math.min(1, -box.top / (gesamt || 1)));
+      if (fortEl) fortEl.style.width = (p * 100).toFixed(1) + "%";
+
+      // Jede Karte hat ihren eigenen Abschnitt auf der Strecke
+      const n = karten.length;
+      karten.forEach((k, i) => {
+        // relative Position: 0 = genau vorn, negativ = noch fern, positiv = vorbei
+        const eigen = (p * n) - i;
+        // Tiefe: von weit hinten (-1800) nach ganz nah (+900)
+        const z = -1800 + eigen * 2700;
+        // Sichtbar nur im Fenster um die Mitte
+        const sicht = 1 - Math.min(1, Math.abs(eigen - 0.5) / 0.75);
+        if (sicht <= 0) { k.style.opacity = "0"; k.style.visibility = "hidden"; return; }
+        k.style.visibility = "visible";
+        k.style.opacity = sicht.toFixed(3);
+        // Leichte Drehung für Raumgefühl, nimmt beim Näherkommen ab
+        const dreh = (1 - Math.min(1, Math.max(0, eigen))) * 8;
+        const seit = (i % 2 === 0 ? 1 : -1) * dreh;
+        k.style.transform = `translate3d(0,0,${z.toFixed(0)}px) rotateY(${seit.toFixed(1)}deg) rotateX(${(dreh * 0.4).toFixed(1)}deg)`;
+        k.style.filter = eigen < 0.15 ? `blur(${((0.15 - eigen) * 14).toFixed(1)}px)` : "none";
+      });
+
+      // Überschrift wechselt mit der Karte, die gerade vorn ist
+      const idx = Math.max(0, Math.min(n - 1, Math.floor(p * n)));
+      if (idx !== aktiv) {
+        aktiv = idx;
+        const k = karten[idx];
+        if (titelEl) {
+          titelEl.style.opacity = "0"; titelEl.style.transform = "translateY(8px)";
+          if (textEl) textEl.style.opacity = "0";
+          setTimeout(() => {
+            titelEl.textContent = k.dataset.titel || "";
+            if (textEl) textEl.textContent = k.dataset.text || "";
+            titelEl.style.opacity = "1"; titelEl.style.transform = "translateY(0)";
+            if (textEl) textEl.style.opacity = "1";
+          }, 160);
+        }
+        if (nrEl) nrEl.textContent = String(idx + 1).padStart(2, "0");
+      }
+    };
+
+    lp.addEventListener("scroll", () => {
+      if (!warten) { warten = true; requestAnimationFrame(zeichne); }
+    }, { passive: true });
+    window.addEventListener("resize", zeichne);
+    zeichne();
   }
 
   /* ---------- WARTELISTE (Beta-Phase) ---------- */
