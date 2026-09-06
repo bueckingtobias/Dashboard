@@ -1116,7 +1116,7 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
   transform:translateY(14px) scale(.985);opacity:0;transition:.26s cubic-bezier(.22,.61,.36,1);overflow:hidden}
 .sheet-bd.on .sheet{transform:none;opacity:1}
 .sheet-h{display:flex;align-items:flex-start;gap:12px;padding:22px 22px 0}
-.sheet-h .st{flex:1;min-width:0}
+.sheet-h .sheet-st{flex:1;min-width:0}
 .sheet-t{font-family:var(--fdisp);font-size:19px;font-weight:600;letter-spacing:-.01em}
 .sheet-s{font-size:12.5px;color:var(--soft);margin-top:3px}
 .sheet-x{flex:0 0 auto;width:32px;height:32px;border-radius:10px;border:1px solid var(--stroke-2);
@@ -1695,6 +1695,158 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
   .rail-btn .tip{font-size:9px}
 }
 
+
+/* ============================ PREMIUM-PASS ============================
+   Neue Karten: Cashflow-Wasserfall, Monatsabschluss, Jahresblick,
+   Objektkarten, Mietkontrolle auf der Startseite, Ladebalken.        */
+
+/* Ladebalken am oberen Rand – zeigt Laden und Speichern an */
+#ladebalken{position:fixed;top:0;left:0;height:2.5px;width:0;z-index:200;pointer-events:none;
+  background:linear-gradient(90deg,var(--deep),var(--mint),var(--mint-2));border-radius:0 3px 3px 0;
+  opacity:0;transition:width .5s cubic-bezier(.22,.61,.36,1),opacity .25s}
+#ladebalken.on{opacity:1;width:72%;transition:width 4s cubic-bezier(.1,.8,.2,1),opacity .2s}
+#ladebalken.fertig{opacity:1;width:100%;transition:width .25s ease,opacity .5s ease .25s}
+[data-theme="hell"] #ladebalken{height:3px}
+
+/* ===== Cashflow-Wasserfall ===== */
+.cfw{display:flex;align-items:flex-end;gap:clamp(8px,2.2vw,20px);height:190px;padding-top:6px}
+.cfw-i{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+.cfw-i i{width:100%;border-radius:8px 8px 0 0;min-height:8px;
+  background:linear-gradient(180deg,var(--mint),var(--deep));
+  animation:wfWachs .7s cubic-bezier(.22,.61,.36,1) both}
+.cfw-i i.ab{background:linear-gradient(180deg,color-mix(in srgb,var(--danger) 78%,transparent),color-mix(in srgb,var(--danger) 45%,transparent))}
+.cfw-i i.bleibt{background:linear-gradient(180deg,var(--mint-2),var(--mint))}
+.cfw-i i.unter{background:linear-gradient(180deg,var(--danger),color-mix(in srgb,var(--danger) 60%,transparent))}
+@keyframes wfWachs{from{height:0!important;opacity:.4}}
+.cfw-l{font-size:11.5px;color:var(--softer);margin-top:9px;text-align:center;line-height:1.25}
+.cfw-v{font-family:var(--fdisp);font-size:13.5px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cfw-v.ab{color:var(--danger)}
+.cfw-v.bleibt{color:var(--mint-2)}
+.cfw-fuss{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;margin-top:20px;
+  background:var(--stroke);border:1px solid var(--stroke);border-radius:var(--r-sm);overflow:hidden}
+.cfw-fuss-i{background:var(--glass-2);padding:14px 16px}
+.cfw-fuss-i span{display:block;font-size:11.5px;color:var(--soft)}
+.cfw-fuss-i b{display:block;margin-top:5px;font-family:var(--fdisp);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.cfw-fuss-i.stark{background:linear-gradient(160deg,color-mix(in srgb,var(--mint) 16%,transparent),color-mix(in srgb,var(--deep) 8%,transparent))}
+.cfw-fuss-i.stark b{color:var(--mint-2)}
+
+/* ===== Monatsabschluss ===== */
+.ma-zahl{font-family:var(--fdisp);font-size:clamp(34px,5vw,44px);font-weight:600;letter-spacing:-.03em;
+  line-height:1;color:var(--mint-2)}
+.ma-sub{font-size:12.5px;color:var(--soft);margin-top:8px}
+.ma-split{margin:20px 0 6px}
+.ma-split-bar{display:flex;height:14px;border-radius:99px;overflow:hidden;
+  background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.ma-split-bar i{display:block;transition:width .6s cubic-bezier(.22,.61,.36,1)}
+.ma-split-bar i.cf{background:linear-gradient(90deg,var(--mint-2),var(--mint))}
+.ma-split-bar i.tg{background:linear-gradient(90deg,var(--deep),var(--mint))}
+.ma-split-leg{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:11px}
+.ma-split-leg span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--soft)}
+.ma-split-leg b{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.ma-split-leg b.cf{background:var(--mint-2)}
+.ma-split-leg b.tg{background:var(--deep)}
+.ma-rows{margin-top:16px;padding-top:6px;border-top:1px solid var(--stroke)}
+
+/* ===== Jahresblick ===== */
+.jb{display:flex;align-items:flex-end;gap:clamp(4px,1.3vw,10px);height:150px;padding-top:6px}
+.jb-i{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;
+  position:relative}
+.jb-i i{width:100%;border-radius:5px 5px 0 0;min-height:5px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--mint) 55%,transparent),color-mix(in srgb,var(--deep) 40%,transparent));
+  animation:wfWachs .8s cubic-bezier(.22,.61,.36,1) both}
+.jb-i.weg i{background:linear-gradient(180deg,var(--mint),var(--deep))}
+.jb-i.jetzt i{background:linear-gradient(180deg,var(--mint-2),var(--mint));
+  box-shadow:0 0 0 1.5px color-mix(in srgb,var(--mint-2) 55%,transparent)}
+.jb-i span{font-size:10.5px;color:var(--softer);margin-top:8px}
+.jb-i.jetzt span{color:var(--mint-2);font-weight:700}
+.jb-sonder{position:absolute;top:-9px;width:6px;height:6px;border-radius:50%;background:var(--gold);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--bg) 85%,transparent)}
+.jb-leg{display:flex;flex-wrap:wrap;gap:1px;margin-top:18px;background:var(--stroke);
+  border:1px solid var(--stroke);border-radius:var(--r-sm);overflow:hidden}
+.jb-leg-i{flex:1 1 140px;background:var(--glass-2);padding:13px 16px}
+.jb-leg-i span{display:block;font-size:11.5px;color:var(--soft)}
+.jb-leg-i b{display:block;margin-top:4px;font-family:var(--fdisp);font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
+.jb-leg-i b small{display:block;font-family:var(--fbody);font-size:11px;font-weight:400;color:var(--softer);margin-top:3px}
+.tbl tr.jetzt td{color:var(--mint-2);font-weight:600}
+
+/* ===== Objektkarte ===== */
+.ok-card{padding:22px;display:flex;flex-direction:column;gap:14px;position:relative;transition:.18s}
+.ok-card:hover{border-color:color-mix(in srgb,var(--mint) 34%,transparent);transform:translateY(-2px);
+  box-shadow:0 26px 60px rgba(0,0,0,.34)}
+.ok-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.ok-name{flex:1;min-width:0}
+.ok-pill{flex:0 0 auto;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:99px;white-space:nowrap;
+  border:1px solid var(--stroke-2);background:color-mix(in srgb,var(--bg) 55%,transparent);color:var(--soft)}
+.ok-pill.gut{color:var(--mint-2);border-color:color-mix(in srgb,var(--mint) 40%,transparent);
+  background:color-mix(in srgb,var(--mint) 14%,transparent)}
+.ok-pill.mittel{color:var(--gold);border-color:rgba(216,185,120,.4);background:rgba(216,185,120,.12)}
+.ok-pill.schwach{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 38%,transparent);
+  background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.ok-pill.leer{cursor:pointer;border-style:dashed}
+.ok-pill.leer:hover{color:var(--mint-2);border-color:var(--mint)}
+.ok-zahl{font-family:var(--fdisp);font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.ok-zahl small{font-size:14px;color:var(--soft);font-weight:500;margin-left:6px}
+.ok-bar{position:relative;height:9px;border-radius:99px;overflow:hidden;
+  background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.ok-bar i{display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,var(--deep),var(--mint));transition:width .7s cubic-bezier(.22,.61,.36,1)}
+.ok-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ok-k{background:color-mix(in srgb,var(--bg) 45%,transparent);border:1px solid var(--stroke);
+  border-radius:13px;padding:12px 14px;min-width:0}
+.ok-k span{display:block;font-size:11px;color:var(--softer)}
+.ok-k b{display:block;margin-top:5px;font-family:var(--fdisp);font-size:17px;font-weight:600;
+  font-variant-numeric:tabular-nums}
+.ok-k b.gut{color:var(--mint-2)}
+.ok-k b.minus{color:var(--danger)}
+.ok-card .tapme{opacity:0}
+.ok-card:hover .tapme{opacity:1}
+
+/* ===== Mietkontrolle auf der Startseite ===== */
+.mk-card{border-color:color-mix(in srgb,var(--gold) 32%,transparent)}
+.mk-pill{color:var(--gold);border-color:rgba(216,185,120,.4);background:rgba(216,185,120,.1)}
+.mk-card .mk-obj:last-of-type{margin-bottom:6px}
+.mk-ok-all{margin-top:6px}
+.mk-mehr{display:none!important}
+.mk-mehr-btn{width:100%;margin:2px 0 14px;border:1px dashed var(--stroke-2);border-radius:12px;cursor:pointer;
+  background:transparent;color:var(--soft);padding:11px;font-size:13px;font-weight:600;font-family:var(--fbody);transition:.15s}
+.mk-mehr-btn:hover{color:var(--mint-2);border-color:var(--mint);background:color-mix(in srgb,var(--mint) 8%,transparent)}
+.mk-done{display:flex;align-items:center;gap:15px}
+.mk-done-ic{flex:0 0 auto;color:var(--mint-2)!important;
+  border-color:color-mix(in srgb,var(--mint) 34%,transparent)!important;
+  background:color-mix(in srgb,var(--mint) 12%,transparent)!important}
+.mk-done-tx{flex:1;min-width:0}
+
+/* ===== Feinschliff: ruhigere Typografie, weichere Karten ===== */
+.card{transition:border-color .18s,transform .18s,box-shadow .18s}
+.kpi .num{font-variant-numeric:tabular-nums}
+.kpi.accent{box-shadow:0 20px 50px rgba(0,0,0,.3),inset 0 1px 0 color-mix(in srgb,var(--mint) 18%,transparent)}
+.head h2{letter-spacing:-.03em}
+.hello-t{letter-spacing:-.03em}
+.toast{border-radius:16px;padding:14px 22px;
+  box-shadow:0 20px 50px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
+.stat-strip .s b{font-variant-numeric:tabular-nums}
+
+@media(max-width:900px){
+  .cfw-fuss{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .cfw{height:160px;gap:8px}
+  .cfw-l{font-size:10.5px}
+  .cfw-v{font-size:12px}
+  .cfw-fuss-i{padding:12px 14px}
+  .cfw-fuss-i b{font-size:17px}
+  .jb{height:120px;gap:4px}
+  .jb-i span{font-size:9.5px}
+  .jb-leg-i{flex:1 1 100%;padding:11px 14px}
+  .ma-zahl{font-size:32px}
+  .ok-card{padding:18px;gap:12px}
+  .ok-zahl{font-size:27px}
+  .ok-grid{gap:8px}
+  .ok-k{padding:10px 12px}
+  .ok-k b{font-size:15px}
+  .ok-card .tapme{display:none}
+}
+
 /* ---- Beta-Login im dunklen Corporate Design (überschreibt die helle Variante oben) ---- */
 #login{background:rgba(3,6,12,.72)}
 #login .login-schliessen{border-color:rgba(148,163,184,.16);background:rgba(255,255,255,.04);color:#B7C2D2;width:36px;height:36px;top:14px;right:14px;font-size:22px}
@@ -1779,7 +1931,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
       <h1 class="h1 up d2">Miete rein.<br>Rate raus.<br><em>Was bleibt wirklich?</em></h1>
       <p class="hero-lead up d3">ESTRIQ ist das Cockpit für private Vermieter. Es zeigt dir jeden Monat, was jedes deiner Objekte
         tatsächlich abwirft – <b>Einnahmen, Cashflow, Rendite und Tilgung</b>, auf den Euro genau.
-        Kein Excel. Keine Software für 300 Einheiten. Gebaut von einem Vermieter mit 14.</p>
+        Kein Excel. Keine Software für 300 Einheiten. Gebaut von einem Vermieter mit 10.</p>
       <form class="wl up d4" data-notiz="Held" novalidate>
         <div class="fld">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
@@ -2129,8 +2281,8 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
       <div class="gr-card rv">
         <div class="gr-photo" id="grPhoto">
           <span class="mono">TB</span>
-          <img src="tobias.jpg" alt="Tobias Bücking, Gründer von ESTRIQ" id="grImg">
-          <span class="tag">München, Bayern</span>
+          <img src="gruender.jpg" alt="Tobias Bücking, Gründer von ESTRIQ" id="grImg">
+          <span class="tag">München</span>
         </div>
         <div class="gr-name">Tobias Bücking</div>
         <div class="gr-role">Gründer von ESTRIQ · Geschäftsführer Bücking Immobilien GmbH &amp; Co. KG</div>
@@ -2201,7 +2353,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
         <ul>
           <li>Alles aus Premium</li>
           <li>Keine monatlichen Kosten – nie</li>
-          <li>Alle aktuellen Funktionen inklusive</li>
+          <li>Alle künftigen Funktionen inklusive</li>
           <li>Streng limitiert auf 100 Zugänge</li>
         </ul>
         <button class="btn btn-g btn-block" type="button" data-warte="Lifetime" style="border-color:rgba(245,158,11,.5)">Lifetime-Platz reservieren</button>
@@ -2289,7 +2441,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
     <a class="logo" href="#top" aria-label="ESTRIQ"><img src="estriq.PNG" alt="ESTRIQ"><span class="logo-tx">ESTRIQ</span></a>
     <div class="foot-tx">
       <b>ESTRIQ – Das Cockpit für private Vermieter</b>
-      <span>Bücking Immobilien GmbH &amp; Co. KG · Ganderkesee</span>
+      <span>Bücking Immobilien GmbH &amp; Co. KG · München</span>
     </div>
     <div class="foot-links">
       <a href="#" id="lpImpressum" data-impressum>Impressum &amp; Datenschutz</a>
@@ -2498,10 +2650,10 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=42"></script>
-<script src="./data-save.js?v=42"></script>
-<script src="./finance-engine.js?v=42"></script>
-<script src="./app.js?v=42"></script>
+<script src="./data-loader.js?v=44"></script>
+<script src="./data-save.js?v=44"></script>
+<script src="./finance-engine.js?v=44"></script>
+<script src="./app.js?v=44"></script>
 
 <script>
 /* =====================================================================
