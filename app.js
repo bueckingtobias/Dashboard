@@ -2628,7 +2628,7 @@
       <div class="sheet" role="dialog" aria-modal="true">
         <div class="sheet-grip"></div>
         <div class="sheet-h">
-          <div class="st"><div class="sheet-t">${esc(title)}</div>
+          <div class="sheet-st"><div class="sheet-t">${esc(title)}</div>
             ${subtitle ? `<div class="sheet-s">${esc(subtitle)}</div>` : ""}</div>
           <button class="sheet-x" aria-label="Schließen">×</button>
         </div>
@@ -3184,30 +3184,30 @@
   // Vom Mieteingang bis zu dem, was wirklich bleibt – in einer Grafik
   function wasserfallKarte(p) {
     const stufen = [
-      { l: "Mieteingang", v: p.warm, typ: "plus", info: "alle vermieteten Einheiten" },
-      { l: "Kreditraten", v: p.rate, typ: "minus", info: "Zins und Tilgung" }
+      { l: "Mieteingang", v: p.warm, typ: "zu", info: "alle vermieteten Einheiten" },
+      { l: "Kreditraten", v: p.rate, typ: "ab", info: "Zins und Tilgung" }
     ];
-    if (p.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: p.nkPuffer, typ: "minus", info: "durchlaufender Posten" });
-    stufen.push({ l: "Cashflow", v: Math.abs(p.cashflow), typ: p.cashflow >= 0 ? "rest" : "neg", info: "bleibt dir übrig" });
+    if (p.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: p.nkPuffer, typ: "ab", info: "durchlaufender Posten" });
+    stufen.push({ l: "Cashflow", v: Math.abs(p.cashflow), typ: p.cashflow >= 0 ? "bleibt" : "unter", info: "bleibt dir übrig" });
 
     const max = Math.max(...stufen.map(x => x.v), 1);
     const balken = stufen.map(x => `
-      <div class="wf-i">
+      <div class="cfw-i">
         <i class="${x.typ}" style="height:${Math.max(6, x.v / max * 100).toFixed(1)}%"></i>
-        <span class="wf-l">${esc(x.l)}</span>
-        <b class="wf-v ${x.typ}">${x.typ === "minus" ? "−" : ""}${eur(x.v)}</b>
+        <span class="cfw-l">${esc(x.l)}</span>
+        <b class="cfw-v ${x.typ}">${x.typ === "ab" ? "−" : ""}${eur(x.v)}</b>
       </div>`).join("");
 
-    const card = el(`<div class="card wf-card clickable" data-act="wf">
+    const card = el(`<div class="card cfw-card clickable" data-act="wf">
       <div class="card-h"><div><div class="card-t">Vom Mieteingang zum Cashflow</div>
         <div class="card-s">Was diesen Monat wirklich übrig bleibt</div></div>
         <div class="head-pill" style="padding:7px 13px">${esc(new Date().toLocaleDateString("de-DE", { month: "long" }))}</div></div>
       <div class="card-b">
-        <div class="wf">${balken}</div>
-        <div class="wf-fuss">
-          <div class="wf-fuss-i"><span>Tilgung in der Rate</span><b>${eur(p.tilgung)}</b></div>
-          <div class="wf-fuss-i"><span>Zinsen an die Bank</span><b>${eur(p.zins)}</b></div>
-          <div class="wf-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(p.vermoegen)}</b></div>
+        <div class="cfw">${balken}</div>
+        <div class="cfw-fuss">
+          <div class="cfw-fuss-i"><span>Tilgung in der Rate</span><b>${eur(p.tilgung)}</b></div>
+          <div class="cfw-fuss-i"><span>Zinsen an die Bank</span><b>${eur(p.zins)}</b></div>
+          <div class="cfw-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(p.vermoegen)}</b></div>
         </div>
         <div class="note" style="margin-top:12px">${p.cashflow >= 0
           ? "Nach allen Raten bleiben dir " + eur(p.cashflow) + " im Monat. Zusätzlich senken " + eur(p.tilgung) + " deine Schulden."
@@ -4257,25 +4257,25 @@
   function objektWasserfall(s, m, z) {
     const warm = m.gesamt + m.nkPuffer;
     const stufen = [
-      { l: "Mieteingang", v: warm, typ: "plus" },
-      { l: "Kreditrate", v: z.rate, typ: "minus" }
+      { l: "Mieteingang", v: warm, typ: "zu" },
+      { l: "Kreditrate", v: z.rate, typ: "ab" }
     ];
-    if (m.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: m.nkPuffer, typ: "minus" });
-    stufen.push({ l: "Cashflow", v: Math.abs(z.cashflow), typ: z.cashflow >= 0 ? "rest" : "neg" });
+    if (m.nkPuffer > 0) stufen.push({ l: "NK-Rücklage", v: m.nkPuffer, typ: "ab" });
+    stufen.push({ l: "Cashflow", v: Math.abs(z.cashflow), typ: z.cashflow >= 0 ? "bleibt" : "unter" });
     const max = Math.max(...stufen.map(x => x.v), 1);
-    const card = el(`<div class="card wf-card clickable">
+    const card = el(`<div class="card cfw-card clickable">
       <div class="card-h"><div><div class="card-t">Vom Mieteingang zum Cashflow</div>
         <div class="card-s">${esc(s.name)} · ${esc(new Date().toLocaleDateString("de-DE", { month: "long" }))}</div></div>
         <div class="head-pill" style="padding:7px 13px"><b>${eur(z.vermoegen)}</b> Vermögen</div></div>
       <div class="card-b">
-        <div class="wf">${stufen.map(x => `
-          <div class="wf-i"><i class="${x.typ}" style="height:${Math.max(6, x.v / max * 100).toFixed(1)}%"></i>
-            <span class="wf-l">${esc(x.l)}</span>
-            <b class="wf-v ${x.typ}">${x.typ === "minus" ? "−" : ""}${eur(x.v)}</b></div>`).join("")}</div>
-        <div class="wf-fuss">
-          <div class="wf-fuss-i"><span>Tilgung in der Rate</span><b>${eur(z.tilgung)}</b></div>
-          <div class="wf-fuss-i"><span>Zinsen</span><b>${eur(z.zins)}</b></div>
-          <div class="wf-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(z.vermoegen)}</b></div>
+        <div class="cfw">${stufen.map(x => `
+          <div class="cfw-i"><i class="${x.typ}" style="height:${Math.max(6, x.v / max * 100).toFixed(1)}%"></i>
+            <span class="cfw-l">${esc(x.l)}</span>
+            <b class="cfw-v ${x.typ}">${x.typ === "ab" ? "−" : ""}${eur(x.v)}</b></div>`).join("")}</div>
+        <div class="cfw-fuss">
+          <div class="cfw-fuss-i"><span>Tilgung in der Rate</span><b>${eur(z.tilgung)}</b></div>
+          <div class="cfw-fuss-i"><span>Zinsen</span><b>${eur(z.zins)}</b></div>
+          <div class="cfw-fuss-i stark"><span>Vermögensaufbau</span><b>${eur(z.vermoegen)}</b></div>
         </div>
       </div></div>`);
     card.onclick = () => openCashflowSheet(s);
