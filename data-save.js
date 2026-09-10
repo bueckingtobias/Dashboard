@@ -189,6 +189,40 @@ async function mietEingangSetzen(einheitId, jahr, monat, status, betrag) {
   if (data === 'kein_zugriff') throw new Error('Diese Einheit gehört nicht zu deinem Konto.');
 }
 
+// ---------- Gewerke & Rechnungen ----------
+async function neuesGewerk(objektId, werte) {
+  const { error } = await window.sb.from('gewerke')
+    .insert({ ...ohneLeere(werte), objekt_id: objektId });
+  if (error) throw error;
+}
+async function speichereGewerk(id, werte) {
+  const { error } = await window.sb.from('gewerke').update(ohneLeere(werte)).eq('id', id);
+  if (error) throw error;
+}
+async function loescheGewerk(id) {
+  const { error } = await window.sb.from('gewerke').delete().eq('id', id);
+  if (error) throw error;
+}
+async function neueRechnung(gewerkId, werte) {
+  const { error } = await window.sb.from('rechnungen')
+    .insert({ ...ohneLeere(werte), gewerk_id: gewerkId });
+  if (error) throw error;
+}
+async function speichereRechnung(id, werte) {
+  const { error } = await window.sb.from('rechnungen').update(ohneLeere(werte)).eq('id', id);
+  if (error) throw error;
+}
+async function loescheRechnung(id) {
+  const { error } = await window.sb.from('rechnungen').delete().eq('id', id);
+  if (error) throw error;
+}
+window.neuesGewerk = neuesGewerk;
+window.speichereGewerk = speichereGewerk;
+window.loescheGewerk = loescheGewerk;
+window.neueRechnung = neueRechnung;
+window.speichereRechnung = speichereRechnung;
+window.loescheRechnung = loescheRechnung;
+
 window.meineOrgId = meineOrgId;
 window.nachSpeichern = nachSpeichern;
 window.mietEingangSetzen = mietEingangSetzen;
