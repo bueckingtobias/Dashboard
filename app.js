@@ -137,7 +137,7 @@
     const el2 = document.documentElement;
     if (theme === "graphit") el2.removeAttribute("data-theme");
     else el2.setAttribute("data-theme", theme);
-    el2.setAttribute("data-accent", accent || "teal");
+    el2.setAttribute("data-accent", accent || "buecking");
     PALETTE = palette();
     if (typeof currentView !== "undefined" && currentView) { try { route(currentView); } catch (_) {} }
   }
@@ -162,7 +162,7 @@
     return t || "graphit";
   }
   function aktAccentId() {
-    return document.documentElement.getAttribute("data-accent") || "teal";
+    return document.documentElement.getAttribute("data-accent") || "buecking";
   }
 
   /* ---------- ABO / TARIF ---------- */
