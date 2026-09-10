@@ -138,6 +138,17 @@ async function ladeDaten() {
     if (aboData) abo = aboData;
   } catch (_) {}
 
+  // Gewerke und Rechnungen (Kostenkontrolle je Objekt)
+  let gewerke = [], rechnungen = [];
+  try {
+    const { data: gD, error: gE } = await window.sb.from('gewerke').select('*').order('angelegt');
+    if (gE) console.error('Gewerke konnten nicht geladen werden:', gE.message || gE);
+    gewerke = gD || [];
+    const { data: rD, error: rE } = await window.sb.from('rechnungen').select('*').order('datum');
+    if (rE) console.error('Rechnungen konnten nicht geladen werden:', rE.message || rE);
+    rechnungen = rD || [];
+  } catch (e) { console.error('Gewerke/Rechnungen:', e); }
+
   // Zahlungseingänge des laufenden Monats (für die Mietkontrolle)
   let zahlungen = [];
   try {
@@ -157,6 +168,8 @@ async function ladeDaten() {
     wetter: LOKAL.wetter,
     abo: abo,
     zahlungen: zahlungen,
+    gewerke: gewerke,
+    rechnungen: rechnungen,
     streams: (objekte || []).map(zuStream),
     termine: (termine || []).map(zuTermin)
   };
