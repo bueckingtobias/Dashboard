@@ -1754,21 +1754,41 @@
   /* ---------- shared bits ---------- */
   /* ================= GEWERKE & KOSTENKONTROLLE ================= */
 
-  // Alle Gewerke eines Objekts samt Rechnungen und Abweichung
+  // Alle Gewerke eines Objekts: Angebot, Zahlungen, Baufortschritt und Abweichung
   function gewerkeVon(s) {
     const alle = (D.gewerke || []).filter(g => g.objekt_id === s._id);
     return alle.map(g => {
-      const rn = (D.rechnungen || []).filter(r => r.gewerk_id === g.id);
-      const ist = rn.reduce((a, r) => a + (Number(r.betrag) || 0), 0);
+      const rn = (D.rechnungen || []).filter(r => r.gewerk_id === g.id)
+        .sort((a, b) => String(a.datum || "").localeCompare(String(b.datum || "")));
+      // Gezahlt = tatsächlich beglichene Rechnungen; gestellt = alles inkl. offener
+      const gezahlt  = rn.filter(r => r.bezahlt).reduce((a, r) => a + (Number(r.betrag) || 0), 0);
+      const gestellt = rn.reduce((a, r) => a + (Number(r.betrag) || 0), 0);
       const soll = Number(g.angebot) || 0;
+      const fortschritt = Math.max(0, Math.min(100, Number(g.fortschritt) || 0));
+      const quote = soll ? gezahlt / soll * 100 : 0;
+      // Freigegeben: so viel darf nach Baufortschritt bezahlt sein
+      const freigegeben = soll * fortschritt / 100;
+      const vorleistung = Math.max(0, gezahlt - freigegeben);   // mehr gezahlt als gebaut
       return {
-        ...g, rechnungen: rn, ist: ist, soll: soll,
-        diff: ist - soll,
-        prozent: soll ? (ist - soll) / soll * 100 : (ist ? 100 : 0)
+        ...g, rechnungen: rn,
+        soll, gezahlt, gestellt,
+        offenRn: gestellt - gezahlt,              // gestellt, aber noch nicht bezahlt
+        restBudget: Math.max(0, soll - gestellt), // vom Angebot noch nicht abgerechnet
+        fortschritt, quote, freigegeben, vorleistung,
+        punkte: quote - fortschritt,              // Prozentpunkte Abweichung
+        diff: gestellt - soll,
+        prozent: soll ? (gestellt - soll) / soll * 100 : (gestellt ? 100 : 0)
       };
     });
   }
 
+  // Ampel nach Abweichung in Prozentpunkten (Zahlungsquote gegen Baufortschritt)
+  function ampel(punkte, hatZahlung) {
+    if (!hatZahlung) return "neutral";
+    if (punkte > 15) return "ueber";      // deutlich mehr gezahlt als gebaut
+    if (punkte > 5)  return "achtung";
+    return "gut";
+  }
   function abwKlasse(p, hatIst) {
     if (!hatIst) return "neutral";
     if (p > 5) return "ueber";
@@ -1776,108 +1796,148 @@
     return "punkt";
   }
 
+  const proz = (v) => (Number(v) || 0).toFixed(0) + " %";
+
   function gewerkeKarte(s) {
     const gw = gewerkeVon(s);
+    if (!gw.length) {
+      const leer = el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Gewerke &amp; Kosten</div>
+          <div class="card-s">Zahlung gegen Baufortschritt</div></div>
+          <button class="add-btn" id="addGewerk">+ Gewerk</button></div>
+        <div class="card-b"><div class="note">Noch keine Gewerke erfasst. Leg den ersten Handwerker an — ESTRIQ stellt dann Angebot, Zahlungen und Baufortschritt gegenüber.</div></div></div>`);
+      leer.querySelector("#addGewerk").onclick = () => openGewerkEdit(s, null, true);
+      return leer;
+    }
+
     const soll = gw.reduce((a, g) => a + g.soll, 0);
-    const ist = gw.reduce((a, g) => a + g.ist, 0);
-    const diff = ist - soll;
-    const proz = soll ? diff / soll * 100 : 0;
-    const offen = gw.reduce((a, g) => a + Math.max(0, g.soll - g.ist), 0);
-    const maxWert = Math.max(soll, ist, 1);
+    const gezahlt = gw.reduce((a, g) => a + g.gezahlt, 0);
+    const vorleistung = gw.reduce((a, g) => a + g.vorleistung, 0);
+    // Ø Fortschritt nach Auftragswert gewichtet – große Gewerke zählen stärker
+    const fortschritt = soll ? gw.reduce((a, g) => a + g.soll * g.fortschritt, 0) / soll : 0;
+    const quote = soll ? gezahlt / soll * 100 : 0;
+    const kritisch = gw.filter(g => ampel(g.punkte, g.gezahlt > 0) === "ueber");
 
-    const kopf = gw.length ? `
-      <div class="gw-summe">
-        <div class="gw-sum-k">
-          <div class="gw-sum-l">Kalkuliert</div>
-          <div class="gw-sum-v">${eur(soll)}</div>
-          <div class="gw-sum-bar"><i class="soll" style="width:${(soll / maxWert * 100).toFixed(1)}%"></i></div>
-        </div>
-        <div class="gw-sum-k">
-          <div class="gw-sum-l">Abgerechnet</div>
-          <div class="gw-sum-v">${eur(ist)}</div>
-          <div class="gw-sum-bar"><i class="ist ${abwKlasse(proz, ist > 0)}" style="width:${(ist / maxWert * 100).toFixed(1)}%"></i></div>
-        </div>
-        <div class="gw-sum-k gw-abw ${abwKlasse(proz, ist > 0)}">
-          <div class="gw-sum-l">Abweichung</div>
-          <div class="gw-sum-v">${diff === 0 ? "±0 €" : (diff > 0 ? "+" : "−") + eur(Math.abs(diff))}</div>
-          <div class="gw-sum-p">${soll ? (proz > 0 ? "+" : proz < 0 ? "−" : "±") + Math.abs(proz).toFixed(1).replace(".", ",") + " %" : "kein Angebot"}</div>
-        </div>
-      </div>
-      ${offen > 0 ? `<div class="gw-offen">Noch nicht abgerechnet: <b>${eur(offen)}</b></div>` : ""}` : "";
-
-    const zeilen = gw.length ? gw.map(g => {
-      const m = Math.max(g.soll, g.ist, 1);
-      const kl = abwKlasse(g.prozent, g.ist > 0);
-      return `
-      <div class="gw-zeile" data-gewerk="${g.id}">
-        <div class="gw-z-kopf">
-          <div class="gw-z-tx">
-            <div class="gw-z-n">${esc(g.name)}</div>
-            <div class="gw-z-m">${esc(g.gewerk || "Gewerk")}${g.rechnungen.length ? " · " + g.rechnungen.length + (g.rechnungen.length === 1 ? " Rechnung" : " Rechnungen") : " · keine Rechnung"}</div>
-          </div>
-          <div class="gw-z-abw ${kl}">${g.ist === 0 ? "offen"
-            : (g.prozent > 0 ? "+" : g.prozent < 0 ? "−" : "±") + Math.abs(g.prozent).toFixed(1).replace(".", ",") + " %"}</div>
-        </div>
-        <div class="gw-z-bars">
-          <div class="gw-z-b"><span>Angebot</span><i class="soll" style="width:${(g.soll / m * 100).toFixed(1)}%"></i><b>${eur(g.soll)}</b></div>
-          <div class="gw-z-b"><span>Ist</span><i class="ist ${kl}" style="width:${(g.ist / m * 100).toFixed(1)}%"></i><b>${eur(g.ist)}</b></div>
-        </div>
+    const zeilen = gw.map(g => {
+      const kl = ampel(g.punkte, g.gezahlt > 0);
+      return `<div class="gwt-row ${kl}" data-gewerk="${g.id}">
+        <div class="gwt-n">${esc(g.name)}<small>${esc(g.gewerk || "Gewerk")}</small></div>
+        <div class="gwt-c">${eur(g.soll)}</div>
+        <div class="gwt-c stark ${kl}">${eur(g.gezahlt)}</div>
+        <div class="gwt-c stark ${kl}">${proz(g.quote)}</div>
+        <div class="gwt-c dim">${proz(g.fortschritt)}</div>
       </div>`;
-    }).join("") : `<div class="note">Noch keine Gewerke erfasst. Leg den ersten Handwerker an, um Angebot und Rechnungen zu vergleichen.</div>`;
+    }).join("");
 
     const karte = el(`<div class="card">
       <div class="card-h">
-        <div><div class="card-t">Gewerke & Kosten</div>
-          <div class="card-s">Angebot gegen tatsächliche Rechnungen</div></div>
+        <div><div class="card-t">Zahlung gegen Fortschritt</div>
+          <div class="card-s">${gw.length} ${gw.length === 1 ? "Gewerk" : "Gewerke"} · Quote gegen Baufortschritt</div></div>
         <button class="add-btn" id="addGewerk">+ Gewerk</button>
       </div>
-      <div class="card-b">${kopf}<div class="gw-liste">${zeilen}</div></div>
-    </div>`);
+      <div class="card-b">
+        <div class="gwt">
+          <div class="gwt-kopf">
+            <div>Gewerk</div><div class="gwt-c">Angebot</div><div class="gwt-c">Gezahlt</div>
+            <div class="gwt-c">Quote</div><div class="gwt-c">Gebaut</div>
+          </div>
+          ${zeilen}
+        </div>
+        <div class="gw-kacheln">
+          <div class="gw-kachel"><span>Angebotssumme</span><b>${eur(soll)}</b></div>
+          <div class="gw-kachel"><span>Gezahlt</span><b class="${quote > fortschritt + 15 ? "warn" : ""}">${eur(gezahlt)}</b></div>
+          <div class="gw-kachel"><span>Ø Fortschritt</span><b>${proz(fortschritt)}</b></div>
+          <div class="gw-kachel"><span>In Vorleistung</span><b class="${vorleistung > 0 ? "warn" : "gut"}">${eur(vorleistung)}</b></div>
+        </div>
+        ${vorleistung > 0
+          ? `<div class="gw-hinweis warn">Auffällig: Zahlungsquote liegt über dem Baufortschritt — ${eur(vorleistung)} sind vorausgezahlt.${kritisch.length ? " Betroffen: " + kritisch.map(g => esc(g.name)).join(", ") + "." : ""} Abschläge und offene Posten prüfen.</div>`
+          : `<div class="gw-hinweis gut">Zahlungen decken sich mit dem Baufortschritt. Keine Vorleistung.</div>`}
+      </div></div>`);
     karte.querySelector("#addGewerk").onclick = () => openGewerkEdit(s, null, true);
     karte.querySelectorAll("[data-gewerk]").forEach(n =>
       n.onclick = () => openGewerkDetail(s, n.dataset.gewerk));
     return karte;
   }
 
-  // Ein Gewerk im Detail: Angebot, alle Rechnungen, Abweichung
+  // Ein Gewerk im Detail: Angebot, Zahlungen, Baufortschritt, alle Rechnungen
   function openGewerkDetail(s, id) {
     const g = gewerkeVon(s).find(x => x.id === id);
     if (!g) return;
-    const kl = abwKlasse(g.prozent, g.ist > 0);
-    const m = Math.max(g.soll, g.ist, 1);
+    const kl = ampel(g.punkte, g.gezahlt > 0);
+    const pkt = Math.round(g.punkte);
 
     const rechnungen = g.rechnungen.length
-      ? g.rechnungen.map(r => `
-        <div class="gw-rn" data-rechnung="${r.id}">
-          <div class="gw-rn-tx">
-            <div class="gw-rn-n">${esc(r.bezeichnung || "Rechnung")}</div>
-            <div class="gw-rn-m">${r.datum ? dateDE(r.datum) : "ohne Datum"}${r.bezahlt ? " · bezahlt" : " · offen"}</div>
-          </div>
-          <b>${eur(Number(r.betrag) || 0)}</b>
-        </div>`).join("")
+      ? `<div class="gwr">
+          <div class="gwr-kopf"><div>Beleg</div><div>Datum</div><div class="gwr-c">Betrag</div><div class="gwr-s">Status</div></div>
+          ${g.rechnungen.map(r => `
+            <div class="gwr-row" data-rechnung="${r.id}">
+              <div class="gwr-b">${esc(r.beleg || r.bezeichnung || "Rechnung")}</div>
+              <div class="gwr-d">${r.datum ? new Date(r.datum).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + "." : "—"}</div>
+              <div class="gwr-c">${eur(Number(r.betrag) || 0)}</div>
+              <div class="gwr-s"><span class="gwr-tag ${r.bezahlt ? "ok" : "offen"}">${r.bezahlt ? "bezahlt" : "offen"}</span></div>
+            </div>`).join("")}
+        </div>`
       : `<div class="note">Noch keine Rechnung erfasst.</div>`;
 
+    // Nächste Schritte aus den Daten ableiten
+    const schritte = [];
+    if (g.fortschritt < 100) schritte.push({ ok: true, t: "Teilabnahme dokumentieren, bevor der nächste Abschlag freigegeben wird" });
+    const offeneRn = g.rechnungen.filter(r => !r.bezahlt);
+    if (offeneRn.length) schritte.push({
+      ok: g.vorleistung <= 0,
+      t: (offeneRn[0].beleg ? "Abschlag " + offeneRn[0].beleg : "Offenen Abschlag")
+         + (g.vorleistung > 0 ? " erst nach weiterem Baufortschritt freigeben" : " kann freigegeben werden")
+    });
+    if (pkt > 15) schritte.push({ ok: false, t: g.name + ": Abweichung " + pkt + " Punkte — Rückfrage beim Handwerker offen" });
+    schritte.push({ ok: true, t: "Schlusszahlung an das Abnahmeprotokoll binden" });
+
     const body = `
-      <div class="gw-d-kopf ${kl}">
-        <div class="gw-d-abw">${g.ist === 0 ? "offen"
-          : (g.prozent > 0 ? "+" : g.prozent < 0 ? "−" : "±") + Math.abs(g.prozent).toFixed(1).replace(".", ",") + " %"}</div>
-        <div class="gw-d-txt">${g.ist === 0 ? "Noch nichts abgerechnet"
-          : g.diff > 0 ? "Teurer als kalkuliert: " + eur(g.diff)
-          : g.diff < 0 ? "Günstiger als kalkuliert: " + eur(Math.abs(g.diff))
-          : "Genau im Rahmen"}</div>
+      <div class="gw-kacheln vier">
+        <div class="gw-kachel"><span>Angebot</span><b>${eur(g.soll)}</b></div>
+        <div class="gw-kachel"><span>Gezahlt</span><b class="${kl === "ueber" ? "warn" : ""}">${eur(g.gezahlt)}</b></div>
+        <div class="gw-kachel"><span>Offen</span><b>${eur(g.restBudget + g.offenRn)}</b></div>
+        <div class="gw-kachel"><span>Fortschritt</span><b>${proz(g.fortschritt)}</b></div>
       </div>
-      <div class="gw-d-bars">
-        <div class="gw-z-b"><span>Angebot</span><i class="soll" style="width:${(g.soll / m * 100).toFixed(1)}%"></i><b>${eur(g.soll)}</b></div>
-        <div class="gw-z-b"><span>Ist</span><i class="ist ${kl}" style="width:${(g.ist / m * 100).toFixed(1)}%"></i><b>${eur(g.ist)}</b></div>
+
+      <div class="gw-bar-blk">
+        <div class="gw-bar-top"><span>Zahlungen</span>
+          <b class="${kl === "ueber" ? "warn" : "gut"}">${proz(g.quote)} · ${eur(g.gezahlt)}</b></div>
+        <div class="gw-bar"><i class="${kl}" style="width:${Math.min(100, g.quote).toFixed(1)}%"></i></div>
       </div>
+      <div class="gw-bar-blk">
+        <div class="gw-bar-top"><span>Baufortschritt</span><b>${proz(g.fortschritt)}</b></div>
+        <div class="gw-bar"><i class="bau" style="width:${g.fortschritt}%"></i></div>
+      </div>
+
+      ${g.gezahlt > 0 && pkt > 5
+        ? `<div class="gw-hinweis warn">${pkt} Punkte Abweichung — anteilig mehr gezahlt als gebaut. ${eur(g.vorleistung)} sind vorausgezahlt.</div>`
+        : g.gezahlt > 0 && pkt < -5
+          ? `<div class="gw-hinweis gut">${Math.abs(pkt)} Punkte Puffer — es ist weniger gezahlt als gebaut.</div>`
+          : g.gezahlt > 0
+            ? `<div class="gw-hinweis gut">Zahlung und Baufortschritt laufen im Gleichschritt.</div>`
+            : `<div class="gw-hinweis">Noch keine Zahlung geleistet.</div>`}
+
+      ${efTitel("Zahlungsfreigabe")}
+      <div class="gw-kacheln drei">
+        <div class="gw-kachel"><span>Freigegeben</span><b class="gut">${eur(g.freigegeben)}</b></div>
+        <div class="gw-kachel"><span>Gesperrt</span><b class="${g.vorleistung > 0 ? "warn" : ""}">${eur(g.vorleistung)}</b></div>
+        <div class="gw-kachel"><span>Fortschritt</span><b>${proz(g.fortschritt)}</b></div>
+      </div>
+      <div class="gw-schritte">
+        ${schritte.map(x => `<div class="gw-schritt ${x.ok ? "ok" : "warn"}">
+          <i>${x.ok ? "✓" : "!"}</i><span>${esc(x.t)}</span></div>`).join("")}
+      </div>
+      ${g.vorleistung > 0 ? `<div class="gw-hinweis gut" style="margin-top:10px">Sobald die Zahlungsquote wieder unter dem Fortschritt liegt, verschwindet die Warnung.</div>` : ""}
+
       ${g.notiz ? `<div class="note" style="margin-top:14px">${esc(g.notiz)}</div>` : ""}
       ${efTitel("Rechnungen")}
-      <div class="gw-rn-liste">${rechnungen}</div>
+      ${rechnungen}
       <button class="add-btn" id="addRn" style="margin-top:12px;width:100%">+ Rechnung erfassen</button>
       <div class="ef-actions" style="margin-top:22px">
         <button class="ef-save" id="gwEdit">Gewerk bearbeiten</button>
       </div>`;
-    const sheet = openSheet(g.name, g.gewerk || "", body);
+    const unter = esc(g.name) + (g.auftrag_am ? " · Auftrag vom " + dateDE(g.auftrag_am) : "");
+    const sheet = openSheet(g.gewerk || g.name, unter, body);
     sheet.querySelector("#addRn").onclick = () => { closeSheet(); openRechnungEdit(s, g, null, true); };
     sheet.querySelector("#gwEdit").onclick = () => { closeSheet(); openGewerkEdit(s, g, false); };
     sheet.querySelectorAll("[data-rechnung]").forEach(n => n.onclick = () => {
@@ -1895,6 +1955,9 @@
       ${efTitel("Kalkulation")}
       ${ef("Angebotssumme", "angebot", g ? (g.angebot ?? "") : "", "number",
         { pflicht: true, einheit: "€", hinweis: "Brutto, wie im Angebot ausgewiesen" })}
+      ${ef("Baufortschritt in %", "fortschritt", g ? (g.fortschritt ?? 0) : 0, "number",
+        { step: "1", hinweis: "Wie viel der Leistung ist erbracht? ESTRIQ vergleicht das mit deinen Zahlungen." })}
+      ${ef("Auftrag vom", "auftrag_am", g ? (g.auftrag_am || "") : "", "date")}
       ${efSel("Status", "status", g ? (g.status || "offen") : "offen",
         [{ v: "offen", t: "beauftragt" }, { v: "laufend", t: "in Arbeit" }, { v: "fertig", t: "abgeschlossen" }])}
       ${efArea("Notiz", "notiz", g ? (g.notiz || "") : "")}
@@ -1904,6 +1967,8 @@
       name: text(w.name) || "Gewerk",
       gewerk: text(w.gewerk),
       angebot: zahl(w.angebot) || 0,
+      fortschritt: Math.max(0, Math.min(100, Number(w.fortschritt) || 0)),
+      auftrag_am: text(w.auftrag_am),
       status: w.status,
       notiz: text(w.notiz)
     });
@@ -1918,6 +1983,8 @@
     const heute = new Date().toISOString().slice(0, 10);
     const body = `
       ${efTitel("Rechnung")}
+      ${ef("Belegnummer", "beleg", r ? (r.beleg || "") : "", "text",
+        { platzhalter: "z. B. AR-2026-081" })}
       ${ef("Bezeichnung", "bezeichnung", r ? (r.bezeichnung || "") : "", "text",
         { platzhalter: "z. B. Abschlag 1 oder Schlussrechnung" })}
       ${ef("Betrag", "betrag", r ? (r.betrag ?? "") : "", "number",
@@ -1928,6 +1995,7 @@
       ${efAktionen({ loeschen: neu ? null : "Rechnung löschen" })}`;
     const sheet = openSheet(neu ? "Rechnung erfassen" : "Rechnung bearbeiten", g.name, body);
     const bauen = (w) => ({
+      beleg: text(w.beleg),
       bezeichnung: text(w.bezeichnung),
       betrag: zahl(w.betrag) || 0,
       datum: text(w.datum),
