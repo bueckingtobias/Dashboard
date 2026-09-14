@@ -2412,6 +2412,179 @@
     }
   ];
 
+  /* Zielgrößen: Für die wichtigsten Rechner kann gewählt werden, welcher Wert
+     gesucht ist. Die Eingabefelder wechseln entsprechend. */
+  const ZIELE = {
+    rendite: [
+      { id: "rendite", label: "Rendite", frage: "Welche Rendite bringt dieses Objekt?" },
+      { id: "kaufpreis", label: "Max. Kaufpreis", frage: "Was darf das Objekt höchstens kosten?",
+        felder: [
+          { id: "miete", label: "Kaltmiete pro Monat", einheit: "€", wert: 950 },
+          { id: "wunsch", label: "Gewünschte Bruttorendite", einheit: "%", wert: 5 },
+          { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12 }
+        ],
+        rechne: (w) => {
+          const jahr = w.miete * 12;
+          const invest = w.wunsch ? jahr / (w.wunsch / 100) : 0;
+          const kaufpreis = invest / (1 + w.nebenkosten / 100);
+          return {
+            zeilen: [
+              { l: "Jahreskaltmiete", v: eur(jahr) },
+              { l: "Zulässige Gesamtinvestition", v: eur(invest), gross: true },
+              { l: "Davon Kaufnebenkosten", v: "− " + eur(invest - kaufpreis) },
+              { l: "Maximaler Kaufpreis", v: eur(kaufpreis), gross: true },
+              { l: "Kaufpreisfaktor", v: (jahr ? kaufpreis / jahr : 0).toFixed(1).replace(".", ",") + " ×" }
+            ],
+            fazit: "Mehr als " + eur(kaufpreis) + " darfst du nicht zahlen, wenn du " +
+              w.wunsch.toLocaleString("de-DE") + " % Bruttorendite erreichen willst."
+          };
+        } },
+      { id: "miete", label: "Nötige Miete", frage: "Welche Miete brauche ich für meine Zielrendite?",
+        felder: [
+          { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
+          { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12 },
+          { id: "wunsch", label: "Gewünschte Bruttorendite", einheit: "%", wert: 5 },
+          { id: "flaeche", label: "Wohnfläche", einheit: "m²", wert: 72 }
+        ],
+        rechne: (w) => {
+          const invest = w.kaufpreis * (1 + w.nebenkosten / 100);
+          const jahr = invest * w.wunsch / 100;
+          const monat = jahr / 12;
+          return {
+            zeilen: [
+              { l: "Gesamtinvestition", v: eur(invest) },
+              { l: "Nötige Jahreskaltmiete", v: eur(jahr) },
+              { l: "Nötige Kaltmiete", v: eur(monat) + " / Monat", gross: true },
+              { l: "Entspricht", v: (w.flaeche ? monat / w.flaeche : 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " € / m²", gross: true }
+            ],
+            fazit: "Vergleich diesen Wert mit dem örtlichen Mietspiegel. Liegt er deutlich darüber, ist der Kaufpreis zu hoch."
+          };
+        } }
+    ],
+    kredit: [
+      { id: "rate", label: "Rate", frage: "Was kostet mich die Finanzierung monatlich?" },
+      { id: "summe", label: "Mögliche Summe", frage: "Wie viel Darlehen kann ich mir leisten?",
+        felder: [
+          { id: "rate", label: "Rate, die ich tragen kann", einheit: "€/Monat", wert: 900 },
+          { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
+          { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2 }
+        ],
+        rechne: (w) => {
+          const summe = (w.zins + w.tilgung) ? w.rate * 12 / ((w.zins + w.tilgung) / 100) : 0;
+          const zinsM = summe * w.zins / 100 / 12;
+          return {
+            zeilen: [
+              { l: "Mögliche Darlehenssumme", v: eur(summe), gross: true },
+              { l: "davon Zinsen im 1. Monat", v: eur(zinsM) },
+              { l: "davon Tilgung im 1. Monat", v: eur(w.rate - zinsM) },
+              { l: "Mit 20 % Eigenkapital Kaufpreis bis", v: eur(summe / 0.8), gross: true }
+            ],
+            verhaeltnis: { zins: w.rate ? zinsM / w.rate * 100 : 0, tilgung: w.rate ? (w.rate - zinsM) / w.rate * 100 : 0 },
+            fazit: "Banken rechnen zusätzlich mit einem Sicherheitspuffer. Plane die Rate so, dass sie auch bei Leerstand tragbar bleibt."
+          };
+        } },
+      { id: "tilgung", label: "Nötige Tilgung", frage: "Wie schnell bin ich schuldenfrei?",
+        felder: [
+          { id: "summe", label: "Darlehenssumme", einheit: "€", wert: 200000 },
+          { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
+          { id: "jahre", label: "Gewünschte Laufzeit", einheit: "Jahre", wert: 20 }
+        ],
+        rechne: (w) => {
+          const zM = w.zins / 100 / 12, n = w.jahre * 12;
+          const rate = zM ? w.summe * zM / (1 - Math.pow(1 + zM, -n)) : w.summe / n;
+          const zinsM = w.summe * zM;
+          const tilgProz = w.summe ? (rate - zinsM) * 12 / w.summe * 100 : 0;
+          return {
+            zeilen: [
+              { l: "Nötige Monatsrate", v: eur(rate), gross: true },
+              { l: "Nötige Anfangstilgung", v: tilgProz.toFixed(2).replace(".", ",") + " % p. a.", gross: true },
+              { l: "Zinskosten gesamt", v: eur(Math.max(0, rate * n - w.summe)) },
+              { l: "Gesamtaufwand", v: eur(rate * n) }
+            ],
+            fazit: "Je höher die Anfangstilgung, desto kürzer die Laufzeit und desto weniger Zinsen zahlst du insgesamt."
+          };
+        } }
+    ],
+    zinseszins: [
+      { id: "endkapital", label: "Endkapital", frage: "Wie viel wird daraus?" },
+      { id: "sparrate", label: "Nötige Sparrate", frage: "Wie viel muss ich monatlich zurücklegen?",
+        felder: [
+          { id: "ziel", label: "Zielkapital", einheit: "€", wert: 300000 },
+          { id: "start", label: "Startkapital", einheit: "€", wert: 20000 },
+          { id: "zins", label: "Rendite", einheit: "% p. a.", wert: 6 },
+          { id: "jahre", label: "Laufzeit", einheit: "Jahre", wert: 20 }
+        ],
+        rechne: (w) => {
+          const m = w.zins / 100 / 12, n = w.jahre * 12;
+          const ausStart = w.start * Math.pow(1 + m, n);
+          const luecke = Math.max(0, w.ziel - ausStart);
+          const faktor = m ? (Math.pow(1 + m, n) - 1) / m : n;
+          const rate = faktor ? luecke / faktor : 0;
+          return {
+            zeilen: [
+              { l: "Startkapital wächst auf", v: eur(ausStart) },
+              { l: "Verbleibende Lücke", v: eur(luecke) },
+              { l: "Nötige Sparrate", v: eur(rate) + " / Monat", gross: true },
+              { l: "Eingezahlt insgesamt", v: eur(w.start + rate * n) },
+              { l: "Davon Zinsertrag", v: eur(Math.max(0, w.ziel - w.start - rate * n)), gross: true }
+            ],
+            fazit: "Jedes Jahr früher senkt die nötige Sparrate spürbar — der Zinseszins übernimmt den Rest."
+          };
+        } },
+      { id: "dauer", label: "Nötige Zeit", frage: "Wie lange dauert es bis zum Ziel?",
+        felder: [
+          { id: "ziel", label: "Zielkapital", einheit: "€", wert: 300000 },
+          { id: "start", label: "Startkapital", einheit: "€", wert: 20000 },
+          { id: "sparrate", label: "Monatliche Sparrate", einheit: "€", wert: 500 },
+          { id: "zins", label: "Rendite", einheit: "% p. a.", wert: 6 }
+        ],
+        rechne: (w) => {
+          const m = w.zins / 100 / 12;
+          let kap = w.start, mon = 0;
+          const verlauf = [kap];
+          while (kap < w.ziel && mon < 1200) { kap = kap * (1 + m) + w.sparrate; mon++; if (mon % 12 === 0) verlauf.push(kap); }
+          const erreicht = mon < 1200;
+          return {
+            zeilen: [
+              { l: "Ziel erreicht nach", v: erreicht ? Math.floor(mon / 12) + " Jahren " + (mon % 12) + " Monaten" : "über 100 Jahren", gross: true },
+              { l: "Eingezahlt bis dahin", v: eur(w.start + w.sparrate * mon) },
+              { l: "Davon Zinsertrag", v: eur(Math.max(0, kap - w.start - w.sparrate * mon)), gross: true },
+              { l: "Endkapital", v: eur(kap) }
+            ],
+            verlauf: verlauf.length > 1 ? verlauf : null,
+            fazit: erreicht
+              ? "Eine um 1 Prozentpunkt höhere Rendite verkürzt die Zeit meist um mehrere Jahre."
+              : "Mit diesen Werten ist das Ziel praktisch nicht erreichbar. Erhöhe die Sparrate oder senke das Ziel."
+          };
+        } }
+    ],
+    cashflow: [
+      { id: "cashflow", label: "Cashflow", frage: "Was bleibt am Monatsende übrig?" },
+      { id: "miete", label: "Nötige Miete", frage: "Welche Miete brauche ich für schwarze Zahlen?",
+        felder: [
+          { id: "rate", label: "Kreditrate pro Monat", einheit: "€", wert: 780 },
+          { id: "instand", label: "Instandhaltung", einheit: "€/Monat", wert: 80 },
+          { id: "verwaltung", label: "Verwaltung", einheit: "€/Monat", wert: 25 },
+          { id: "ausfall", label: "Mietausfallrisiko", einheit: "% der Miete", wert: 3 },
+          { id: "wunsch", label: "Gewünschter Cashflow", einheit: "€/Monat", wert: 0 }
+        ],
+        rechne: (w) => {
+          const fix = w.rate + w.instand + w.verwaltung + w.wunsch;
+          const miete = (1 - w.ausfall / 100) ? fix / (1 - w.ausfall / 100) : fix;
+          return {
+            zeilen: [
+              { l: "Feste Kosten je Monat", v: eur(w.rate + w.instand + w.verwaltung) },
+              { l: "Gewünschter Überschuss", v: eur(w.wunsch) },
+              { l: "Puffer für Mietausfall", v: eur(miete - fix) },
+              { l: "Nötige Kaltmiete", v: eur(miete) + " / Monat", gross: true },
+              { l: "Pro Jahr", v: eur(miete * 12), gross: true }
+            ],
+            fazit: "Liegt dieser Wert über der ortsüblichen Miete, trägt sich das Objekt mit dieser Finanzierung nicht."
+          };
+        } }
+    ]
+  };
+
   const RECHNER_KAT = [
     { id: "kauf", name: "Kauf & Rendite", info: "Lohnt sich dieses Objekt?" },
     { id: "finanzierung", name: "Finanzierung", info: "Was kostet dich die Bank?" },
@@ -2420,48 +2593,75 @@
   ];
 
 
+  // Themenwelten: jede Kategorie zeigt Rechner UND passende Artikel zusammen
+  const THEMEN = [
+    { id: "kauf", name: "Kauf & Rendite", info: "Lohnt sich dieses Objekt?",
+      wissen: ["versteckte-kosten", "cashflow-rendite", "mietarten"] },
+    { id: "finanzierung", name: "Finanzierung", info: "Was kostet dich die Bank?",
+      wissen: ["zinsbindung"] },
+    { id: "betrieb", name: "Betrieb & Miete", info: "Laufende Kosten und Mieteinnahmen",
+      wissen: ["umlagefaehig", "nebenkosten", "mieterhoehung", "leise-verluste"] },
+    { id: "vermoegen", name: "Vermögen & Vergleich", info: "Was macht dein Geld sonst?",
+      wissen: [] }
+  ];
+  let toolFilter = "alle";
+
   function renderTools(host) {
-    $("#eyebrow").textContent = "Tools";
+    $("#eyebrow").textContent = "Lernecke";
     $("#pageTitle").textContent = "Rechner & Wissen";
     $("#pageSub").textContent = RECHNER.length + " Rechner · " + WISSEN.length + " Themen";
 
-    // Rechner nach Kategorien
-    RECHNER_KAT.forEach(k => {
-      const liste = RECHNER.filter(r => r.kat === k.id);
-      if (!liste.length) return;
-      host.appendChild(el(`<div class="kat-kopf">
-        <div class="kat-n">${esc(k.name)}</div>
-        <div class="kat-i">${esc(k.info)}</div></div>`));
-      const g = el(`<div class="grid g-objekte">${liste.map(r => `
-        <div class="card pad clickable tool-karte" data-rechner="${r.id}">
-          <div class="chip">${svg(r.icon)}</div>
-          <div class="tool-n">${esc(r.titel)}</div>
-          <div class="tool-k">${esc(r.kurz)}</div>
-          <span class="tapme">Öffnen ›</span>
-        </div>`).join("")}</div>`);
-      g.querySelectorAll("[data-rechner]").forEach(n => n.onclick = () => openRechner(n.dataset.rechner));
-      host.appendChild(g);
+    // Filterleiste
+    const filter = el(`<div class="tl-filter">
+      <button class="tl-f${toolFilter === "alle" ? " on" : ""}" data-f="alle">Alles</button>
+      ${THEMEN.map(t => `<button class="tl-f${toolFilter === t.id ? " on" : ""}" data-f="${t.id}">${esc(t.name)}</button>`).join("")}
+    </div>`);
+    filter.querySelectorAll(".tl-f").forEach(b => b.onclick = () => {
+      toolFilter = b.dataset.f; route("tools");
+    });
+    host.appendChild(filter);
+
+    const sichtbar = THEMEN.filter(t => toolFilter === "alle" || toolFilter === t.id);
+    sichtbar.forEach(t => {
+      const rechner = RECHNER.filter(r => r.kat === t.id);
+      const artikel = t.wissen.map(id => WISSEN.find(a => a.id === id)).filter(Boolean);
+      if (!rechner.length && !artikel.length) return;
+
+      const block = el(`<div class="card tw-card">
+        <div class="card-h"><div><div class="card-t">${esc(t.name)}</div>
+          <div class="card-s">${esc(t.info)}</div></div>
+          <div class="head-pill" style="padding:7px 13px">${rechner.length} Rechner</div></div>
+        <div class="card-b">
+          <div class="tw-rechner">${rechner.map(r => {
+            const z = ZIELE[r.id];
+            return `<button class="tw-r" data-rechner="${r.id}">
+              <span class="tw-r-ic">${svg(r.icon)}</span>
+              <span class="tw-r-tx">
+                <b>${esc(r.titel)}</b>
+                <small>${esc(r.kurz)}</small>
+                ${z ? `<span class="tw-r-ziele">${z.map(x => `<i data-rechner="${r.id}" data-ziel="${x.id}">${esc(x.label)}</i>`).join("")}</span>` : ""}
+              </span>
+              <span class="tw-r-pfeil">›</span>
+            </button>`;
+          }).join("")}</div>
+          ${artikel.length ? `<div class="tw-wissen">
+            <div class="tw-w-kopf">Zum Nachlesen</div>
+            ${artikel.map(a => `<button class="tw-w" data-wissen="${a.id}">
+              <span class="tw-w-ic">${svg(a.icon || "chart")}</span>
+              <span class="tw-w-tx"><b>${esc(a.titel)}</b><small>${esc(a.kurz)}</small></span>
+              <span class="tw-r-pfeil">›</span></button>`).join("")}
+          </div>` : ""}
+        </div></div>`);
+
+      block.querySelectorAll("[data-ziel]").forEach(n => n.onclick = (e) => {
+        e.stopPropagation(); openRechner(n.dataset.rechner, n.dataset.ziel);
+      });
+      block.querySelectorAll(".tw-r").forEach(n => n.onclick = () => openRechner(n.dataset.rechner));
+      block.querySelectorAll(".tw-w").forEach(n => n.onclick = () => openWissen(n.dataset.wissen));
+      host.appendChild(block);
     });
 
-    // Wissensbereich nach Kategorien
-    WISSEN_KAT.forEach(k => {
-      const liste = WISSEN.filter(a => a.kat === k.id);
-      if (!liste.length) return;
-      host.appendChild(el(`<div class="kat-kopf">
-        <div class="kat-n">${esc(k.name)}</div>
-        <div class="kat-i">${esc(k.info)}</div></div>`));
-      const g = el(`<div class="grid g-objekte">${liste.map(a => `
-        <div class="card pad clickable wi-karte" data-wissen="${a.id}">
-          <div class="wi-ic">${svg(a.icon || "chart")}</div>
-          <div class="wi-n">${esc(a.titel)}</div>
-          <div class="wi-k">${esc(a.kurz)}</div>
-          <span class="tapme">Lesen ›</span>
-        </div>`).join("")}</div>`);
-      g.querySelectorAll("[data-wissen]").forEach(n => n.onclick = () => openWissen(n.dataset.wissen));
-      host.appendChild(g);
-    });
-
-    host.appendChild(el(`<div class="note" style="margin-top:6px">
+    host.appendChild(el(`<div class="note" style="margin-top:2px">
       Angaben zu Mietrecht und Betriebskosten dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`));
   }
 
@@ -2471,95 +2671,125 @@
     openSheet(a.titel, a.kurz, `<div class="wi-inhalt">${a.inhalt}</div>`);
   }
 
-  function openRechner(id) {
+  function openRechner(id, zielId) {
     const r = RECHNER.find(x => x.id === id);
     if (!r) return;
-    const body = `
-      <div class="rechner-kurz">${esc(r.kurz)}</div>
-      <div id="rcFelder">${r.felder.map(f => `
-        <div class="rc-row">
-          <label class="rc-l">${esc(f.label)}${f.hinweis ? `<small>${esc(f.hinweis)}</small>` : ""}</label>
-          <div class="rc-feld">
-            <input class="ef-i rc-i" type="number" step="any" inputmode="decimal"
-              data-f="${f.id}" value="${f.wert}">
-            <span class="rc-e">${esc(f.einheit)}</span>
-          </div>
-        </div>`).join("")}</div>
-      <div id="rcErgebnis" class="rc-erg"></div>`;
-    const sheet = openSheet(r.titel, "", body);
+    // Zielgrößen: entweder definiert, oder der Rechner hat nur einen Modus
+    const ziele = (ZIELE[r.id] || [{ id: "standard", label: r.titel, frage: r.kurz }])
+      .map(z => ({ ...z, felder: z.felder || r.felder, rechne: z.rechne || r.rechne }));
+    let aktiv = Math.max(0, ziele.findIndex(z => z.id === zielId));
 
-    const rechnen = () => {
-      const w = {};
-      sheet.querySelectorAll(".rc-i").forEach(i => {
-        w[i.dataset.f] = Number(String(i.value).replace(",", ".")) || 0;
+    const sheet = openSheet(r.titel, "", `<div id="rcBody"></div>`);
+    const bodyEl = sheet.querySelector("#rcBody");
+
+    function zeichne() {
+      const z = ziele[aktiv];
+      bodyEl.innerHTML = `
+        ${ziele.length > 1 ? `<div class="rc-ziel">
+          <div class="rc-ziel-l">Was möchtest du berechnen?</div>
+          <div class="rc-ziel-tabs">${ziele.map((x, i) =>
+            `<button class="rc-ziel-t${i === aktiv ? " on" : ""}" data-z="${i}">${esc(x.label)}</button>`).join("")}</div>
+        </div>` : ""}
+        <div class="rechner-kurz">${esc(z.frage || r.kurz)}</div>
+        <div id="rcFelder">${z.felder.map(f => `
+          <div class="rc-row">
+            <label class="rc-l">${esc(f.label)}${f.hinweis ? `<small>${esc(f.hinweis)}</small>` : ""}</label>
+            <div class="rc-feld">
+              <input class="ef-i rc-i" type="number" step="any" inputmode="decimal"
+                data-f="${f.id}" value="${f.wert}">
+              <span class="rc-e">${esc(f.einheit)}</span>
+            </div>
+          </div>`).join("")}</div>
+        <div id="rcErgebnis" class="rc-erg"></div>
+        ${verwandtes(r)}`;
+
+      bodyEl.querySelectorAll(".rc-ziel-t").forEach(b => b.onclick = () => {
+        aktiv = Number(b.dataset.z); zeichne();
       });
-      const e = r.rechne(w);
-      let extra = "";
-      // Zins-/Tilgungsverhältnis
-      if (e.verhaeltnis) extra = `
-        <div class="rc-vh"><i class="z" style="width:${e.verhaeltnis.zins.toFixed(1)}%"></i><i class="t" style="width:${e.verhaeltnis.tilgung.toFixed(1)}%"></i></div>
-        <div class="rc-leg"><b class="z"></b>Zinsanteil <b class="t"></b>Tilgungsanteil</div>`;
-      // Renditeskala
-      else if (e.balken != null) extra = `
-        <div class="rc-skala"><i style="width:${e.balken.toFixed(1)}%"></i></div>
-        <div class="rc-leg-s"><span>0 %</span><span>5 %</span><span>10 %</span></div>`;
-      // Verlaufskurve
-      else if (e.verlauf) extra = rcVerlauf(e.verlauf);
-      // Gestapelte Anteile (Kaufnebenkosten)
-      else if (e.stapel) {
-        const ges = e.stapel.reduce((a, x) => a + x.v, 0) || 1;
-        extra = `<div class="rc-stapel">${e.stapel.map(x =>
-          `<i class="f-${x.f}" style="width:${(x.v / ges * 100).toFixed(2)}%" title="${esc(x.l)}"></i>`).join("")}</div>
-          <div class="rc-stapel-leg">${e.stapel.map(x =>
-          `<span><b class="f-${x.f}"></b>${esc(x.l)}</span>`).join("")}</div>`;
-      }
-      // Wasserfall (Cashflow)
-      else if (e.wasserfall) {
-        const max = Math.max(...e.wasserfall.map(x => x.v)) || 1;
-        extra = `<div class="rc-wf">${e.wasserfall.map(x =>
-          `<div class="rc-wf-i">
-             <i class="${x.typ}" style="height:${Math.max(5, x.v / max * 100).toFixed(1)}%"></i>
-             <span>${esc(x.l)}</span>
-             <b>${eur(x.v)}</b>
-           </div>`).join("")}</div>`;
-      }
-      // Kaufpreisfaktor auf einer Skala
-      else if (e.faktor != null) {
-        const pos = Math.max(0, Math.min(100, (e.faktor - 12) / 28 * 100));
-        extra = `<div class="rc-faktor">
-            <div class="rc-fk-bar"><i style="left:${pos.toFixed(1)}%"></i></div>
-            <div class="rc-fk-marks"><span>12×<small>günstig</small></span><span>20×</span><span>28×</span><span>40×<small>teuer</small></span></div>
-          </div>`;
-      }
-      // Grenzen bei der Mieterhöhung
-      else if (e.grenzen) {
-        const g = e.grenzen, max = Math.max(g.kappung, g.vergleich) || 1;
-        const bar = (v, kl, l) => `<div class="rc-vg"><span>${l}</span><i class="${kl}" style="width:${(v / max * 100).toFixed(1)}%"></i><b>${eur(v)}</b></div>`;
-        extra = `<div class="rc-verg">
-          ${bar(g.aktuell, "grau", "heute")}
-          ${bar(g.kappung, "alt", "Kappung")}
-          ${bar(g.vergleich, "alt", "Vergleich")}
-          ${bar(g.neu, "", "zulässig")}
+      bodyEl.querySelectorAll("[data-oeffne-wissen]").forEach(b =>
+        b.onclick = () => { closeSheet(); setTimeout(() => openWissen(b.dataset.oeffneWissen), 220); });
+      bodyEl.querySelectorAll("[data-oeffne-rechner]").forEach(b =>
+        b.onclick = () => { closeSheet(); setTimeout(() => openRechner(b.dataset.oeffneRechner), 220); });
+
+      const rechnen = () => {
+        const w = {};
+        bodyEl.querySelectorAll(".rc-i").forEach(i => {
+          w[i.dataset.f] = Number(String(i.value).replace(",", ".")) || 0;
+        });
+        bodyEl.querySelector("#rcErgebnis").innerHTML = ergebnisHtml(z.rechne(w));
+      };
+      bodyEl.querySelectorAll(".rc-i").forEach(i => i.addEventListener("input", rechnen));
+      rechnen();
+    }
+    zeichne();
+  }
+
+  // Grafik + Zahlen + Fazit eines Rechenergebnisses
+  function ergebnisHtml(e) {
+    let extra = "";
+    if (e.verhaeltnis) extra = `
+      <div class="rc-vh"><i class="z" style="width:${e.verhaeltnis.zins.toFixed(1)}%"></i><i class="t" style="width:${e.verhaeltnis.tilgung.toFixed(1)}%"></i></div>
+      <div class="rc-leg"><b class="z"></b>Zinsanteil <b class="t"></b>Tilgungsanteil</div>`;
+    else if (e.balken != null) extra = `
+      <div class="rc-skala"><i style="width:${e.balken.toFixed(1)}%"></i></div>
+      <div class="rc-leg-s"><span>0 %</span><span>5 %</span><span>10 %</span></div>`;
+    else if (e.verlauf) extra = rcVerlauf(e.verlauf);
+    else if (e.stapel) {
+      const ges = e.stapel.reduce((a, x) => a + x.v, 0) || 1;
+      extra = `<div class="rc-stapel">${e.stapel.map(x =>
+        `<i class="f-${x.f}" style="width:${(x.v / ges * 100).toFixed(2)}%" title="${esc(x.l)}"></i>`).join("")}</div>
+        <div class="rc-stapel-leg">${e.stapel.map(x =>
+        `<span><b class="f-${x.f}"></b>${esc(x.l)}</span>`).join("")}</div>`;
+    }
+    else if (e.wasserfall) {
+      const max = Math.max(...e.wasserfall.map(x => x.v)) || 1;
+      extra = `<div class="rc-wf">${e.wasserfall.map(x =>
+        `<div class="rc-wf-i">
+           <i class="${x.typ}" style="height:${Math.max(5, x.v / max * 100).toFixed(1)}%"></i>
+           <span>${esc(x.l)}</span><b>${eur(x.v)}</b>
+         </div>`).join("")}</div>`;
+    }
+    else if (e.faktor != null) {
+      const pos = Math.max(0, Math.min(100, (e.faktor - 12) / 28 * 100));
+      extra = `<div class="rc-faktor">
+          <div class="rc-fk-bar"><i style="left:${pos.toFixed(1)}%"></i></div>
+          <div class="rc-fk-marks"><span>12×<small>günstig</small></span><span>20×</span><span>28×</span><span>40×<small>teuer</small></span></div>
         </div>`;
-      }
-      // Zwei Werte gegenüberstellen
-      else if (e.vergleich) {
-        const max = Math.max(e.vergleich.a, e.vergleich.b) || 1;
-        const fmt = (v) => e.vergleich.waehrung === false ? Math.round(v) + " " + (e.vergleich.einheit || "") : eur(v);
-        extra = `<div class="rc-verg">
-          <div class="rc-vg"><span>${esc(e.vergleich.la || "Immobilie")}</span><i style="width:${(e.vergleich.a / max * 100).toFixed(1)}%"></i><b>${e.vergleich.einheit ? Math.round(e.vergleich.a) + " " + e.vergleich.einheit : eur(e.vergleich.a)}</b></div>
-          <div class="rc-vg"><span>${esc(e.vergleich.lb || "Alternative")}</span><i class="alt" style="width:${(e.vergleich.b / max * 100).toFixed(1)}%"></i><b>${e.vergleich.einheit ? Math.round(e.vergleich.b) + " " + e.vergleich.einheit : eur(e.vergleich.b)}</b></div>
-        </div>`;
-      }
-      sheet.querySelector("#rcErgebnis").innerHTML = `
-        ${extra}
-        <div class="rc-zeilen">${e.zeilen.map(z =>
-          `<div class="rc-z${z.gross ? " gross" : ""}"><span>${esc(z.l)}</span><b>${esc(z.v)}</b></div>`).join("")}</div>
-        <div class="rc-fazit">${esc(e.fazit)}</div>
-        ${e.rechtlich ? `<div class="wi-hinweis">Orientierung, keine Rechtsberatung.</div>` : ""}`;
-    };
-    sheet.querySelectorAll(".rc-i").forEach(i => i.addEventListener("input", rechnen));
-    rechnen();
+    }
+    else if (e.grenzen) {
+      const g = e.grenzen, max = Math.max(g.kappung, g.vergleich) || 1;
+      const bar = (v, kl, l) => `<div class="rc-vg"><span>${l}</span><i class="${kl}" style="width:${(v / max * 100).toFixed(1)}%"></i><b>${eur(v)}</b></div>`;
+      extra = `<div class="rc-verg">${bar(g.aktuell, "grau", "heute")}${bar(g.kappung, "alt", "Kappung")}${bar(g.vergleich, "alt", "Vergleich")}${bar(g.neu, "", "zulässig")}</div>`;
+    }
+    else if (e.vergleich) {
+      const max = Math.max(e.vergleich.a, e.vergleich.b) || 1;
+      const f = (v) => e.vergleich.einheit ? Math.round(v) + " " + e.vergleich.einheit : eur(v);
+      extra = `<div class="rc-verg">
+        <div class="rc-vg"><span>${esc(e.vergleich.la || "Immobilie")}</span><i style="width:${(e.vergleich.a / max * 100).toFixed(1)}%"></i><b>${f(e.vergleich.a)}</b></div>
+        <div class="rc-vg"><span>${esc(e.vergleich.lb || "Alternative")}</span><i class="alt" style="width:${(e.vergleich.b / max * 100).toFixed(1)}%"></i><b>${f(e.vergleich.b)}</b></div>
+      </div>`;
+    }
+    return `${extra}
+      <div class="rc-zeilen">${e.zeilen.map(z =>
+        `<div class="rc-z${z.gross ? " gross" : ""}"><span>${esc(z.l)}</span><b>${esc(z.v)}</b></div>`).join("")}</div>
+      <div class="rc-fazit">${esc(e.fazit)}</div>
+      ${e.rechtlich ? `<div class="wi-hinweis">Orientierung, keine Rechtsberatung.</div>` : ""}`;
+  }
+
+  // Passende Artikel und Rechner unter dem Ergebnis anbieten
+  function verwandtes(r) {
+    const artikel = WISSEN.filter(a => a.kat === r.kat || (r.kat === "kauf" && a.kat === "grundlagen")).slice(0, 2);
+    const andere = RECHNER.filter(x => x.kat === r.kat && x.id !== r.id).slice(0, 2);
+    if (!artikel.length && !andere.length) return "";
+    return `${efTitel("Passt dazu")}
+      <div class="rc-mehr">
+        ${artikel.map(a => `<button class="rc-mehr-i" data-oeffne-wissen="${a.id}">
+          <span class="rc-mehr-ic">${svg(a.icon || "chart")}</span>
+          <span class="rc-mehr-tx"><b>${esc(a.titel)}</b><small>Zum Nachlesen</small></span></button>`).join("")}
+        ${andere.map(x => `<button class="rc-mehr-i" data-oeffne-rechner="${x.id}">
+          <span class="rc-mehr-ic">${svg(x.icon)}</span>
+          <span class="rc-mehr-tx"><b>${esc(x.titel)}</b><small>Rechner</small></span></button>`).join("")}
+      </div>`;
   }
 
   // Kleines Liniendiagramm für den Zinseszins-Verlauf
