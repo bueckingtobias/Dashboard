@@ -399,7 +399,8 @@
 .gr-p span{font-size:13.5px;color:var(--tx-1);line-height:1.55}
 
 /* Preise */
-.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch;margin-top:8px}
+.plans{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;align-items:stretch;max-width:820px;margin:8px auto 0}
+.plans .plan ul{flex:1 0 auto;align-content:start}
 .plan{position:relative;background:var(--ink-2);border:1px solid var(--line);border-radius:var(--lr-lg);padding:32px 28px 28px;display:flex;flex-direction:column}
 .plan.top{border-color:rgba(34,197,94,.45);background:linear-gradient(180deg,rgba(34,197,94,.1),var(--ink-2) 42%);box-shadow:0 30px 70px -30px rgba(34,197,94,.4)}
 .plan.life{border-color:rgba(245,158,11,.45);background:linear-gradient(180deg,rgba(245,158,11,.1),var(--ink-2) 42%)}
@@ -959,18 +960,20 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .anlegen-item .sub-v{color:var(--softer);display:grid;place-items:center}
 .anlegen-item .sub-v svg{width:18px;height:18px}
 .anlegen-item:hover .sub-v{color:var(--mint-2)}
-.anlegen-item.locked{opacity:.72}
 .anlegen-sep{height:1px;background:var(--stroke);margin:8px 4px}
 .lock-badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
   color:var(--mint-2);background:color-mix(in srgb,var(--mint) 15%,transparent);
   padding:2px 7px;border-radius:20px;margin-left:6px;vertical-align:middle}
+/* ===== PREMIUM-MODULE: GESPERRTE VORSCHAU ===== */
+.modul-sperre{border-style:dashed}
+.ms-kopf{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.ms-tx{flex:1;min-width:0}
+.ms-tx .card-s{margin-top:5px;line-height:1.5}
+.ms-lesen{margin-top:10px}
 .anlegen-kopf{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:8px;
   background:color-mix(in srgb,var(--mint) 10%,transparent);border:1px solid color-mix(in srgb,var(--mint) 25%,transparent);
   border-radius:13px;font-family:var(--fdisp);font-weight:600;font-size:15px;color:var(--mint-2)}
 .anlegen-kopf svg{width:22px;height:22px}
-.sub-cat{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--softer);padding:10px 6px 5px}
-.sub-cat:first-child{padding-top:2px}
 .sub-empty{padding:18px 8px;text-align:center;font-size:13px;color:var(--softer);line-height:1.5}
 .rail-btn{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;cursor:pointer;position:relative;
   color:var(--soft);border:1px solid transparent;transition:.16s;background:transparent}
@@ -1226,6 +1229,8 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .up-plan-s{font-size:12px;color:var(--softer);margin-top:2px}
 .up-plan-p{font-family:var(--fdisp);font-size:22px;font-weight:600;color:var(--mint-2)}
 .up-plan-p span{font-size:12px;color:var(--softer);font-weight:400}
+.up-plan-p{white-space:nowrap;flex:0 0 auto}
+.up-plan-h>div:first-child{min-width:0;padding-right:14px}
 .up-feats{list-style:none;padding:0;margin:0 0 18px}
 .up-feats li{position:relative;padding-left:26px;margin-bottom:9px;font-size:13.5px;color:var(--text)}
 .up-feats li:before{content:"";position:absolute;left:0;top:3px;width:16px;height:16px;border-radius:50%;
@@ -1248,6 +1253,7 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .tarif-n{font-family:var(--fdisp);font-size:16px;font-weight:600;margin-bottom:4px}
 .tarif-p{font-family:var(--fdisp);font-size:19px;font-weight:600;color:var(--mint-2);margin-bottom:14px}
 .tarif-p span{font-size:11px;color:var(--softer);font-weight:400}
+.tarif-k{font-size:11.5px;color:var(--softer);line-height:1.4;margin:-8px 0 12px}
 .tarif-feats{list-style:none;padding:0;margin:0 0 16px;flex:1}
 .tarif-feats li{position:relative;padding-left:18px;margin-bottom:7px;font-size:12px;color:var(--soft);line-height:1.3}
 .tarif-feats li:before{content:"";position:absolute;left:0;top:4px;width:11px;height:11px;border-radius:50%;background:var(--mint);
@@ -1278,14 +1284,6 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .wc-steps span{width:28px;height:4px;border-radius:2px;background:var(--stroke-2);transition:.3s}
 .wc-steps span.on{background:var(--mint);width:34px}
 .wc-steps span.done{background:color-mix(in srgb,var(--mint) 55%,transparent)}
-.ob-arten{display:flex;flex-direction:column;gap:11px}
-.ob-art{display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
-  background:color-mix(in srgb,var(--bg) 50%,transparent);border:1px solid var(--stroke-2);
-  border-radius:15px;padding:16px 18px;transition:.15s;color:var(--text);font-family:var(--fbody)}
-.ob-art:hover{border-color:var(--mint);background:color-mix(in srgb,var(--mint) 8%,transparent)}
-.ob-art svg{width:26px;height:26px;color:var(--mint-2);flex:0 0 auto}
-.ob-art-n{font-size:15px;font-weight:600}
-.ob-art-m{font-size:12.5px;color:var(--softer);margin-top:2px}
 .wc-skip{text-align:center;margin-top:18px}
 .wc-skip a{font-size:12.5px;color:var(--softer);text-decoration:underline;text-underline-offset:2px}
 .frage-opts{display:flex;flex-direction:column;gap:10px}
@@ -1436,12 +1434,14 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
   .gwt-kopf{display:none}
   .gwt-row{grid-template-columns:1fr auto;gap:4px 10px;padding:13px 12px}
   .gwt-n{grid-column:1;grid-row:1}
-  .gwt-row .gwt-c:nth-of-type(1){grid-column:2;grid-row:1;font-size:12px}
-  .gwt-row .gwt-c:nth-of-type(2){grid-column:2;grid-row:2}
-  .gwt-row .gwt-c:nth-of-type(3){grid-column:1;grid-row:2;text-align:left;font-size:12px}
-  .gwt-row .gwt-c:nth-of-type(3):before{content:"Quote "}
-  .gwt-row .gwt-c:nth-of-type(4){grid-column:1;grid-row:3;text-align:left;font-size:11.5px}
-  .gwt-row .gwt-c:nth-of-type(4):before{content:"gebaut "}
+  .gwt-row .gwt-c:nth-child(2){grid-column:2;grid-row:1;font-size:12px}
+  .gwt-row .gwt-c:nth-child(2):before{content:"Angebot "}
+  .gwt-row .gwt-c:nth-child(3){grid-column:2;grid-row:2}
+  .gwt-row .gwt-c:nth-child(3):before{content:"gezahlt ";font-family:var(--fbody);font-size:11.5px;font-weight:400;color:var(--softer)}
+  .gwt-row .gwt-c:nth-child(4){grid-column:1;grid-row:2;text-align:left;font-size:12px}
+  .gwt-row .gwt-c:nth-child(4):before{content:"Quote "}
+  .gwt-row .gwt-c:nth-child(5){grid-column:1;grid-row:3;text-align:left;font-size:11.5px}
+  .gwt-row .gwt-c:nth-child(5):before{content:"gebaut "}
   .gw-kacheln.drei{grid-template-columns:1fr 1fr}
   .gw-kachel b{font-size:18px}
   .gwr-kopf{display:none}
@@ -1576,10 +1576,11 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
   .nk-t-kopf{display:none}
   .nk-t-row{grid-template-columns:1fr auto;gap:4px 10px}
   .nk-t-n{grid-column:1;grid-row:1}
-  .nk-t-row .nk-c:nth-of-type(1){grid-column:2;grid-row:1}
-  .nk-t-row .nk-c:nth-of-type(2){grid-column:1;grid-row:2;text-align:left;font-size:11.5px}
-  .nk-t-row .nk-c:nth-of-type(2):before{content:"Voraus "}
-  .nk-t-row .nk-c:nth-of-type(3){grid-column:2;grid-row:2}
+  .nk-t-row .nk-c:nth-child(2){grid-column:2;grid-row:1}
+  .nk-t-row .nk-c:nth-child(2):before{content:"Anteil ";font-size:11.5px;color:var(--softer)}
+  .nk-t-row .nk-c:nth-child(3){grid-column:1;grid-row:2;text-align:left;font-size:11.5px}
+  .nk-t-row .nk-c:nth-child(3):before{content:"Voraus "}
+  .nk-t-row .nk-c:nth-child(4){grid-column:2;grid-row:2}
   .nk-erg-z{font-size:32px}
 }
 
@@ -1782,20 +1783,6 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .field.sel select:focus{border-color:var(--mint);box-shadow:0 0 0 3px color-mix(in srgb,var(--mint) 15%,transparent)}
 .field.sel select option{background:var(--panel-solid);color:var(--text)}
 
-/* Slider (AirBNB-Auslastung) */
-.sld-wrap{background:color-mix(in srgb,var(--bg) 45%,transparent);border:1px solid var(--stroke);border-radius:16px;padding:16px 18px;margin-bottom:16px}
-.sld-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
-.sld-lab{font-size:12.5px;color:var(--soft)}
-.sld-val{font-family:var(--fdisp);font-size:26px;font-weight:600;color:var(--mint-2);letter-spacing:-.02em}
-input[type=range].sld{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:99px;
-  background:linear-gradient(90deg,var(--mint) var(--p,65%),color-mix(in srgb,var(--bg) 70%,transparent) var(--p,65%));outline:none;margin:0}
-input[type=range].sld::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
-  background:linear-gradient(150deg,var(--mint-2),var(--mint));border:2px solid var(--bg);cursor:grab;
-  box-shadow:0 3px 10px rgba(0,0,0,.4)}
-input[type=range].sld::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.1)}
-input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%;border:2px solid var(--bg);
-  background:var(--mint);cursor:grab}
-.sld-marks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--softer);margin-top:8px}
 /* Timeline (Kalender-Insights) */
 .tl{display:flex;flex-direction:column;gap:0}
 .tl-i{display:flex;gap:12px;padding-bottom:14px;position:relative}
@@ -2245,7 +2232,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
               <div class="ck-list">
                 <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/></svg></span><span class="nm">Bergstraße 12<small>5 Einheiten · 4 vermietet</small></span><b>4.180 €</b></div>
                 <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span><span class="nm">Parkallee 8<small>1 Einheit · vermietet</small></span><b>2.940 €</b></div>
-                <div class="ck-row"><span class="ic fe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18M6 10V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/></svg></span><span class="nm">Ferienwohnung See<small>Kurzzeit · Saison läuft</small></span><b>1.206 €</b></div>
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span><span class="nm">Seestraße 4<small>1 Einheit · vermietet</small></span><b>1.206 €</b></div>
               </div>
             </div>
           </div>
@@ -2374,7 +2361,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
                 <div class="ui-list" style="margin-top:14px">
                   <div class="ob"><div class="t"><span>Bergstraße 12</span><b>4.180 €</b></div><div class="u"><span>4/5</span><span class="ui-bar"><i style="--w:80%"></i></span><span class="pill gr">6,1 %</span></div></div>
                   <div class="ob"><div class="t"><span>Parkallee 8</span><b>2.940 €</b></div><div class="u"><span>1/1</span><span class="ui-bar"><i style="--w:100%"></i></span><span class="pill gr">5,4 %</span></div></div>
-                  <div class="ob"><div class="t"><span>Ferienwohnung See</span><b>1.206 €</b></div><div class="u"><span>Belegung</span><span class="ui-bar"><i style="--w:71%"></i></span><span class="pill am">71 %</span></div></div>
+                  <div class="ob"><div class="t"><span>Seestraße 4</span><b>1.206 €</b></div><div class="u"><span>1/1</span><span class="ui-bar"><i style="--w:100%"></i></span><span class="pill gr">6,6 %</span></div></div>
                 </div>
               </div>
             </div>
@@ -2464,13 +2451,13 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 
       <article class="bc bc-4 rv d1">
         <div>
-          <h3>Auch Ferienwohnung und Pachtland.</h3>
-          <p>Drei Vermietungsarten in einem Portfolio – statt in drei Programmen.</p>
+          <h3>Vom Apartment bis zum Mehrfamilienhaus.</h3>
+          <p>Alle Mietobjekte in einem Portfolio – statt in drei Tabellen.</p>
         </div>
         <div class="vis arten">
-          <div class="art"><span class="ic a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/></svg></span><span class="nm">Klassische Vermietung<small>Wohnung, Mehrfamilienhaus, Gewerbe</small></span></div>
-          <div class="art"><span class="ic b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18M6 10V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/></svg></span><span class="nm">Ferienwohnung &amp; Kurzzeit<small>Belegung und Saison inklusive</small></span></div>
-          <div class="art"><span class="ic c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M4 20V10l8-6 8 6v10"/><path d="M4 14h16"/></svg></span><span class="nm">Landpacht &amp; Pachtverträge<small>Jahrespacht, Laufzeiten, Fälligkeiten</small></span></div>
+          <div class="art"><span class="ic a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M10 21v-6h4v6"/></svg></span><span class="nm">Eigentumswohnung<small>Einzelne Wohnung mit einem Mieter</small></span></div>
+          <div class="art"><span class="ic b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg></span><span class="nm">Mehrfamilienhaus<small>Mehrere Einheiten unter einem Dach</small></span></div>
+          <div class="art"><span class="ic c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9l1.5-5h13L20 9M4 9h16M5 9v11h14V9"/><path d="M9.5 20v-6h5v6"/></svg></span><span class="nm">Gewerbeeinheit<small>Laden, Büro oder Praxis</small></span></div>
         </div>
       </article>
 
@@ -2522,7 +2509,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
       <article class="step rv d1">
         <div class="step-n">Schritt 2</div>
         <h3>Einheiten und Mieten eintragen</h3>
-        <p>Mieter, Kaltmiete, Zahltag – für jede Wohnung. Ferienwohnung und Pachtland gehen genauso.</p>
+        <p>Mieter, Kaltmiete, Zahltag – für jede Wohnung.</p>
         <div class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>etwa 3 Minuten</div>
       </article>
       <article class="step rv d2">
@@ -2575,8 +2562,8 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
   <div class="lwrap">
     <div class="sec-h center rv">
       <div class="leb">Preise</div>
-      <h2 class="h2">Fair kalkuliert – oder einmal für immer.</h2>
-      <p class="lead">Die Monatstarife starten mit 30 Tagen ohne Kosten, kündbar zum Monatsende. Lifetime gibt es nur in der Startphase.</p>
+      <h2 class="h2">Zwei Tarife. Fair kalkuliert.</h2>
+      <p class="lead">Beide Tarife starten mit 30 Tagen ohne Kosten und sind zum Monatsende kündbar.</p>
     </div>
     <div class="plans">
       <article class="plan rv">
@@ -2584,10 +2571,11 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
         <div class="plan-p">19,99 €<span>/ Monat</span></div>
         <p class="plan-d">Für den Einstieg mit wenigen Wohnungen.</p>
         <ul>
-          <li>Bis zu 3 Objekte</li>
-          <li>Bis zu 10 Wohneinheiten</li>
-          <li>Klassische Vermietung</li>
-          <li>Alle Auswertungen, Mietkontrolle, Tools</li>
+          <li>Bis zu 3 Objekte und 10 Einheiten</li>
+          <li>1 Nutzer</li>
+          <li>Mieter, Mieten und Mieteingänge im Blick</li>
+          <li>Finanzierungen mit Tilgungsplan</li>
+          <li>Kennzahlen, Kalender und Lernecke</li>
         </ul>
         <button class="btn btn-g btn-block" type="button" data-warte="Basic">Für Basic vormerken</button>
         <div class="plan-note">30 Tage kostenlos testen</div>
@@ -2596,29 +2584,16 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
         <div class="plan-flag">Für wachsende Portfolios</div>
         <div class="plan-n">Premium</div>
         <div class="plan-p">29,99 €<span>/ Monat</span></div>
-        <p class="plan-d">Wenn mehr dazukommt als nur Wohnungen.</p>
+        <p class="plan-d">Für größere Bestände, Teams und alle, die abrechnen und sanieren.</p>
         <ul>
           <li>Unbegrenzt Objekte und Einheiten</li>
-          <li>Ferienwohnung und Kurzzeitvermietung</li>
-          <li>Landpacht und Pachtverträge</li>
-          <li>Volles Controlling über alles</li>
+          <li>Bis zu 3 Nutzer mit eigenem Login</li>
+          <li>Alles aus Basic</li>
+          <li>Nebenkostenabrechnung je Einheit</li>
+          <li>Handwerker und Gewerke: Zahlung gegen Fortschritt</li>
         </ul>
         <button class="btn btn-p btn-block" type="button" data-warte="Premium">Für Premium vormerken</button>
         <div class="plan-note">30 Tage kostenlos testen</div>
-      </article>
-      <article class="plan life rv d2">
-        <div class="plan-flag">Nur 100 Plätze</div>
-        <div class="plan-n">Lifetime</div>
-        <div class="plan-p">199,99 €<span>einmalig</span></div>
-        <p class="plan-d">Einmal zahlen, dauerhaft nutzen. Danach gibt es ESTRIQ nur noch im Monatstarif.</p>
-        <ul>
-          <li>Alles aus Premium</li>
-          <li>Keine monatlichen Kosten – nie</li>
-          <li>Alle künftigen Funktionen inklusive</li>
-          <li>Streng limitiert auf 100 Zugänge</li>
-        </ul>
-        <button class="btn btn-g btn-block" type="button" data-warte="Lifetime" style="border-color:rgba(245,158,11,.5)">Lifetime-Platz reservieren</button>
-        <div class="plan-note">Wird nach der Startphase dauerhaft eingestellt.</div>
       </article>
     </div>
     <div class="plans-note rv">
@@ -2639,7 +2614,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
     <div class="faq rv">
       <details>
         <summary>Für wen ist ESTRIQ gemacht?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
-        <p>Für private Vermieter mit 1 bis 30 Einheiten: Eigentumswohnungen, Mehrfamilienhäuser, Ferienwohnungen, Pachtland. Für alle, die ihren Bestand bisher in Excel, in der Bank-App oder im Kopf führen – und es genauer wissen wollen.</p>
+        <p>Für private Vermieter mit 1 bis 30 Einheiten: Eigentumswohnungen, Mehrfamilienhäuser, Gewerbeeinheiten. Für alle, die ihren Bestand bisher in Excel, in der Bank-App oder im Kopf führen – und es genauer wissen wollen.</p>
       </details>
       <details>
         <summary>Was unterscheidet ESTRIQ von Excel?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
@@ -2663,7 +2638,7 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
       </details>
       <details>
         <summary>Was passiert nach den 30 Tagen?<i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i></summary>
-        <p>Der gewählte Monatstarif läuft weiter und ist zum Monatsende kündbar. Lifetime hat keine Laufzeit – einmal gezahlt, dauerhaft dabei, inklusive aller künftigen Funktionen.</p>
+        <p>Der gewählte Monatstarif läuft weiter und ist zum Monatsende kündbar.</p>
       </details>
     </div>
   </div>
@@ -2744,7 +2719,6 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
           <option value="Unentschieden">Noch unentschieden</option>
           <option value="Basic">Basic – 19,99 € / Monat</option>
           <option value="Premium">Premium – 29,99 € / Monat</option>
-          <option value="Lifetime">Lifetime – 199,99 € einmalig</option>
         </select>
       </div>
       <button class="btn btn-p btn-lg btn-block" type="submit">Eintragen</button>
@@ -2911,10 +2885,10 @@ input[type=range].sld::-moz-range-thumb{width:20px;height:20px;border-radius:50%
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=48"></script>
-<script src="./data-save.js?v=48"></script>
-<script src="./finance-engine.js?v=48"></script>
-<script src="./app.js?v=48"></script>
+<script src="./data-loader.js?v=49"></script>
+<script src="./data-save.js?v=49"></script>
+<script src="./finance-engine.js?v=49"></script>
+<script src="./app.js?v=49"></script>
 
 <script>
 /* =====================================================================
