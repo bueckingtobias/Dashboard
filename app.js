@@ -41,43 +41,105 @@
   /* ---------- AUTH ---------- */
   let currentUser = null;   // { id, name, anrede }
 
-  // Lädt das Profil des angemeldeten Nutzers aus der Datenbank
+  const ZUGANG_ENTFERNT = "Dein Zugang wurde entfernt. Bitte wende dich an den Inhaber des Kontos.";
+
+  // Lädt das Profil des angemeldeten Nutzers aus der Datenbank.
+  // Gelesen wird ausdrücklich die eigene Zeile: In einem Konto mit mehreren Nutzern
+  // liefert die Datenbank sonst auch die Zeilen der Kollegen.
   async function ladeProfil(session) {
     const mail = ((session.user && session.user.email) || "");
-    let profil = null;
-    try {
-      const { data } = await window.sb.from("mitglieder")
-        .select("name, email, avatar_url, rolle, theme, accent, tipps_an").limit(1).single();
-      profil = data;
-    } catch (_) {}
-    const name = (profil && profil.name) || mail.split("@")[0];
+    const { data, error } = await window.sb.from("mitglieder")
+      .select("name, email, avatar_url, rolle, theme, accent, tipps_an")
+      .eq("auth_user_id", session.user.id).limit(1);
+    if (error) throw error;
+    const profil = data && data[0];
+    if (!profil) {
+      // Angemeldet, aber kein Mitglied mehr: Der Zugang wurde entfernt.
+      const e = new Error(ZUGANG_ENTFERNT);
+      e.keinMitglied = true;
+      throw e;
+    }
+    const name = profil.name || mail.split("@")[0];
     currentUser = {
       id: session.user.id,
       name: name,
       anrede: (name || "").split(" ")[0],
       email: mail,
-      avatar: profil && profil.avatar_url || null,
-      rolle: profil && profil.rolle || "inhaber",
-      theme: profil && profil.theme || null,
-      accent: profil && profil.accent || null,
-      tipps_an: profil && profil.tipps_an === false ? false : true
+      avatar: profil.avatar_url || null,
+      rolle: profil.rolle || "bearbeiter",
+      theme: profil.theme || null,
+      accent: profil.accent || null,
+      tipps_an: profil.tipps_an === false ? false : true
     };
+    merkUmzug();
     // Farbschema aus dem Profil anwenden (geräteübergreifend).
-    // Fällt auf den lokal gespeicherten Wert zurück, sonst Standard Graphit/Silber.
-    const theme = currentUser.theme || localStorage.getItem("estriq_theme") || "graphit";
-    const accent = currentUser.accent || localStorage.getItem("estriq_accent") || "buecking";
+    // Der im Gerät gemerkte Wert zählt nur, wenn er von diesem Nutzer stammt.
+    // Sonst Standard Graphit/Silber.
+    let lokalTheme = null, lokalAccent = null;
+    try {
+      const besitzer = localStorage.getItem("estriq_nutzer");
+      if (!besitzer || besitzer === currentUser.id) {
+        lokalTheme = localStorage.getItem("estriq_theme");
+        lokalAccent = localStorage.getItem("estriq_accent");
+      }
+    } catch (_) {}
+    const theme = currentUser.theme || lokalTheme || "graphit";
+    const accent = currentUser.accent || lokalAccent || "buecking";
     themeAnwenden(theme, accent);
     themeSpeichern(theme, accent);
   }
+
+  /* ---------- GERÄTESPEICHER JE NUTZER ---------- */
+  // Was die App im Gerät merkt (Onboarding erledigt, Zähler für Tipps), gilt je Login.
+  // So übernimmt am selben Gerät niemand den Stand eines anderen Nutzers.
+  const merkKey = (name) => name + ":" + (currentUser ? currentUser.id : "gast");
+  function merkLesen(name) { try { return localStorage.getItem(merkKey(name)); } catch (_) { return null; } }
+  function merkSetzen(name, wert) { try { localStorage.setItem(merkKey(name), wert); } catch (_) {} }
+  function merkLoeschen(name) { try { localStorage.removeItem(merkKey(name)); } catch (_) {} }
+  // Einmaliger Umzug der früheren, gemeinsamen Einträge zu dem Nutzer, dem das Gerät bisher gehörte
+  function merkUmzug() {
+    try {
+      const besitzer = localStorage.getItem("estriq_nutzer");
+      const meins = !besitzer || besitzer === currentUser.id;
+      ["estriq_onboarding_fertig", "estriq_tarif_gewaehlt",
+       "estriq_checkout_aus_onboarding", "estriq_login_zaehler"].forEach(k => {
+        const alt = localStorage.getItem(k);
+        if (alt === null) return;
+        if (meins && localStorage.getItem(merkKey(k)) === null) localStorage.setItem(merkKey(k), alt);
+        localStorage.removeItem(k);
+      });
+    } catch (_) {}
+  }
+
+  // Angemeldet, aber kein Mitglied: abmelden und den Grund im Login-Fenster nennen
+  async function zugangEntfernt() {
+    try { await window.sb.auth.signOut({ scope: "local" }); } catch (_) {}
+    currentUser = null;
+    loginOeffnen("anmelden");
+    const m = $("#loginMsg");
+    if (m) { m.textContent = ZUGANG_ENTFERNT; m.className = "login-msg bad"; }
+  }
+
   // Prüft die Supabase-Sitzung
   async function sessionOK() {
+    let session = null;
     try {
       if (!window.sb) return false;
-      const { data: { session } } = await window.sb.auth.getSession();
+      ({ data: { session } } = await window.sb.auth.getSession());
       if (!session) return false;
       await ladeProfil(session);
       return true;
-    } catch { return false; }
+    } catch (e) {
+      if (e && e.keinMitglied) { await zugangEntfernt(); return false; }
+      if (session) {
+        // Angemeldet, aber das Profil ließ sich nicht laden → Login-Popup mit Hinweis
+        loginOeffnen("anmelden");
+        const m = $("#loginMsg");
+        if (m) { m.textContent = window.fehlerText(e); m.className = "login-msg bad"; }
+        console.error(e);
+      }
+      return false;
+    }
   }
 
   async function tryLogin() {
@@ -103,7 +165,13 @@
       D = window.DASHBOARD_DATA;
       enterApp();
     } catch (e) {
-      msg.textContent = window.fehlerText(e);
+      if (e && e.keinMitglied) {
+        try { await window.sb.auth.signOut({ scope: "local" }); } catch (_) {}
+        currentUser = null;
+        msg.textContent = ZUGANG_ENTFERNT;
+      } else {
+        msg.textContent = window.fehlerText(e);
+      }
       msg.className = "login-msg bad";
       console.error(e);
     }
@@ -112,6 +180,8 @@
   async function logout() {
     try { if (window.sb) await window.sb.auth.signOut(); } catch (_) {}
     localStorage.removeItem(SESSION);
+    // Nichts aus dieser Sitzung für den nächsten Nutzer am selben Gerät stehen lassen
+    try { sessionStorage.removeItem("estriq_miete_spaeter"); } catch (_) {}
     location.reload();
   }
 
@@ -146,6 +216,8 @@
       if (theme === "graphit") localStorage.removeItem("estriq_theme");
       else localStorage.setItem("estriq_theme", theme);
       localStorage.setItem("estriq_accent", accent || "buecking");
+      // Merken, wessen Farben das sind – der nächste Nutzer am Gerät übernimmt sie nicht
+      if (currentUser) localStorage.setItem("estriq_nutzer", currentUser.id);
     } catch (_) {}
   }
   // Farbschema am Nutzer in der Datenbank speichern (geräteübergreifend)
@@ -198,7 +270,11 @@
     nebenkosten: { name: "Nebenkostenabrechnung", icon: "beleg",
       nutzen: "Kostenarten erfassen, auf die Mieter verteilen und je Einheit Guthaben oder Nachzahlung sehen." },
     gewerke: { name: "Handwerker und Gewerke", icon: "tool",
-      nutzen: "Angebot, Rechnungen und Baufortschritt je Handwerker gegenüberstellen. Du siehst sofort, ob du mehr gezahlt hast, als gebaut wurde." }
+      nutzen: "Angebot, Rechnungen und Baufortschritt je Handwerker gegenüberstellen. Du siehst sofort, ob du mehr gezahlt hast, als gebaut wurde." },
+    nutzer: { name: "Mehrere Nutzer", icon: "user",
+      titel: "Mehrere Nutzer gibt es in Premium",
+      vorsatz: "Im Basic-Tarif gehört ein Nutzer zum Konto. ",
+      nutzen: "Lade bis zu zwei weitere Personen in dein Konto ein. Alle sehen dieselben Objekte und Zahlen, jede Person hat ihr eigenes Login und ihr eigenes Farbschema." }
   };
   const leistungsListe = (plan) => TARIFE[plan].leistungen.map(l => `<li>${esc(l)}</li>`).join("");
 
@@ -206,6 +282,25 @@
     return (D && D.abo) || { tarif: "premium", roh_tarif: "test", objekte: 0, einheiten: 0 };
   }
   function istPremium() { return abo().tarif === "premium"; }
+  // Ein Abo besteht erst, wenn Stripe es gemeldet hat. Die Kundennummer allein genügt nicht,
+  // sie wird schon beim Öffnen der Bezahlseite gespeichert.
+  function hatAbo() { const a = abo(); return a.hat_abo != null ? !!a.hat_abo : !!a.hat_stripe; }
+
+  /* ---------- ROLLEN ---------- */
+  // Inhaber: verwaltet Abo und Nutzer, kann das Konto löschen.
+  // Nutzer (in der Datenbank "bearbeiter"): sieht und bearbeitet alle Daten.
+  function istInhaber() { return !!currentUser && currentUser.rolle === "inhaber"; }
+  function inhaberName() { const n = abo().inhaber_name; return n ? String(n) : ""; }
+  function nurInhaberSatz() {
+    const n = inhaberName();
+    return "Den Tarif kann nur der Inhaber des Kontos ändern" + (n ? ": " + n + "." : ".");
+  }
+  // Fehlt eine Funktion in der Datenbank, wurde die zugehörige SQL-Datei noch nicht ausgeführt
+  function funktionFehlt(e) {
+    const s = (String((e && e.code) || "") + " " + String((e && (e.message || e.details || e.hint)) || "")).toLowerCase();
+    return s.includes("pgrst202") || s.includes("42883")
+      || s.includes("could not find the function") || s.includes("does not exist");
+  }
   function istGesperrt() { return abo().tarif === "gesperrt"; }
   // Premium-Module sind nur mit Premium bearbeitbar (Testphase zählt wie Premium)
   function hatModul() { return istPremium(); }
@@ -236,12 +331,16 @@
 
   function openUpgradeSheet(grund, modulId) {
     const b = TARIFE.basic, prem = TARIFE.premium;
+    const darf = istInhaber();   // nur der Inhaber kann den Tarif wechseln
     const mod = PREMIUM_MODULE[modulId];
     const texte = {
       objekte:   { t: "Objekt-Grenze erreicht", d: `Im Basic-Tarif kannst du bis zu ${b.objekte} Objekte verwalten. Mit Premium werden es unbegrenzt viele.` },
       einheiten: { t: "Einheiten-Grenze erreicht", d: `Basic umfasst bis zu ${b.einheiten} Einheiten. Premium hebt die Grenze vollständig auf.` },
-      modul:     { t: (mod ? mod.name : "Dieses Modul") + " gehört zu Premium", d: "Im Basic-Tarif ist dieses Modul gesperrt. " + (mod ? mod.nutzen : "") },
-      gesperrt:  { t: "Bearbeiten pausiert", d: "Dein Testzeitraum ist abgelaufen oder es liegt keine gültige Zahlung vor. Deine Daten bleiben erhalten und lesbar — mit einem aktiven Abo kannst du sie wieder bearbeiten." }
+      modul:     { t: mod && mod.titel ? mod.titel : (mod ? mod.name : "Dieses Modul") + " gehört zu Premium",
+                   d: (mod && mod.vorsatz ? mod.vorsatz : "Im Basic-Tarif ist dieses Modul gesperrt. ") + (mod ? mod.nutzen : "") },
+      gesperrt:  { t: "Bearbeiten pausiert", d: darf
+        ? "Dein Testzeitraum ist abgelaufen oder es liegt keine gültige Zahlung vor. Deine Daten bleiben erhalten und lesbar — mit einem aktiven Abo kannst du sie wieder bearbeiten."
+        : "Für dieses Konto läuft gerade kein gültiges Abo. Die Daten bleiben erhalten und lesbar — bearbeiten könnt ihr wieder, sobald ein Abo aktiv ist." }
     };
     const info = texte[grund] || texte.objekte;
     const body = `
@@ -257,11 +356,13 @@
           <div class="up-plan-p">${prem.preis}<span>/Monat</span></div>
         </div>
         <ul class="up-feats">${leistungsListe("premium")}</ul>
-        <button class="up-cta" id="upCta">Auf Premium wechseln</button>
-        <div class="up-note">Erster Monat kostenlos · monatlich kündbar</div>
+        ${darf ? `<button class="up-cta" id="upCta">Auf Premium wechseln</button>
+        <div class="up-note">Erster Monat kostenlos · monatlich kündbar</div>`
+          : `<div class="nu-nur-inhaber">${esc(nurInhaberSatz())}</div>`}
       </div>`;
     const sheet = openSheet(grund === "gesperrt" ? "Abo" : "Mehr freischalten", "", body);
-    sheet.querySelector("#upCta").onclick = () => { closeSheet(); openTarifSheet(); };
+    const cta = sheet.querySelector("#upCta");
+    if (cta) cta.onclick = () => { closeSheet(); openTarifSheet(); };
   }
 
   // Name des gebuchten Tarifs. Testphase und Onboarding sind kein gebuchter Tarif.
@@ -272,6 +373,7 @@
 
   // Tarifübersicht (Vergleich beider Stufen)
   function openTarifSheet() {
+    if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const a = abo();
     const aktuell = gebuchterTarif();
     const karte = (plan) => {
@@ -315,6 +417,7 @@
 
   // Öffnet das Stripe-Kundenportal (Abo ansehen, Zahlungsmittel, kündigen)
   async function oeffnePortal(link) {
+    if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const alt = link.textContent;
     link.textContent = "Portal wird geöffnet…";
     try {
@@ -335,6 +438,7 @@
 
   // Leitet zur von Stripe gehosteten Bezahlseite (30 Tage Test, Karte vorab)
   async function starteCheckout(plan, sheet) {
+    if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const msg = sheet.querySelector("#rabattMsg");
     msg.textContent = "Bezahlseite wird geöffnet…"; msg.className = "ef-msg";
     try {
@@ -358,6 +462,7 @@
   }
 
   async function loeseRabattEin(sheet) {
+    if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const code = (sheet.querySelector("#rabattCode").value || "").trim();
     const msg = sheet.querySelector("#rabattMsg");
     if (!code) { msg.textContent = "Bitte Code eingeben."; msg.className = "ef-msg bad"; return; }
@@ -477,8 +582,11 @@
   /* ---------- PROFIL ---------- */
   let profilAvatarDatei = null;
 
-  function openProfilSheet() {
+  function openProfilSheet(opt) {
     if (!currentUser) return;
+    const zuNutzer = !!(opt && opt.zu === "nutzer");   // nach dem Einladen zurück an dieselbe Stelle
+    const inhaber = istInhaber();
+    const chef = inhaberName();
     const ava = currentUser.avatar;
     const initial = (currentUser.name || "?").slice(0, 1).toUpperCase();
     const body = `
@@ -519,12 +627,19 @@
       </div>
       ${efTitel("Tarif")}
       <div class="prof-tarif" id="pTarif"></div>
-      <button class="up-cta" id="pTarifBtn" style="margin-top:12px">Tarif verwalten</button>
+      ${inhaber
+        ? `<button class="up-cta" id="pTarifBtn" style="margin-top:12px">Tarif verwalten</button>`
+        : `<div class="ef-h" style="margin-top:10px">${esc(chef ? "Den Tarif verwaltet " + chef + "." : "Den Tarif verwaltet der Inhaber des Kontos.")}</div>`}
+      ${efTitel("Nutzer")}
+      <div class="nu-box" id="pNutzer"></div>
       ${efTitel("Konto")}
       <button class="up-cta" id="pLogout" style="margin-top:4px">Abmelden</button>
       ${efTitel("Gefahrenzone")}
-      <button class="ef-del" id="pDel" style="width:100%">Konto löschen</button>
-      <div class="ef-h" style="margin-top:8px">Löscht dein Konto und alle zugehörigen Daten unwiderruflich.</div>`;
+      <button class="ef-del" id="pDel" style="width:100%">${inhaber ? "Konto löschen" : "Meinen Zugang löschen"}</button>
+      <div class="ef-h" id="pDelHinweis" style="margin-top:8px">${esc(inhaber
+        ? loeschHinweis(Math.max(0, (Number(abo().nutzer) || 1) - 1))
+        : "Entfernt nur deinen eigenen Zugang. Die Daten der Firma bleiben vollständig erhalten.")}</div>
+      <div class="ef-msg" id="pDelMsg"></div>`;
 
     const sheet = openSheet("Mein Profil", currentUser.email || "", body);
 
@@ -564,6 +679,18 @@
     if (ptb) ptb.onclick = () => { closeSheet(); openTarifSheet(); };
     const plo = sheet.querySelector("#pLogout");
     if (plo) plo.onclick = () => logout();
+
+    // Nutzer des Kontos. Für den Inhaber stimmt danach auch der Hinweis beim Löschen.
+    const pn = sheet.querySelector("#pNutzer");
+    if (pn) zeichneNutzer(pn, {
+      aufGeladen: (r) => {
+        const h = sheet.querySelector("#pDelHinweis");
+        if (h && inhaber) h.textContent = loeschHinweis(Math.max(0, (r.mitglieder || []).length - 1));
+        // Nur den Inhalt des Fensters verschieben, nicht das Fenster selbst
+        const b = sheet.querySelector(".sheet-b");
+        if (zuNutzer && b) b.scrollTop += pn.getBoundingClientRect().top - b.getBoundingClientRect().top - 56;
+      }
+    });
 
     // Schalter für Verbesserungs-Vorschläge
     const tp = sheet.querySelector("#pTipps");
@@ -648,35 +775,502 @@
       }
     };
 
-    // Löschen (zweistufig)
+    // Löschen (zweistufig). Inhaber: das ganze Konto. Nutzer: nur der eigene Zugang.
+    // Gelöscht wird in der Datenbank über konto_loeschen(), nicht mehr direkt aus dem Browser.
     const del = sheet.querySelector("#pDel");
+    const delText = inhaber ? "Konto löschen" : "Meinen Zugang löschen";
+    const delRuhe = () => { del.dataset.sicher = ""; del.textContent = delText; del.classList.remove("armed"); };
     del.onclick = async () => {
       if (del.dataset.sicher !== "1") {
         del.dataset.sicher = "1";
-        del.textContent = "Wirklich? Konto endgültig löschen";
+        del.textContent = inhaber ? "Wirklich? Konto endgültig löschen" : "Wirklich? Zugang endgültig löschen";
         del.classList.add("armed");
-        setTimeout(() => {
-          if (del.dataset.sicher === "1") {
-            del.dataset.sicher = ""; del.textContent = "Konto löschen"; del.classList.remove("armed");
-          }
-        }, 4000);
+        setTimeout(() => { if (del.dataset.sicher === "1" && !del.disabled) delRuhe(); }, 4000);
         return;
       }
-      const msg = sheet.querySelector("#pMsg");
-      msg.textContent = "Konto wird gelöscht…"; msg.className = "ef-msg"; del.disabled = true;
+      const msg = sheet.querySelector("#pDelMsg");
+      msg.textContent = inhaber ? "Konto wird gelöscht…" : "Zugang wird gelöscht…";
+      msg.className = "ef-msg"; del.disabled = true;
       try {
-        // Eigene Organisation entfernen (Objekte/Einheiten/Kredite/Termine folgen per Kaskade,
-        // das Mitglied ebenfalls). Das Auth-Konto selbst wird beim nächsten Schritt abgemeldet.
-        const org = await window.meineOrgId();
-        const { error } = await window.sb.from("organisationen").delete().eq("id", org);
+        const { data, error } = await window.sb.rpc("konto_loeschen");
         if (error) throw error;
-        await window.sb.auth.signOut();
+        if (data === "abo_aktiv") {
+          msg.textContent = "Es läuft noch ein Abo. Kündige es zuerst unter „Tarif verwalten“ und dort „Abo verwalten oder kündigen“. Sobald das Abo beendet ist, kannst du das Konto löschen.";
+          msg.className = "ef-msg bad"; del.disabled = false; delRuhe();
+          return;
+        }
+        if (data !== "ok") throw new Error("konto_loeschen: " + data);
+        // Das Login gibt es nicht mehr – nur noch die Sitzung im Gerät beenden
+        try { await window.sb.auth.signOut({ scope: "local" }); } catch (_) {}
+        try { sessionStorage.removeItem("estriq_miete_spaeter"); } catch (_) {}
         location.reload();
       } catch (e) {
-        msg.textContent = window.fehlerText(e);
-        msg.className = "ef-msg bad"; del.disabled = false;
+        msg.textContent = funktionFehlt(e)
+          ? "Das Löschen ist noch nicht eingerichtet. Bitte versuch es später noch einmal."
+          : window.fehlerText(e);
+        msg.className = "ef-msg bad"; del.disabled = false; delRuhe();
       }
     };
+  }
+
+  // Hinweis unter „Konto löschen“: nennt, wie viele weitere Nutzer ihren Zugang verlieren
+  function loeschHinweis(weitere) {
+    const basis = "Löscht dein Konto und alle zugehörigen Daten unwiderruflich.";
+    if (!weitere) return basis;
+    return basis + (weitere === 1
+      ? " Auch 1 weiterer Nutzer verliert seinen Zugang."
+      : " Auch " + weitere + " weitere Nutzer verlieren ihren Zugang.");
+  }
+
+  /* ---------- NUTZER DES KONTOS ---------- */
+  const ROLLEN_NAME = { inhaber: "Inhaber", bearbeiter: "Nutzer", betrachter: "Nutzer" };
+  const NUTZER_MAX = TARIFE.premium.nutzer;
+  const einladungsLink = (code) => location.origin + location.pathname + "?einladung=" + encodeURIComponent(code);
+  // Vorschlag für die Nachricht, mit der der Inhaber den Link weitergibt
+  function einladungsText(name, firma, link) {
+    const vor = String(name || "").trim().split(" ")[0];
+    return "Hallo" + (vor ? " " + vor : "") + ", ich lade dich in unser ESTRIQ-Konto"
+      + (firma ? " „" + firma + "“" : "") + " ein. Öffne den Link und leg dein Passwort fest. "
+      + "Der Link gilt 14 Tage und nur für deine E-Mail-Adresse.\n" + link;
+  }
+  async function kopiere(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+    } catch (_) {}
+    try {
+      const ta = el(`<textarea style="position:fixed;left:-999px;top:0;opacity:0" readonly></textarea>`);
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand("copy"); ta.remove();
+      return !!ok;
+    } catch (_) { return false; }
+  }
+  // Öffnet das Teilen-Menü des Geräts. Gibt es keines, landet die Nachricht in der Zwischenablage.
+  async function einladungTeilen(e, firma) {
+    const text = einladungsText(e.name, firma, einladungsLink(e.code));
+    if (navigator.share) {
+      try { await navigator.share({ title: "Einladung zu ESTRIQ", text: text }); return; }
+      catch (err) { if (err && err.name === "AbortError") return; }
+    }
+    showToast(await kopiere(text)
+      ? "Nachricht mit Link kopiert – füg sie in WhatsApp oder eine E-Mail ein."
+      : "Teilen ist auf diesem Gerät nicht möglich. Kopier den Link bitte von Hand.");
+  }
+
+  // Bild eines Kollegen: nur Adressen aus dem eigenen Bildspeicher, sicher in den Stil eingesetzt.
+  // Die Adresse stammt aus der Zeile einer anderen Person und wird deshalb streng geprüft.
+  function bildStil(adresse) {
+    const s = String(adresse || "");
+    const basis = String(window.SB_FUNKTION || "").replace("/functions/v1", "/storage/v1/object/public/");
+    if (!s || !basis || !s.startsWith(basis) || /[\s"'()\\<>]/.test(s)) return "";
+    return ` style="background-image:url('${esc(s)}')"`;
+  }
+
+  // Zeichnet den Bereich „Nutzer“ im Profil
+  async function zeichneNutzer(host, opt) {
+    opt = opt || {};
+    const r = await nutzerInhalt(host, opt);
+    if (r && opt.aufGeladen && host.isConnected) opt.aufGeladen(r);
+  }
+  async function nutzerInhalt(host, opt) {
+    host.innerHTML = `<div class="ef-h">Nutzer werden geladen…</div>`;
+    let r = null;
+    try {
+      const { data, error } = await window.sb.rpc("meine_nutzer");
+      if (error) throw error;
+      if (!data || data.status !== "ok") throw new Error("meine_nutzer");
+      r = data;
+    } catch (e) {
+      if (!host.isConnected) return null;
+      host.innerHTML = `<div class="nu-hinweis">${esc(funktionFehlt(e)
+        ? "Die Nutzerverwaltung ist noch nicht eingerichtet. Bis dahin arbeitest du wie gewohnt allein in deinem Konto."
+        : "Die Nutzer konnten gerade nicht geladen werden. Bitte versuch es später noch einmal.")}</div>`;
+      return null;
+    }
+    if (!host.isConnected) return null;
+
+    const a = abo();
+    const inhaber = istInhaber();
+    const mitglieder = r.mitglieder || [];
+    const einladungen = inhaber ? (r.einladungen || []) : [];
+    const offen = einladungen.filter(e => !e.abgelaufen);
+    const belegt = mitglieder.length + offen.length;
+    const onboarding = a.roh_tarif === "onboarding";
+    const premium = a.tarif === "premium" && !onboarding;
+    const neuZeichnen = () => zeichneNutzer(host, opt);
+
+    // Basic oder pausiert, bisher allein im Konto: gesperrte Vorschau wie bei den Premium-Modulen
+    if (inhaber && !premium && !onboarding && mitglieder.length <= 1 && !einladungen.length) {
+      const m = PREMIUM_MODULE.nutzer;
+      host.innerHTML = `<div class="nu-sperre">
+          <div class="nu-sperre-t">${esc(m.name)} <span class="lock-badge">Premium</span></div>
+          <div class="nu-sperre-d">${esc(m.nutzen)}</div>
+          <button type="button" class="add-btn wide" id="nuFrei">Mit Premium freischalten</button>
+        </div>`;
+      host.querySelector("#nuFrei").onclick = () => pruefeModul("nutzer");
+      return r;
+    }
+
+    const zeile = (m) => `<div class="nu-row">
+        <div class="nu-ava"${bildStil(m.avatar_url)}>${bildStil(m.avatar_url) ? "" : esc(String(m.name || m.email || "?").slice(0, 1).toUpperCase())}</div>
+        <div class="nu-tx">
+          <div class="nu-n">${esc(m.name || m.email || "")}${m.ich ? ` <span class="nu-du">Du</span>` : ""}</div>
+          <div class="nu-m">${esc(m.email || "")}</div>
+        </div>
+        <div class="nu-rolle">${esc(ROLLEN_NAME[m.rolle] || "Nutzer")}</div>
+        ${inhaber && !m.ich && m.rolle !== "inhaber" ? `<div class="nu-akt">
+          <button type="button" class="nu-btn weg" data-weg="${esc(m.id)}">Entfernen</button></div>` : ""}
+      </div>`;
+    const einlZeile = (e) => `<div class="nu-row">
+        <div class="nu-ava offen">${svg("user")}</div>
+        <div class="nu-tx">
+          <div class="nu-n">${esc(e.name || e.email || "")}</div>
+          <div class="nu-m">${esc(e.email || "")} · ${e.abgelaufen ? "Einladung abgelaufen" : "eingeladen, gültig bis " + dateDE(e.gueltig_bis)}</div>
+        </div>
+        <div class="nu-akt">
+          ${!e.abgelaufen && premium ? `<button type="button" class="nu-btn" data-teilen="${esc(e.id)}">Link teilen</button>` : ""}
+          ${e.abgelaufen && premium ? `<button type="button" class="nu-btn" data-neu="${esc(e.id)}">Neu einladen</button>` : ""}
+          <button type="button" class="nu-btn" data-zurueck="${esc(e.id)}">Zurückziehen</button>
+        </div>
+      </div>`;
+
+    let h = "";
+    if (inhaber) {
+      h += `<div class="ef-row" style="margin-bottom:4px">
+          <label class="ef-l">Firmenname</label>
+          <div class="tarif-code-row">
+            <input class="ef-i" id="nuFirma" maxlength="80" value="${esc(r.firma || "")}">
+            <button type="button" class="tarif-code-btn" id="nuFirmaBtn">Speichern</button>
+          </div>
+          <div class="ef-h">Der Name steht in der Einladung.</div>
+        </div>`;
+    } else {
+      h += `<div class="ef-h" style="margin:0 0 2px">Diese Personen arbeiten im Konto${r.firma ? " „" + esc(r.firma) + "“" : ""}. Alle sehen dieselben Objekte und Zahlen.</div>`;
+    }
+    h += mitglieder.map(zeile).join("");
+    if (inhaber) {
+      if (einladungen.length) h += einladungen.map(einlZeile).join("");
+      if (premium) {
+        h += `<div class="nu-plaetze"><b>${belegt} von ${NUTZER_MAX} Nutzern</b>${offen.length
+          ? " · davon " + offen.length + (offen.length === 1 ? " offene Einladung" : " offene Einladungen") : ""}</div>`;
+        h += belegt < NUTZER_MAX
+          ? `<button type="button" class="add-btn wide" id="nuNeu">+ Nutzer einladen</button>`
+          : `<div class="nu-hinweis">Alle ${NUTZER_MAX} Plätze sind belegt${offen.length ? ", offene Einladungen zählen mit" : ""}. Entferne einen Nutzer oder zieh eine Einladung zurück, dann kannst du wieder jemanden einladen.</div>`;
+        h += `<div class="ef-h">Jede Person meldet sich mit ihrer eigenen E-Mail an. Eine E-Mail, zu der es schon ein ESTRIQ-Konto gibt, kann nicht eingeladen werden. Ein Login gehört zu genau einem Konto.</div>`;
+      } else if (onboarding) {
+        h += `<div class="nu-hinweis">Weitere Nutzer kannst du einladen, sobald du einen Tarif gewählt hast. Mehrere Nutzer gehören zu Premium.</div>`;
+      } else {
+        h += `<div class="nu-hinweis">Im Basic-Tarif gehört ein Nutzer zum Konto. Alle bisherigen Nutzer behalten ihren Zugang. Neue Einladungen gibt es wieder mit Premium.</div>
+          <button type="button" class="add-btn wide" id="nuFrei">Mit Premium freischalten</button>`;
+      }
+    }
+    h += `<div class="ef-msg" id="nuMsg"></div>`;
+    host.innerHTML = h;
+
+    const msg = host.querySelector("#nuMsg");
+    const sag = (text, schlecht) => { msg.textContent = text; msg.className = "ef-msg" + (schlecht ? " bad" : ""); };
+    const fehlerSatz = (e) => funktionFehlt(e)
+      ? "Die Nutzerverwaltung ist noch nicht eingerichtet." : window.fehlerText(e);
+    if (!inhaber) return r;
+
+    const frei = host.querySelector("#nuFrei");
+    if (frei) frei.onclick = () => pruefeModul("nutzer");
+
+    // Firmenname
+    host.querySelector("#nuFirmaBtn").onclick = async () => {
+      const name = host.querySelector("#nuFirma").value.trim();
+      if (!name) { sag("Bitte gib einen Firmennamen ein.", true); return; }
+      sag("Speichere…");
+      try {
+        const { data, error } = await window.sb.rpc("firma_umbenennen", { p_name: name });
+        if (error) throw error;
+        if (data === "ok") { r.firma = name; if (D && D.abo) D.abo.firma = name; sag("Firmenname gespeichert."); }
+        else if (data === "name_ungueltig") sag("Der Firmenname darf höchstens 80 Zeichen lang sein.", true);
+        else sag("Nur der Inhaber kann den Firmennamen ändern.", true);
+      } catch (e) { sag(fehlerSatz(e), true); }
+    };
+
+    // Einladen
+    const neu = host.querySelector("#nuNeu");
+    if (neu) neu.onclick = () => openEinladenSheet(r.firma, {});
+    host.querySelectorAll("[data-neu]").forEach(b => b.onclick = () => {
+      const e = einladungen.find(x => String(x.id) === b.dataset.neu);
+      if (e) openEinladenSheet(r.firma, { name: e.name || "", email: e.email || "" });
+    });
+    host.querySelectorAll("[data-teilen]").forEach(b => b.onclick = () => {
+      const e = einladungen.find(x => String(x.id) === b.dataset.teilen);
+      if (e) einladungTeilen(e, r.firma);
+    });
+    host.querySelectorAll("[data-zurueck]").forEach(b => b.onclick = async () => {
+      b.disabled = true; sag("Einladung wird zurückgezogen…");
+      try {
+        const { data, error } = await window.sb.rpc("einladung_zurueckziehen", { p_id: b.dataset.zurueck });
+        if (error) throw error;
+        if (data === "kein_recht") { sag("Nur der Inhaber kann Einladungen zurückziehen.", true); b.disabled = false; return; }
+        showToast(data === "ok" ? "Einladung zurückgezogen. Der Link gilt nicht mehr." : "Diese Einladung gab es nicht mehr.");
+        neuZeichnen();
+      } catch (e) { sag(fehlerSatz(e), true); b.disabled = false; }
+    });
+
+    // Entfernen in zwei Schritten, mit klarer Rückfrage
+    host.querySelectorAll("[data-weg]").forEach(b => b.onclick = () => {
+      const m = mitglieder.find(x => String(x.id) === b.dataset.weg);
+      if (!m) return;
+      const akt = b.parentElement, wer = m.name || m.email || "Diese Person";
+      akt.innerHTML = `<div class="nu-frage"><b>${esc(wer)}</b> verliert sofort den Zugang. Die Daten der Firma bleiben vollständig erhalten.</div>
+        <button type="button" class="nu-btn weg voll" id="nuWegJa">Ja, Zugang entfernen</button>
+        <button type="button" class="nu-btn" id="nuWegNein">Abbrechen</button>`;
+      akt.querySelector("#nuWegNein").onclick = neuZeichnen;
+      const ja = akt.querySelector("#nuWegJa");
+      ja.onclick = async () => {
+        ja.disabled = true; sag("Zugang wird entfernt…");
+        try {
+          const { data, error } = await window.sb.rpc("nutzer_entfernen", { p_mitglied_id: m.id });
+          if (error) throw error;
+          if (data === "ok") {
+            showToast(wer + " hat keinen Zugang mehr.");
+            if (D && D.abo && D.abo.nutzer) D.abo.nutzer = Math.max(1, Number(D.abo.nutzer) - 1);
+            neuZeichnen();
+          } else if (data === "nicht_gefunden") { showToast("Diese Person gehört nicht mehr zum Konto."); neuZeichnen(); }
+          else if (data === "inhaber") { sag("Der Inhaber kann nicht entfernt werden.", true); ja.disabled = false; }
+          else { sag("Nur der Inhaber kann Nutzer entfernen.", true); ja.disabled = false; }
+        } catch (e) { sag(fehlerSatz(e), true); ja.disabled = false; }
+      };
+    });
+    return r;
+  }
+
+  // Nutzer einladen: Name und E-Mail, danach der Link zum Teilen und Kopieren
+  function openEinladenSheet(firma, vor) {
+    vor = vor || {};
+    const zurueck = () => openProfilSheet({ zu: "nutzer" });
+    const body = `<div id="einlBody">
+      <div class="wc-hero" style="padding-bottom:12px">
+        <div class="wc-badge">Mehrere Nutzer</div>
+        <div class="wc-t" style="font-size:19px">Wen möchtest du einladen?</div>
+        <div class="wc-d">Die Person bekommt ein eigenes Login und sieht dieselben Objekte und Zahlen wie du. Du erhältst einen Link und gibst ihn selbst weiter. ESTRIQ verschickt keine E-Mail.</div>
+      </div>
+      ${ef("Name", "name", vor.name || "", "text", { platzhalter: "Vor- und Nachname" })}
+      ${ef("E-Mail", "email", vor.email || "", "email", { pflicht: true, platzhalter: "name@beispiel.de", hinweis: "Die Einladung gilt nur für diese E-Mail-Adresse." })}
+      <button class="wc-cta prem" id="einlGo" style="margin-top:8px">Einladung erstellen</button>
+      <button class="wc-cta" id="einlAb" style="margin-top:10px">Zurück zum Profil</button>
+      <div class="ef-msg" id="einlMsg"></div>
+    </div>`;
+    const sheet = openSheet("Nutzer einladen", firma || "", body);
+    const wurzel = sheet.querySelector("#einlBody");
+    sheet.querySelector("#einlAb").onclick = zurueck;
+    const SAETZE = {
+      kein_recht: "Nur der Inhaber kann Nutzer einladen.",
+      email_ungueltig: "Bitte gib eine gültige E-Mail-Adresse ein.",
+      tarif: "Mehrere Nutzer gibt es im Premium-Tarif.",
+      schon_konto: "Zu dieser E-Mail gibt es schon ein ESTRIQ-Konto. Sie kann nicht eingeladen werden.",
+      voll: "Alle " + NUTZER_MAX + " Plätze sind belegt. Offene Einladungen zählen mit."
+    };
+    const go = sheet.querySelector("#einlGo");
+    go.onclick = async () => {
+      const msg = sheet.querySelector("#einlMsg");
+      const w = efWerte(sheet);
+      const name = (w.name || "").trim(), mail = (w.email || "").trim();
+      if (!mail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+        msg.textContent = SAETZE.email_ungueltig; msg.className = "ef-msg bad"; return;
+      }
+      msg.textContent = "Einladung wird erstellt…"; msg.className = "ef-msg"; go.disabled = true;
+      try {
+        const { data, error } = await window.sb.rpc("nutzer_einladen", { p_email: mail, p_name: name || null });
+        if (error) throw error;
+        if (!data || data.status !== "ok") {
+          msg.textContent = SAETZE[data && data.status] || "Die Einladung konnte nicht erstellt werden.";
+          msg.className = "ef-msg bad"; go.disabled = false; return;
+        }
+        if (D && D.abo) D.abo.einladungen_offen = (Number(D.abo.einladungen_offen) || 0) + 1;
+        zeigeLink({ name: name, email: mail.toLowerCase(), code: data.code, gueltig_bis: data.gueltig_bis });
+      } catch (e) {
+        msg.textContent = funktionFehlt(e) ? "Die Nutzerverwaltung ist noch nicht eingerichtet." : window.fehlerText(e);
+        msg.className = "ef-msg bad"; go.disabled = false;
+      }
+    };
+
+    function zeigeLink(e) {
+      const link = einladungsLink(e.code);
+      const wer = (e.name || "").split(" ")[0] || "der Person";
+      wurzel.innerHTML = `
+        <div class="wc-hero" style="padding-bottom:12px">
+          <div class="wc-badge">Einladung erstellt</div>
+          <div class="wc-t" style="font-size:19px">Schick ${esc(wer)} diesen Link</div>
+          <div class="wc-d">Der Link gilt bis ${esc(dateDE(e.gueltig_bis))}, nur für ${esc(e.email)} und genau einmal. Gib ihn nur an diese Person weiter.</div>
+        </div>
+        <label class="ef-l">Link</label>
+        <div class="nu-link" id="einlLink">${esc(link)}</div>
+        <label class="ef-l" style="margin-top:14px">Vorschlag für deine Nachricht</label>
+        <div class="nu-link text">${esc(einladungsText(e.name, firma, link))}</div>
+        <button class="wc-cta prem" id="einlTeilen" style="margin-top:16px">Teilen</button>
+        <button class="wc-cta" id="einlKopieren" style="margin-top:10px">Link kopieren</button>
+        <button class="wc-cta" id="einlFertig" style="margin-top:10px">Fertig</button>`;
+      wurzel.querySelector("#einlTeilen").onclick = () => einladungTeilen(e, firma);
+      wurzel.querySelector("#einlKopieren").onclick = async () => {
+        showToast(await kopiere(link) ? "Link kopiert." : "Kopieren ist nicht möglich. Markier den Link bitte von Hand.");
+      };
+      wurzel.querySelector("#einlFertig").onclick = zurueck;
+    }
+  }
+
+  /* ---------- EINLADUNG ANNEHMEN ---------- */
+  // Eigenes Fenster über der Landing, im Stil des Login-Fensters.
+  // Landing und Login-Fenster bleiben unberührt, alle Klassen beginnen mit eq-.
+  function eqSchliessen() { const n = $("#eqEinladung"); if (n) n.remove(); }
+  function eqFenster(inhalt) {
+    eqSchliessen();
+    const bd = el(`<div id="eqEinladung" class="eq-einl" role="dialog" aria-modal="true" aria-label="Einladung">
+      <div class="eq-einl-karte">
+        <button type="button" class="eq-einl-zu" aria-label="Schließen">×</button>
+        <div class="eq-einl-logo"><img src="estriq.PNG" alt="ESTRIQ" onerror="this.style.display='none'"></div>
+        <div class="eq-einl-inhalt">${inhalt}</div>
+      </div></div>`);
+    document.body.appendChild(bd);
+    bd.querySelector(".eq-einl-zu").onclick = eqSchliessen;
+    return bd;
+  }
+  // Entfernt nur ?einladung=… aus der Adresszeile
+  function einladungAusAdresse() {
+    try {
+      const u = new URL(location.href);
+      u.searchParams.delete("einladung");
+      history.replaceState(null, "", u.pathname + u.search + u.hash);
+    } catch (_) {}
+  }
+
+  // Der Link wurde geöffnet, während schon jemand angemeldet ist
+  function openEinladungAngemeldet() {
+    const bd = eqFenster(`
+      <div class="eq-einl-t">Du bist schon angemeldet</div>
+      <div class="eq-einl-d">Du bist gerade als <b>${esc(currentUser ? currentUser.email : "")}</b> angemeldet. Eine Einladung kannst du nur annehmen, wenn niemand angemeldet ist. Melde dich zuerst ab, danach öffnet sich die Einladung von selbst.</div>
+      <button type="button" class="eq-einl-btn" id="eqAb">Abmelden und Einladung öffnen</button>
+      <button type="button" class="eq-einl-btn zweit" id="eqBleib">Angemeldet bleiben</button>`);
+    const bleib = () => { eqSchliessen(); einladungAusAdresse(); };
+    bd.querySelector("#eqAb").onclick = () => logout();   // lädt neu, der Link bleibt in der Adresse
+    bd.querySelector("#eqBleib").onclick = bleib;
+    bd.querySelector(".eq-einl-zu").onclick = bleib;
+  }
+
+  // Niemand ist angemeldet: Code prüfen, dann Passwort festlegen
+  async function openEinladungFenster(code) {
+    const NEUER_LINK = "Bitte lass dir vom Inhaber des Kontos einen neuen Link schicken.";
+    const bd = eqFenster(`<div class="eq-einl-t">Einladung annehmen</div>
+      <div class="eq-einl-d">Die Einladung wird geprüft…</div>`);
+    const inhalt = bd.querySelector(".eq-einl-inhalt");
+    const nurSatz = (titel, satz) => {
+      inhalt.innerHTML = `<div class="eq-einl-t">${esc(titel)}</div>
+        <div class="eq-einl-d">${esc(satz)}</div>
+        <button type="button" class="eq-einl-btn zweit" id="eqOk">Schließen</button>`;
+      inhalt.querySelector("#eqOk").onclick = () => { eqSchliessen(); einladungAusAdresse(); };
+    };
+
+    let r = null;
+    try {
+      if (!window.sb) throw new Error("keine Verbindung");
+      const { data, error } = await window.sb.rpc("einladung_pruefen", { p_code: code });
+      if (error) throw error;
+      r = data;
+    } catch (e) {
+      console.error(e);
+      nurSatz("Einladung annehmen", funktionFehlt(e)
+        ? "Einladungen sind in diesem Konto noch nicht eingerichtet. Bitte sag dem Inhaber des Kontos Bescheid."
+        : "Die Einladung konnte gerade nicht geprüft werden. Prüf deine Internetverbindung und öffne den Link noch einmal.");
+      return;
+    }
+    if (!r || !r.gueltig) {
+      if (r && r.grund === "platz") nurSatz("In diesem Konto ist kein Platz frei", "Das Konto hat gerade keinen freien Platz für weitere Nutzer. " + NEUER_LINK);
+      else nurSatz("Diese Einladung gilt nicht mehr", "Der Link ist abgelaufen, wurde schon benutzt oder zurückgezogen. " + NEUER_LINK);
+      return;
+    }
+
+    inhalt.innerHTML = `
+      <div class="eq-einl-t">Einladung annehmen</div>
+      <div class="eq-einl-d">Du wurdest in das ESTRIQ-Konto <b>${esc(r.firma || "")}</b> eingeladen. Leg dein Passwort fest, danach siehst du die Immobilien der Firma.</div>
+      <div class="eq-einl-feld">
+        <label for="eqMail">E-Mail</label>
+        <input id="eqMail" type="email" value="${esc(r.email || "")}" readonly aria-readonly="true">
+      </div>
+      <div class="eq-einl-feld">
+        <label for="eqName">Name</label>
+        <input id="eqName" type="text" autocomplete="name" placeholder="Vor- und Nachname" value="${esc(r.name || "")}">
+      </div>
+      <div class="eq-einl-feld">
+        <label for="eqPw">Passwort</label>
+        <input id="eqPw" type="password" autocomplete="new-password" placeholder="Mindestens 8 Zeichen">
+      </div>
+      <label class="eq-einl-zustimmung">
+        <input type="checkbox" id="eqZu">
+        <span>Ich stimme der Speicherung meiner Daten gemäß der <a href="#" id="eqDs">Datenschutzerklärung</a> zu.</span>
+      </label>
+      <button type="button" class="eq-einl-btn" id="eqGo">Einladung annehmen</button>
+      <div class="eq-einl-msg" id="eqMsg"></div>`;
+
+    const msg = inhalt.querySelector("#eqMsg"), go = inhalt.querySelector("#eqGo");
+    const sag = (text, schlecht) => { msg.textContent = text; msg.className = "eq-einl-msg" + (schlecht ? " bad" : ""); };
+    inhalt.querySelector("#eqDs").onclick = (ev) => {
+      ev.preventDefault();
+      const ds = $("#datenschutzLink"); if (ds) ds.click();   // derselbe Text wie bei der Registrierung
+    };
+
+    const los = async () => {
+      if (go.disabled) return;   // läuft schon
+      const name = inhalt.querySelector("#eqName").value.trim();
+      const pw = inhalt.querySelector("#eqPw").value;
+      if (!name) { sag("Bitte Namen eingeben.", true); return; }
+      if (pw.length < 8) { sag("Das Passwort muss mindestens 8 Zeichen lang sein.", true); return; }
+      if (!inhalt.querySelector("#eqZu").checked) { sag("Bitte stimme der Speicherung deiner Daten zu, um fortzufahren.", true); return; }
+      sag("Dein Zugang wird angelegt…"); go.disabled = true;
+
+      // Der Code reist in den Zusatzdaten mit. Die Datenbank ordnet die Person dem Konto zu.
+      let data = null, error = null;
+      try {
+        ({ data, error } = await window.sb.auth.signUp({
+          email: r.email, password: pw,
+          options: { data: { name: name, einladung: code } }
+        }));
+      } catch (e) { error = e; }
+      if (error) {
+        const roh = (String(error.message || "") + " " + String(error.code || "")).toLowerCase();
+        sag(/signup/.test(roh)
+          ? "Neue Zugänge sind gerade abgeschaltet. Bitte sag dem Inhaber des Kontos Bescheid."
+          : /database error|einladung|unexpected_failure/.test(roh)
+          ? "Diese Einladung gilt nicht mehr. " + NEUER_LINK
+          : /password/.test(roh)
+          ? "Dieses Passwort wird nicht angenommen. Bitte wähle ein längeres oder ungewöhnlicheres."
+          : window.fehlerText(error), true);
+        go.disabled = false;
+        console.error(error);
+        return;
+      }
+      einladungAusAdresse();
+
+      // Ohne aktive Sitzung: erst die E-Mail bestätigen, dann anmelden
+      if (!data || !data.session) {
+        inhalt.innerHTML = `<div class="eq-einl-t">Fast fertig</div>
+          <div class="eq-einl-d">Bitte bestätige die E-Mail, die wir an <b>${esc(r.email || "")}</b> geschickt haben. Danach meldest du dich mit deiner E-Mail und deinem Passwort an.</div>
+          <button type="button" class="eq-einl-btn" id="eqLogin">Zur Anmeldung</button>`;
+        inhalt.querySelector("#eqLogin").onclick = () => { eqSchliessen(); loginOeffnen("anmelden"); };
+        return;
+      }
+
+      // Direkt angemeldet: ins Dashboard der Firma
+      try {
+        await ladeProfil(data.session);
+        await window.ladeDaten();
+        D = window.DASHBOARD_DATA;
+        eqSchliessen();
+        enterApp();
+      } catch (e) {
+        console.error(e);
+        inhalt.innerHTML = `<div class="eq-einl-t">Dein Zugang ist angelegt</div>
+          <div class="eq-einl-d">Die Daten konnten gerade nicht geladen werden. Bitte melde dich mit deiner E-Mail und deinem Passwort an.</div>
+          <button type="button" class="eq-einl-btn" id="eqLogin">Zur Anmeldung</button>`;
+        inhalt.querySelector("#eqLogin").onclick = () => { eqSchliessen(); loginOeffnen("anmelden"); };
+      }
+    };
+    go.onclick = los;
+    inhalt.querySelector("#eqPw").addEventListener("keydown", (ev) => { if (ev.key === "Enter") los(); });
+    setTimeout(() => { const f = inhalt.querySelector(r.name ? "#eqPw" : "#eqName"); if (f) f.focus(); }, 150);
   }
 
   let regMode = false;            // false = anmelden, true = registrieren
@@ -808,9 +1402,9 @@
     // Rückkehr von der Stripe-Bezahlseite auswerten
     const params = new URLSearchParams(location.search);
     if (params.get("bezahlt") === "1") {
-      localStorage.setItem("estriq_tarif_gewaehlt", "1");
-      localStorage.setItem("estriq_onboarding_fertig", "1");
-      localStorage.removeItem("estriq_checkout_aus_onboarding");
+      merkSetzen("estriq_tarif_gewaehlt", "1");
+      merkSetzen("estriq_onboarding_fertig", "1");
+      merkLoeschen("estriq_checkout_aus_onboarding");
       geschichteBereinigen();
       // Der Webhook braucht evtl. 1–3 Sek. Mehrfach nachladen, bis der Tarif steht,
       // und danach die Übersicht sicher neu zeichnen.
@@ -821,12 +1415,14 @@
           await window.nachSpeichern();
           route("overview");   // Ansicht mit frischen Daten neu rendern
         } catch (_) {}
-        const a = abo();
-        // Weiter versuchen, solange noch kein echtes Stripe-Abo greift
-        if (versuche < 4 && a && !a.hat_stripe) {
+        // Weiter versuchen, bis der gebuchte Tarif in der Datenbank steht. Die Kundennummer
+        // allein sagt nichts mehr, sie wird schon beim Öffnen der Bezahlseite gespeichert.
+        const steht = !!gebuchterTarif() && abo().hat_abo !== false;
+        if (!steht && versuche < 6) {
           setTimeout(nachladen, 1500);
         } else {
-          showToast("Zahlung erfolgreich – dein Tarif ist aktiv.");
+          showToast(steht ? "Zahlung erfolgreich – dein Tarif ist aktiv."
+            : "Bestellung erhalten. Dein Tarif wird gleich freigeschaltet – lade die Seite in einer Minute neu.");
         }
       };
       setTimeout(nachladen, 1000);
@@ -837,20 +1433,26 @@
       // B1: Kam der Abbruch aus dem Onboarding, wird auf "nur lesen" gesetzt.
       // Der Nutzer sieht sein gefülltes Dashboard, kann aber nicht bearbeiten,
       // bis er einen Tarif wählt.
-      if (localStorage.getItem("estriq_checkout_aus_onboarding") === "1") {
-        localStorage.removeItem("estriq_checkout_aus_onboarding");
+      if (merkLesen("estriq_checkout_aus_onboarding") === "1") {
+        merkLoeschen("estriq_checkout_aus_onboarding");
         (async () => {
+          let gesperrt = false;
           try {
-            const org = await window.meineOrgId();
-            const a = abo();
-            // Nur sperren, wenn noch kein echtes Abo besteht
-            if (a && a.roh_tarif === "onboarding" && !a.hat_stripe) {
-              await window.sb.from("organisationen").update({ tarif: "gesperrt" }).eq("id", org);
-              await window.nachSpeichern();
-              route("overview");
+            // Die Datenbank sperrt nur, wenn noch kein Abo besteht. Der Browser ändert
+            // den Tarif nicht mehr selbst.
+            if (istInhaber() && abo().roh_tarif === "onboarding") {
+              const { data, error } = await window.sb.rpc("onboarding_abbrechen");
+              if (error) throw error;
+              if (data === "ok") {
+                gesperrt = true;
+                await window.nachSpeichern();
+                route("overview");
+              }
             }
-          } catch (_) {}
-          showToast("Kein Tarif gewählt – du kannst dein Dashboard ansehen, aber nicht bearbeiten.");
+          } catch (e) { console.error(e); }
+          showToast(gesperrt
+            ? "Kein Tarif gewählt – du kannst dein Dashboard ansehen, aber nicht bearbeiten."
+            : "Bezahlvorgang abgebrochen. Einen Tarif kannst du jederzeit im Profil wählen.");
         })();
       } else {
         showToast("Bezahlvorgang abgebrochen.");
@@ -859,12 +1461,21 @@
     // Neuen Nutzern den Onboarding-Funnel zeigen (einmalig):
     // Farbe → erstes Objekt → Einheit → 3 Fragen → Abo-Empfehlung → Checkout
     try {
-      const fertig = localStorage.getItem("estriq_onboarding_fertig");
       const a = abo();
-      const nochKeinAbo = a && (a.roh_tarif === "onboarding" || a.roh_tarif === "test") && !a.hat_stripe;
-      if (!fertig && nochKeinAbo) {
-        setTimeout(() => openFarbwahlSheet({ onboarding: true }), 400);
-        return;
+      if (!istInhaber()) {
+        // Eingeladene Person: kein Ablauf für neue Inhaber. Nur einmal die Wahl der Farben.
+        if (!currentUser.theme && !merkLesen("estriq_willkommen")) {
+          merkSetzen("estriq_willkommen", "1");
+          setTimeout(() => openFarbwahlSheet({ willkommen: true }), 400);
+          return;
+        }
+      } else {
+        const fertig = merkLesen("estriq_onboarding_fertig");
+        const nochKeinAbo = a && (a.roh_tarif === "onboarding" || a.roh_tarif === "test") && !hatAbo();
+        if (!fertig && nochKeinAbo) {
+          setTimeout(() => openFarbwahlSheet({ onboarding: true }), 400);
+          return;
+        }
       }
       // Sonst: fällige Mieten prüfen, danach ggf. ein Verbesserungs-Tipp
       setTimeout(() => { if (!pruefeMieteingaenge()) zeigeTippWennFaellig(); }, 600);
@@ -1112,8 +1723,8 @@
   function zeigeTippWennFaellig() {
     try {
       if (currentUser && currentUser.tipps_an === false) return;   // im Profil abgeschaltet
-      const n = Number(localStorage.getItem("estriq_login_zaehler") || "0") + 1;
-      localStorage.setItem("estriq_login_zaehler", String(n));
+      const n = Number(merkLesen("estriq_login_zaehler") || "0") + 1;
+      merkSetzen("estriq_login_zaehler", String(n));
       if (n % 3 !== 0) return;                                     // nur jeden dritten Login
       const tipps = findeTipps();
       if (!tipps.length) return;
@@ -1390,19 +2001,21 @@
       style="--ac:${t.bg}" title="${esc(t.name)}" aria-label="${esc(t.name)}"></button>`).join("");
     const accentDots = AKZENTE.map(a => `<button type="button" class="accent-dot" data-accent="${a.id}"
       style="--ac:${a.farbe}" title="${esc(a.name)}" aria-label="${esc(a.name)}"></button>`).join("");
+    // opt.willkommen: erster Start einer eingeladenen Person – nur die Farben, kein weiterer Ablauf
+    const firma = abo().firma;
     const body = `
       <div class="wc-hero">
-        ${opt.onboarding ? `<img src="estriq.PNG" alt="ESTRIQ" class="wc-logo" onerror="this.style.display='none'">` : ""}
+        ${opt.onboarding || opt.willkommen ? `<img src="estriq.PNG" alt="ESTRIQ" class="wc-logo" onerror="this.style.display='none'">` : ""}
         ${opt.onboarding ? `<div class="wc-steps"><span class="on"></span><span></span><span></span></div>` : ""}
-        <div class="wc-badge">${opt.onboarding ? "Willkommen bei ESTRIQ" : "Darstellung"}</div>
+        <div class="wc-badge">${opt.onboarding || opt.willkommen ? "Willkommen bei ESTRIQ" : "Darstellung"}</div>
         <div class="wc-t">Mach es zu deinem</div>
-        <div class="wc-d">Wähle Hintergrund und Akzentfarbe. Du kannst das jederzeit im Profil ändern — die Auswahl gilt auf all deinen Geräten.</div>
+        <div class="wc-d">${opt.willkommen ? esc(firma ? "Du arbeitest jetzt im Konto „" + firma + "“. " : "Du arbeitest jetzt im Konto deiner Firma. ") : ""}Wähle Hintergrund und Akzentfarbe. Du kannst das jederzeit im Profil ändern — die Auswahl gilt auf all deinen Geräten${opt.willkommen ? " und nur für dich" : ""}.</div>
       </div>
       <div class="ef-l">Hintergrund</div>
       <div class="accent-row" id="wcTheme">${themeChips}</div>
       <div class="ef-l" style="margin-top:16px">Akzentfarbe</div>
       <div class="accent-row" id="wcAccent">${accentDots}</div>
-      <button class="wc-cta prem" id="wcDone" style="margin-top:24px">${opt.onboarding ? "Weiter" : "Speichern"}</button>`;
+      <button class="wc-cta prem" id="wcDone" style="margin-top:24px">${opt.onboarding ? "Weiter" : opt.willkommen ? "Los geht’s" : "Speichern"}</button>`;
     const sheet = openSheet("Darstellung", "", body);
 
     function markiere() {
@@ -1552,11 +2165,12 @@
 
   // Checkout aus dem Onboarding: markiert Fluss als fertig, dann zu Stripe
   async function onboardingCheckout(plan, btn) {
+    if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const alt = btn.textContent;
     btn.disabled = true; btn.textContent = "Bezahlseite wird geöffnet…";
     try {
-      localStorage.setItem("estriq_onboarding_fertig", "1");
-      localStorage.setItem("estriq_checkout_aus_onboarding", "1");   // für B1 bei Abbruch
+      merkSetzen("estriq_onboarding_fertig", "1");
+      merkSetzen("estriq_checkout_aus_onboarding", "1");   // für B1 bei Abbruch
       const { data: { session } } = await window.sb.auth.getSession();
       const token = session && session.access_token;
       const res = await fetch(window.SB_FUNKTION + "/checkout-starten", {
@@ -5405,11 +6019,17 @@
       alert("Datenschutzerklärung\n\nDeine Daten werden verschlüsselt gespeichert und sind ausschließlich für dich zugänglich. Der Betreiber kann deine Immobiliendaten nicht einsehen.\n\n(Dies ist ein Platzhalter. Eine vollständige Datenschutzerklärung wird vor dem öffentlichen Start hinterlegt.)");
     });
 
+    // Einladungslink: …/?einladung=CODE
+    let einlCode = "";
+    try { einlCode = (new URLSearchParams(location.search).get("einladung") || "").trim(); } catch (_) {}
+
     if (await sessionOK()) {
       try {
         await window.ladeDaten();
         D = window.DASHBOARD_DATA;
         enterApp();
+        // Schon angemeldet: erklären, dass man sich zuerst abmelden muss
+        if (einlCode) openEinladungAngemeldet();
       } catch (e) {
         // Angemeldet, aber Daten konnten nicht geladen werden → Login-Popup mit Hinweis
         loginOeffnen("anmelden");
@@ -5417,6 +6037,10 @@
         $("#loginMsg").className = "login-msg bad";
         console.error(e);
       }
+    } else if (einlCode) {
+      // Niemand angemeldet: eigenes Fenster über der Landing
+      loginSchliessen();
+      openEinladungFenster(einlCode);
     }
     // Sonst bleibt die Landing-Seite stehen; der Login öffnet sich erst per Klick.
   });
