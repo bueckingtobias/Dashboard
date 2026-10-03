@@ -72,8 +72,7 @@ function feldName(spalte) {
   const map = {
     bezeichnung: "die Bezeichnung", name: "den Namen", flaeche: "die Fläche",
     summe: "die Darlehenssumme", zins_pa: "den Zinssatz", rate_monat: "die Monatsrate",
-    paechter: "den Pächter", jahr_betrag: "die Jahrespacht", titel: "den Titel",
-    datum: "das Datum", slug: "den Kurznamen", nachtpreis: "den Nachtpreis",
+    titel: "den Titel", datum: "das Datum", slug: "den Kurznamen",
     mieter: "den Mieter", status: "den Status"
   };
   return map[spalte] || "das Feld „" + spalte + "“";
@@ -120,21 +119,6 @@ async function loescheKredit(id) {
   if (error) throw error;
 }
 
-// ---------- Pachtverträge ----------
-async function speicherePacht(id, werte) {
-  const { error } = await window.sb.from('pachtvertraege').update(werte).eq('id', id);
-  if (error) throw error;
-}
-async function neuerPachtvertrag(objektId, werte) {
-  const { error } = await window.sb.from('pachtvertraege')
-    .insert({ ...werte, objekt_id: objektId });
-  if (error) throw error;
-}
-async function loeschePacht(id) {
-  const { error } = await window.sb.from('pachtvertraege').delete().eq('id', id);
-  if (error) throw error;
-}
-
 // ---------- Objekte ----------
 async function speichereObjekt(id, werte) {
   const { error } = await window.sb.from('objekte').update(ohneLeere(werte)).eq('id', id);
@@ -147,7 +131,7 @@ async function neuesObjekt(werte) {
   if (error) throw error;
 }
 async function loescheObjekt(id) {
-  // Einheiten, Kredite und Pachtverträge verschwinden automatisch mit
+  // Einheiten und Kredite verschwinden automatisch mit
   const { error } = await window.sb.from('objekte').delete().eq('id', id);
   if (error) throw error;
 }
