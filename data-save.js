@@ -6,17 +6,25 @@
    ============================================================= */
 
 // ---------- Hilfsfunktionen ----------
+// Liest ausdrücklich die Zeile des angemeldeten Nutzers. In einem Konto mit
+// mehreren Nutzern liefert die Datenbank sonst auch die Zeilen der Kollegen.
 async function meineOrgId() {
+  const { data: { session } } = await window.sb.auth.getSession();
+  if (!session) throw new Error('Deine Sitzung ist abgelaufen (session).');
   const { data, error } = await window.sb
-    .from('mitglieder').select('org_id').limit(1).single();
+    .from('mitglieder').select('org_id').eq('auth_user_id', session.user.id).limit(1);
   if (error) throw error;
-  return data.org_id;
+  if (!data || !data[0]) throw new Error('Dein Zugang wurde entfernt.');
+  return data[0].org_id;
 }
 
 function fehlerText(e) {
   const roh = (e && (e.message || e.hint || e.details || e.code || e.error_description || e.error)) || "";
   const s = String(roh).toLowerCase();
 
+  if (s.includes("zugang wurde entfernt")) {
+    return "Dein Zugang wurde entfernt. Bitte wende dich an den Inhaber des Kontos.";
+  }
   // Häufige technische Meldungen in verständliches Deutsch übersetzen
   if (s.includes("violates row-level security") || s.includes("row-level security")) {
     return "Diese Änderung ist mit deinem aktuellen Tarif nicht möglich. Ein Upgrade schaltet sie frei.";
