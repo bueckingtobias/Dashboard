@@ -98,14 +98,6 @@ function zuStream(o) {
     else if (kr.length > 1) s.kredite = kr;
   }
 
-  if (o.art === "airbnb") s.airbnb = o.airbnb_config;
-
-  if (o.art === "pacht") {
-    s.vertraege = (o.pachtvertraege || []).map(v => ({
-      paechter: v.paechter, jahr: Number(v.jahr_betrag), flaeche: Number(v.flaeche),
-      art: v.art, start: v.start, ende: v.ende, _id: v.id
-    }));
-  }
   s._id = o.id;
   return s;
 }
@@ -121,11 +113,15 @@ function zuTermin(t) {
    Laden
    ------------------------------------------------------------- */
 async function ladeDaten() {
-  const { data: objekte, error: e1 } = await window.sb
+  // ESTRIQ führt ausschließlich Mietobjekte. Andere Objektarten, die noch
+  // in der Datenbank liegen, werden nicht geladen und nirgends mitgezählt.
+  const { data: alleObjekte, error: e1 } = await window.sb
     .from('objekte')
-    .select('*, einheiten(*), kredite(*), pachtvertraege(*)')
+    .select('*, einheiten(*), kredite(*)')
+    .eq('art', 'miete')
     .order('sortierung');
   if (e1) throw e1;
+  const objekte = (alleObjekte || []).filter(o => o.art === 'miete');
 
   const { data: termine, error: e2 } = await window.sb
     .from('termine').select('*').order('datum');
@@ -137,6 +133,9 @@ async function ladeDaten() {
     const { data: aboData } = await window.sb.rpc('mein_abo');
     if (aboData) abo = aboData;
   } catch (_) {}
+  // Tarifgrenzen zählen nur, was die App auch führt: die geladenen Mietobjekte.
+  abo.objekte = objekte.length;
+  abo.einheiten = objekte.reduce((a, o) => a + (o.einheiten || []).length, 0);
 
   // Gewerke und Rechnungen (Kostenkontrolle je Objekt)
   let gewerke = [], rechnungen = [];
@@ -170,7 +169,7 @@ async function ladeDaten() {
     zahlungen: zahlungen,
     gewerke: gewerke,
     rechnungen: rechnungen,
-    streams: (objekte || []).map(zuStream),
+    streams: objekte.map(zuStream),
     termine: (termine || []).map(zuTermin)
   };
   return window.DASHBOARD_DATA;
