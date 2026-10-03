@@ -21,17 +21,17 @@
     grid: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
     chart: '<path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     home: '<path d="M4 11l8-6 8 6M6 10v9h12v-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-    bed: '<path d="M3 8v10M3 12h18a2 2 0 0 0-2-2H3M21 12v6M6 10V8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     coins: '<ellipse cx="8" cy="7" rx="5" ry="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 7v5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7" stroke="currentColor" stroke-width="1.8"/><path d="M11 14.5c.6 1.2 2.6 2 5 2 2.8 0 5-1.1 5-2.5v-5" stroke="currentColor" stroke-width="1.8"/><ellipse cx="16" cy="9" rx="5" ry="2.5" stroke="currentColor" stroke-width="1.8"/>',
     euro: '<path d="M15 8a5 5 0 1 0 0 8M5 10h7M5 14h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
     layers: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
     trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     key: '<circle cx="8" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M11 11l7 7M16 16l2-2M14 18l2-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-    sprout: '<path d="M12 20v-8M12 12c0-3 2-5 5-5 0 3-2 5-5 5zM12 13c0-2.5-2-4.5-5-4.5 0 2.5 2 4.5 5 4.5z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 20h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
     bank: '<path d="M4 10l8-5 8 5M5 10v8M19 10v8M9 10v8M15 10v8M3 20h18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     wallet: '<path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M3 7h16M16 12h5v4h-5a2 2 0 0 1 0-4z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     debt: '<path d="M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    tool: '<path d="M14.5 6.2a4 4 0 0 0-5.3 5.3L4 16.7V20h3.3l5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.2-.6-.6-2.2z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+    beleg: '<path d="M7 3h10a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1zM9 8h6M9 12h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     calendar: '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 9h16M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     user: '<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
@@ -166,43 +166,84 @@
   }
 
   /* ---------- ABO / TARIF ---------- */
+  // Einzige Quelle für Preise, Grenzen und Leistungen. Tarif-Fenster, Upgrade-Fenster
+  // und Empfehlung lesen von hier. Dieselben Texte stehen wörtlich auf der Landing Page.
   const TARIFE = {
-    basic:   { name: "Basic",   preis: "19,99 €", objekte: 3, einheiten: 10 },
-    premium: { name: "Premium", preis: "29,99 €", objekte: Infinity, einheiten: Infinity }
+    basic: {
+      name: "Basic", preis: "19,99 €", objekte: 3, einheiten: 10, nutzer: 1,
+      kurz: "Für den Einstieg mit wenigen Wohnungen.",
+      leistungen: [
+        "Bis zu 3 Objekte und 10 Einheiten",
+        "1 Nutzer",
+        "Mieter, Mieten und Mieteingänge im Blick",
+        "Finanzierungen mit Tilgungsplan",
+        "Kennzahlen, Kalender und Lernecke"
+      ]
+    },
+    premium: {
+      name: "Premium", preis: "29,99 €", objekte: Infinity, einheiten: Infinity, nutzer: 3,
+      kurz: "Für größere Bestände, Teams und alle, die abrechnen und sanieren.",
+      leistungen: [
+        "Unbegrenzt Objekte und Einheiten",
+        "Bis zu 3 Nutzer mit eigenem Login",
+        "Alles aus Basic",
+        "Nebenkostenabrechnung je Einheit",
+        "Handwerker und Gewerke: Zahlung gegen Fortschritt"
+      ]
+    }
   };
+  // Module, die nur mit Premium bearbeitet werden können.
+  // Im Basic-Tarif bleiben sie sichtbar: als Vorschau oder, wenn es schon Daten gibt, lesbar.
+  const PREMIUM_MODULE = {
+    nebenkosten: { name: "Nebenkostenabrechnung", icon: "beleg",
+      nutzen: "Kostenarten erfassen, auf die Mieter verteilen und je Einheit Guthaben oder Nachzahlung sehen." },
+    gewerke: { name: "Handwerker und Gewerke", icon: "tool",
+      nutzen: "Angebot, Rechnungen und Baufortschritt je Handwerker gegenüberstellen. Du siehst sofort, ob du mehr gezahlt hast, als gebaut wurde." }
+  };
+  const leistungsListe = (plan) => TARIFE[plan].leistungen.map(l => `<li>${esc(l)}</li>`).join("");
+
   function abo() {
     return (D && D.abo) || { tarif: "premium", roh_tarif: "test", objekte: 0, einheiten: 0 };
   }
   function istPremium() { return abo().tarif === "premium"; }
   function istGesperrt() { return abo().tarif === "gesperrt"; }
+  // Premium-Module sind nur mit Premium bearbeitbar (Testphase zählt wie Premium)
+  function hatModul() { return istPremium(); }
 
   // Prüft, ob eine Aktion erlaubt ist. Gibt true zurück oder zeigt den Upgrade-Hinweis.
-  function pruefeObjekt(art) {
+  function pruefeObjekt() {
     const a = abo();
     if (a.tarif === "gesperrt") { openUpgradeSheet("gesperrt"); return false; }
     if (a.tarif === "premium") return true;
-    // basic
-    if (art && art !== "miete") { openUpgradeSheet("art"); return false; }
-    if (a.objekte >= 3) { openUpgradeSheet("objekte"); return false; }
+    if (a.objekte >= TARIFE.basic.objekte) { openUpgradeSheet("objekte"); return false; }
     return true;
   }
   function pruefeEinheit() {
     const a = abo();
     if (a.tarif === "gesperrt") { openUpgradeSheet("gesperrt"); return false; }
     if (a.tarif === "premium") return true;
-    if (a.einheiten >= 10) { openUpgradeSheet("einheiten"); return false; }
+    if (a.einheiten >= TARIFE.basic.einheiten) { openUpgradeSheet("einheiten"); return false; }
     return true;
   }
+  // Vor jedem Anlegen, Ändern oder Löschen in einem Premium-Modul
+  function pruefeModul(id) {
+    const a = abo();
+    if (a.tarif === "gesperrt") { openUpgradeSheet("gesperrt"); return false; }
+    if (a.tarif === "premium") return true;
+    openUpgradeSheet("modul", id);
+    return false;
+  }
 
-  function openUpgradeSheet(grund) {
+  function openUpgradeSheet(grund, modulId) {
+    const b = TARIFE.basic, prem = TARIFE.premium;
+    const mod = PREMIUM_MODULE[modulId];
     const texte = {
-      objekte:   { t: "Objekt-Grenze erreicht", d: "Im Basic-Tarif kannst du bis zu 3 Objekte verwalten. Mit Premium werden es unbegrenzt viele." },
-      einheiten: { t: "Einheiten-Grenze erreicht", d: "Basic umfasst bis zu 10 Einheiten. Premium hebt die Grenze vollständig auf." },
-      art:       { t: "Nur mit Premium", d: "AirBNB- und Landpacht-Objekte sind Premium vorbehalten. Basic deckt die klassische Vermietung ab." },
+      objekte:   { t: "Objekt-Grenze erreicht", d: `Im Basic-Tarif kannst du bis zu ${b.objekte} Objekte verwalten. Mit Premium werden es unbegrenzt viele.` },
+      einheiten: { t: "Einheiten-Grenze erreicht", d: `Basic umfasst bis zu ${b.einheiten} Einheiten. Premium hebt die Grenze vollständig auf.` },
+      modul:     { t: (mod ? mod.name : "Dieses Modul") + " gehört zu Premium", d: "Im Basic-Tarif ist dieses Modul gesperrt. " + (mod ? mod.nutzen : "") },
       gesperrt:  { t: "Bearbeiten pausiert", d: "Dein Testzeitraum ist abgelaufen oder es liegt keine gültige Zahlung vor. Deine Daten bleiben erhalten und lesbar — mit einem aktiven Abo kannst du sie wieder bearbeiten." }
     };
     const info = texte[grund] || texte.objekte;
-    const prem = TARIFE.premium;
     const body = `
       <div class="up-hero">
         <div class="up-badge">${grund === "gesperrt" ? "Pausiert" : "Upgrade"}</div>
@@ -211,15 +252,11 @@
       </div>
       <div class="up-plan">
         <div class="up-plan-h">
-          <div><div class="up-plan-n">Premium</div>
-            <div class="up-plan-s">Alles ohne Grenzen</div></div>
+          <div><div class="up-plan-n">${esc(prem.name)}</div>
+            <div class="up-plan-s">${esc(prem.kurz)}</div></div>
           <div class="up-plan-p">${prem.preis}<span>/Monat</span></div>
         </div>
-        <ul class="up-feats">
-          <li>Unbegrenzt Objekte und Einheiten</li>
-          <li>AirBNB- und Landpacht-Objekte</li>
-          <li>Alle Analysen und Auswertungen</li>
-        </ul>
+        <ul class="up-feats">${leistungsListe("premium")}</ul>
         <button class="up-cta" id="upCta">Auf Premium wechseln</button>
         <div class="up-note">Erster Monat kostenlos · monatlich kündbar</div>
       </div>`;
@@ -227,37 +264,32 @@
     sheet.querySelector("#upCta").onclick = () => { closeSheet(); openTarifSheet(); };
   }
 
+  // Name des gebuchten Tarifs. Testphase und Onboarding sind kein gebuchter Tarif.
+  function gebuchterTarif() {
+    const r = abo().roh_tarif;
+    return (r === "basic" || r === "premium") ? r : null;
+  }
+
   // Tarifübersicht (Vergleich beider Stufen)
   function openTarifSheet() {
     const a = abo();
-    const aktuell = a.tarif;
+    const aktuell = gebuchterTarif();
+    const karte = (plan) => {
+      const tf = TARIFE[plan], prem = plan === "premium";
+      return `<div class="tarif-card${prem ? " premium" : ""}${aktuell === plan ? " current" : ""}">
+          ${prem ? `<div class="tarif-flag">Empfohlen</div>` : ""}
+          <div class="tarif-n">${esc(tf.name)}</div>
+          <div class="tarif-p">${tf.preis}<span>/Monat</span></div>
+          <div class="tarif-k">${esc(tf.kurz)}</div>
+          <ul class="tarif-feats">${leistungsListe(plan)}</ul>
+          ${aktuell === plan ? `<div class="tarif-badge">Dein Tarif</div>`
+            : `<button class="tarif-btn${prem ? " prem" : ""}" data-plan="${plan}">${esc(tf.name)} wählen</button>`}
+        </div>`;
+    };
     const body = `
       <div class="tarif-grid">
-        <div class="tarif-card${aktuell === "basic" ? " current" : ""}">
-          <div class="tarif-n">Basic</div>
-          <div class="tarif-p">19,99 €<span>/Monat</span></div>
-          <ul class="tarif-feats">
-            <li>Bis zu 3 Objekte</li>
-            <li>Bis zu 10 Einheiten</li>
-            <li>Klassische Vermietung</li>
-            <li>Alle Analysen</li>
-          </ul>
-          ${aktuell === "basic" ? `<div class="tarif-badge">Dein Tarif</div>`
-            : `<button class="tarif-btn" data-plan="basic">Basic wählen</button>`}
-        </div>
-        <div class="tarif-card premium${aktuell === "premium" ? " current" : ""}">
-          <div class="tarif-flag">Empfohlen</div>
-          <div class="tarif-n">Premium</div>
-          <div class="tarif-p">29,99 €<span>/Monat</span></div>
-          <ul class="tarif-feats">
-            <li>Unbegrenzt Objekte</li>
-            <li>Unbegrenzt Einheiten</li>
-            <li>AirBNB & Landpacht</li>
-            <li>Alle Analysen</li>
-          </ul>
-          ${aktuell === "premium" ? `<div class="tarif-badge">Dein Tarif</div>`
-            : `<button class="tarif-btn prem" data-plan="premium">Premium wählen</button>`}
-        </div>
+        ${karte("basic")}
+        ${karte("premium")}
       </div>
       <div class="tarif-code">
         <label class="ef-l">Rabattcode</label>
@@ -269,7 +301,10 @@
       </div>
       <div class="up-note" style="margin-top:14px">Erster Monat kostenlos · jederzeit kündbar</div>
       ${a.hat_stripe ? `<div class="abo-verwalten"><a href="#" id="portalLink">Abo verwalten oder kündigen</a></div>` : ""}`;
-    const sheet = openSheet("Tarif wählen", "Aktuell: " + (TARIFE[aktuell] ? TARIFE[aktuell].name : "Test"), body);
+    const stand = aktuell ? TARIFE[aktuell].name
+      : a.tarif === "gesperrt" ? "Pausiert"
+      : a.roh_tarif === "onboarding" ? "Kein Abo" : "Test";
+    const sheet = openSheet("Tarif wählen", "Aktuell: " + stand, body);
 
     const pl = sheet.querySelector("#portalLink");
     if (pl) pl.onclick = (e) => { e.preventDefault(); oeffnePortal(pl); };
@@ -515,7 +550,7 @@
       const d = new Date(a.tarif_bis).toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" });
       statusZeile = `Aktiv · verlängert sich am ${d}`;
     } else if (a.tarif === "basic") {
-      statusZeile = `${a.objekte}/3 Objekte · ${a.einheiten}/10 Einheiten`;
+      statusZeile = `${a.objekte}/${TARIFE.basic.objekte} Objekte · ${a.einheiten}/${TARIFE.basic.einheiten} Einheiten`;
     } else if (a.tarif === "premium") {
       statusZeile = ss === "demo_code" ? "Freigeschaltet (Demo)" : "Unbegrenzt";
     }
@@ -630,7 +665,7 @@
       const msg = sheet.querySelector("#pMsg");
       msg.textContent = "Konto wird gelöscht…"; msg.className = "ef-msg"; del.disabled = true;
       try {
-        // Eigene Organisation entfernen (Objekte/Einheiten/Kredite/Pacht/Termine folgen per Kaskade,
+        // Eigene Organisation entfernen (Objekte/Einheiten/Kredite/Termine folgen per Kaskade,
         // das Mitglied ebenfalls). Das Auth-Konto selbst wird beim nächsten Schritt abgemeldet.
         const org = await window.meineOrgId();
         const { error } = await window.sb.from("organisationen").delete().eq("id", org);
@@ -922,39 +957,34 @@
     return sheet;
   }
 
-  // Geführtes Anlegen eines Objekts
-  function assistentObjekt(art, opt) {
+  // Geführtes Anlegen eines Mietobjekts
+  function assistentObjekt(opt) {
     opt = opt || {};
-    const istPacht = art === "pacht";
     const schritte = [
       { id: "name", frage: "Wie soll dein Objekt heißen?",
         hinweis: "Ein Name, unter dem du es wiedererkennst.",
         typ: "text", pflicht: true,
-        platzhalter: istPacht ? "z. B. Ackerland Nord" : "z. B. Haus Bergstraße 12" },
+        platzhalter: "z. B. Haus Bergstraße 12" },
       { id: "ort", frage: "Wo liegt das Objekt?",
         hinweis: "Nur für dich zur Orientierung – wird nirgends veröffentlicht.",
         typ: "text", ueberspringbar: true, platzhalter: "z. B. Bremen" },
       { id: "invest", frage: "Was hast du insgesamt investiert?",
         hinweis: "Kaufpreis inklusive Nebenkosten wie Notar, Grunderwerbsteuer und Makler. Daraus berechnet ESTRIQ deine Rendite.",
-        typ: "number", einheit: "€", pflicht: true, platzhalter: "z. B. 250000" }
-    ];
-    if (!istPacht) {
-      schritte.push({
-        id: "nk_als_puffer", frage: "Wie sollen Nebenkosten behandelt werden?",
+        typ: "number", einheit: "€", pflicht: true, platzhalter: "z. B. 250000" },
+      { id: "nk_als_puffer", frage: "Wie sollen Nebenkosten behandelt werden?",
         hinweis: "Als Rücklage bedeutet: Die Nebenkosten deiner Mieter werden für Ausgaben zurückgelegt und nicht als Gewinn gezählt. Das ist die vorsichtigere Rechnung.",
         optionen: [
           { t: "Als Rücklage zurücklegen", v: "1" },
           { t: "Als Ertrag mitzählen", v: "0" }
-        ]
-      });
-    }
-    openAssistent(istPacht ? "Landpacht anlegen" : (art === "airbnb" ? "Kurzzeitvermietung anlegen" : "Objekt anlegen"),
+        ] }
+    ];
+    openAssistent("Objekt anlegen",
       schritte, async (a) => {
         await neuesObjekt({
           name: a.name || "Objekt",
           slug: (a.name || "objekt").toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-          art: art,
-          icon: ART_ICON[art] || "home",
+          art: "miete",
+          icon: "home",
           ort: a.ort || "",
           notiz: "",
           invest: Number(String(a.invest).replace(",", ".")) || null,
@@ -966,11 +996,11 @@
         const streams = (D.streams || []);
         const neuesObj = streams[streams.length - 1];
         if (opt.nachOnboarding) {
-          if (art === "miete" && neuesObj) setTimeout(() => assistentEinheit(neuesObj, { nachOnboarding: true }), 300);
+          if (neuesObj) setTimeout(() => assistentEinheit(neuesObj, { nachOnboarding: true }), 300);
           else setTimeout(() => openTarifFragenSheet(), 300);
         } else {
           showToast("Objekt angelegt.");
-          if (art === "miete" && neuesObj) setTimeout(() => assistentEinheit(neuesObj), 350);
+          if (neuesObj) setTimeout(() => assistentEinheit(neuesObj), 350);
         }
       });
   }
@@ -1030,7 +1060,6 @@
     if (!streams.length) return t;
 
     streams.forEach(s => {
-      if (s.kind === "pacht") return;
       // Fehlende Investitionssumme -> keine Rendite berechenbar
       if (!s.invest) {
         t.push({
@@ -1404,45 +1433,42 @@
         <div class="wc-t">Leg dein erstes Objekt an</div>
         <div class="wc-d">Trag eine Immobilie ein, die du vermietest. Du siehst sofort, wie ESTRIQ deine Einnahmen und Rendite berechnet.</div>
       </div>
-      <div class="ob-arten">
-        <button class="ob-art" data-art="miete">${svg("home")}<div><div class="ob-art-n">Vermietung</div><div class="ob-art-m">Wohnung oder Haus mit Mietern</div></div></button>
-        <button class="ob-art" data-art="airbnb">${svg("bed")}<div><div class="ob-art-n">Kurzzeitvermietung</div><div class="ob-art-m">Ferienwohnung, AirBNB & Co.</div></div></button>
-        <button class="ob-art" data-art="pacht">${svg("sprout")}<div><div class="ob-art-n">Landpacht</div><div class="ob-art-m">Acker- oder Grünland</div></div></button>
-      </div>
+      <button class="wc-cta prem" id="obStart">Erstes Objekt anlegen</button>
       <div class="wc-skip"><a href="#" id="obSkip">Überspringen</a></div>`;
     const sheet = openSheet("Erstes Objekt", "", body);
-    sheet.querySelectorAll(".ob-art").forEach(b => b.onclick = () => {
-      const art = b.dataset.art;
+    sheet.querySelector("#obStart").onclick = () => {
       closeSheet();
       // Nach dem Speichern des Objekts geht es weiter zu den Fragen
-      setTimeout(() => assistentObjekt(art, { nachOnboarding: true }), 200);
-    });
+      setTimeout(() => assistentObjekt({ nachOnboarding: true }), 200);
+    };
     sheet.querySelector("#obSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => openTarifFragenSheet(), 200); };
   }
 
   // Onboarding-Schritt 3: drei Fragen → Abo-Empfehlung
+  // Jede Frage bildet einen echten Unterschied zwischen Basic und Premium ab.
   function openTarifFragenSheet() {
+    const b = TARIFE.basic;
     const fragen = [
       { id: "objekte", frage: "Wie viele Immobilien möchtest du verwalten?",
-        hinweis: "Das bestimmt, wie viel Struktur du brauchst.",
+        hinweis: `Basic reicht für bis zu ${b.objekte} Objekte. Premium ist unbegrenzt.`,
         opt: [
           { t: "1 – 3 Objekte", v: "wenige" },
           { t: "4 – 10 Objekte", v: "mittel" },
           { t: "Mehr als 10", v: "viele" }
         ] },
-      { id: "arten", frage: "Welche Arten der Vermietung nutzt du?",
-        hinweis: "Ferienwohnungen und Landpacht brauchen spezielle Auswertungen.",
+      { id: "einheiten", frage: "Wie viele Wohnungen oder Einheiten sind das zusammen?",
+        hinweis: `Zähl alle Wohnungen und Gewerbeeinheiten zusammen. Basic reicht für bis zu ${b.einheiten}.`,
         opt: [
-          { t: "Nur klassische Vermietung", v: "miete" },
-          { t: "Auch Ferienwohnung / AirBNB", v: "airbnb" },
-          { t: "Auch verpachtetes Land", v: "pacht" }
+          { t: "Bis 10", v: "bis10" },
+          { t: "11 – 30", v: "bis30" },
+          { t: "Mehr als 30", v: "mehr" }
         ] },
-      { id: "auswertung", frage: "Wie tief möchtest du deine Zahlen auswerten?",
-        hinweis: "ESTRIQ rechnet Rendite, Cashflow, Tilgung und Reserven – je mehr Objekte, desto wertvoller der Gesamtüberblick.",
+      { id: "ziel", frage: "Was möchtest du mit ESTRIQ außerdem erledigen?",
+        hinweis: "Nebenkostenabrechnung, Handwerker und mehrere Nutzer gehören zu Premium.",
         opt: [
-          { t: "Überblick über meine Einnahmen genügt", v: "basis" },
-          { t: "Rendite und Cashflow je Objekt", v: "detail" },
-          { t: "Volles Controlling über alle Objekte", v: "voll" }
+          { t: "Nur Mieten und Finanzierung im Blick behalten", v: "basis" },
+          { t: "Nebenkosten abrechnen oder Sanierungen steuern", v: "module" },
+          { t: "Mit Kollegen oder Partner gemeinsam arbeiten", v: "team" }
         ] }
     ];
     const antworten = {};
@@ -1472,37 +1498,45 @@
     zeigeFrage();
   }
 
+  // Regel der Empfehlung: Premium, sobald eine Basic-Grenze überschritten wird
+  // oder ein Premium-Modul bzw. mehrere Nutzer gewünscht sind. Sonst Basic.
+  function empfohlenerTarif(antworten) {
+    const b = TARIFE.basic, gruende = [];
+    if (antworten.objekte === "mittel" || antworten.objekte === "viele")
+      gruende.push(`du mehr als ${b.objekte} Objekte verwaltest`);
+    if (antworten.einheiten === "bis30" || antworten.einheiten === "mehr")
+      gruende.push(`es mehr als ${b.einheiten} Einheiten sind`);
+    if (antworten.ziel === "module") gruende.push("du Nebenkosten abrechnen oder Sanierungen steuern willst");
+    if (antworten.ziel === "team") gruende.push("ihr zu mehreren arbeiten wollt");
+    return { plan: gruende.length ? "premium" : "basic", gruende };
+  }
+
   // Onboarding-Schritt 4: Empfehlung + Checkout
   function openEmpfehlungSheet(antworten) {
-    // Entscheidung: Premium wenn viele Objekte ODER AirBNB/Pacht ODER volles Controlling
-    const brauchtPremium =
-      antworten.objekte === "mittel" || antworten.objekte === "viele" ||
-      antworten.arten === "airbnb" || antworten.arten === "pacht" ||
-      antworten.auswertung === "voll";
-    const plan = brauchtPremium ? "premium" : "basic";
-    const preis = brauchtPremium ? "29,99 €" : "19,99 €";
-    const name = brauchtPremium ? "Premium" : "Basic";
+    const e = empfohlenerTarif(antworten);
+    const plan = e.plan, tf = TARIFE[plan];
+    const brauchtPremium = plan === "premium";
+    const preis = tf.preis, name = tf.name;
+    const liste = e.gruende.length > 1
+      ? e.gruende.slice(0, -1).join(", ") + " und " + e.gruende[e.gruende.length - 1]
+      : e.gruende[0];
     const begruendung = brauchtPremium
-      ? "Weil du mehrere Objekte oder besondere Vermietungsarten nutzt, empfehlen wir Premium – unbegrenzt Objekte, AirBNB und Landpacht inklusive."
-      : "Für deinen Einstieg genügt Basic – bis zu 3 Objekte und 10 Einheiten mit allen Auswertungen. Wechseln kannst du jederzeit.";
+      ? `Wir empfehlen Premium, weil ${liste}.`
+      : `Für deinen Bestand genügt Basic: bis zu ${TARIFE.basic.objekte} Objekte und ${TARIFE.basic.einheiten} Einheiten mit allen Kennzahlen. Wechseln kannst du jederzeit.`;
 
     const body = `
       <div class="wc-hero">
         <div class="wc-steps"><span class="done"></span><span class="done"></span><span class="done"></span></div>
         <div class="wc-badge">Unsere Empfehlung für dich</div>
-        <div class="wc-t">${name}</div>
-        <div class="wc-d">${begruendung}</div>
+        <div class="wc-t">${esc(name)}</div>
+        <div class="wc-d">${esc(begruendung)}</div>
       </div>
-      <div class="empf-plan ${plan === "premium" ? "premium" : ""}">
+      <div class="empf-plan ${brauchtPremium ? "premium" : ""}">
         <div class="empf-top">
-          <div class="empf-n">${name}</div>
+          <div class="empf-n">${esc(name)}</div>
           <div class="empf-p">${preis}<span>/Monat</span></div>
         </div>
-        <ul class="wc-feats">
-          ${brauchtPremium
-            ? "<li>Unbegrenzt Objekte & Einheiten</li><li>AirBNB & Landpacht</li><li>Volles Controlling</li>"
-            : "<li>Bis zu 3 Objekte</li><li>Bis zu 10 Einheiten</li><li>Alle Auswertungen</li>"}
-        </ul>
+        <ul class="wc-feats">${leistungsListe(plan)}</ul>
       </div>
       <button class="wc-cta prem" id="empfCta" style="margin-top:8px">30 Tage kostenlos testen</button>
       <button class="wc-cta" id="empfAlt" style="margin-top:10px">${brauchtPremium ? "Lieber mit Basic starten" : "Doch lieber Premium ansehen"}</button>
@@ -1547,12 +1581,9 @@
   function mietStreams() { return (D.streams || []).filter(s => s.kind === "miete"); }
 
   function navItems() {
-    const rest = (D.streams || []).filter(s => s.kind !== "miete")
-      .map(s => ({ id: s.id, label: shortLabel(s.name), icon: s.icon || "euro" }));
     return [
       { id: "overview", label: "Übersicht", icon: "grid" },
       { id: "vermietung", label: "Vermietung", icon: "home", group: true },
-      ...rest,
       { id: "tools", label: "Tools", icon: "chart" }
     ];
   }
@@ -1593,25 +1624,17 @@
     mk("profile", "user", "Profil", () => openProfilSheet());
   }
 
-  // Handy: Objekte-Menü (Vermietung / AirBNB / Landpacht + einzelne Objekte)
+  // Handy: Objekte-Menü (Sammelübersicht + einzelne Objekte)
   function openObjekteMenu(anchor) {
     closeSubmenu();
-    const streams = (D.streams || []);
-    const gruppe = (kind, icon, titel) => {
-      const list = streams.filter(s => s.kind === kind);
-      if (!list.length) return "";
-      return `<div class="sub-cat">${esc(titel)}</div>` + list.map(s => {
-        const m = FE.streamMonthly(s);
-        const on = currentView === s.id;
-        return `<div class="sub-item${on ? " on" : ""}" data-id="${s.id}">
-          <div class="sub-ic">${svg(s.icon || icon)}</div>
-          <div class="sub-tx"><div class="sub-n">${esc(s.name)}</div>
-            <div class="sub-m">${eur(m.gesamt)}/Monat</div></div></div>`;
-      }).join("");
-    };
-    const inhalt = gruppe("miete", "home", "Vermietung")
-      + gruppe("airbnb", "bed", "Kurzzeitvermietung")
-      + gruppe("pacht", "sprout", "Landpacht");
+    const inhalt = mietStreams().map(s => {
+      const m = FE.streamMonthly(s);
+      const on = currentView === s.id;
+      return `<div class="sub-item${on ? " on" : ""}" data-id="${s.id}">
+        <div class="sub-ic">${svg(s.icon || "home")}</div>
+        <div class="sub-tx"><div class="sub-n">${esc(s.name)}</div>
+          <div class="sub-m">${eur(m.gesamt)}/Monat</div></div></div>`;
+    }).join("");
     const bd = el(`<div class="sub-bd"></div>`);
     const menu = el(`<div class="submenu obj-menu">
       <div class="submenu-t">Objekte</div>
@@ -1629,29 +1652,16 @@
   }
 
   /* ---------- ANLEGEN (zentrales +) ---------- */
-  // Icon je Objektart – neue Objekte bekommen automatisch das passende Symbol
-  const ART_ICON = { miete: "home", airbnb: "bed", pacht: "sprout" };
-  const ART_INFO = {
-    miete:  { icon: "home",   name: "Vermietung",      desc: "Wohnung oder Haus mit Mietern" },
-    airbnb: { icon: "bed",    name: "Kurzzeitvermietung", desc: "Ferienwohnung, AirBNB & Co." },
-    pacht:  { icon: "sprout", name: "Landpacht",       desc: "Acker- oder Grünland verpachten" }
-  };
-
   function openAnlegenMenu(anchor) {
     closeSubmenu();
-    const arten = ["miete", "airbnb", "pacht"].map(art => {
-      const i = ART_INFO[art];
-      const gesperrt = !istPremium() && art !== "miete";
-      return `<div class="sub-item anlegen-item${gesperrt ? " locked" : ""}" data-art="${art}">
-        <div class="sub-ic">${svg(i.icon)}</div>
-        <div class="sub-tx"><div class="sub-n">${esc(i.name)}${gesperrt ? ' <span class="lock-badge">Premium</span>' : ""}</div>
-          <div class="sub-m">${esc(i.desc)}</div></div>
-        <div class="sub-v">${svg("plus")}</div></div>`;
-    }).join("");
     const bd = el(`<div class="sub-bd"></div>`);
     const menu = el(`<div class="submenu anlegen-menu">
       <div class="submenu-t">Neu anlegen</div>
-      ${arten}
+      <div class="sub-item anlegen-item" data-neu="objekt">
+        <div class="sub-ic">${svg("home")}</div>
+        <div class="sub-tx"><div class="sub-n">Mietobjekt</div>
+          <div class="sub-m">Wohnung oder Haus mit Mietern</div></div>
+        <div class="sub-v">${svg("plus")}</div></div>
       <div class="anlegen-sep"></div>
       <div class="sub-item anlegen-item" data-neu="termin">
         <div class="sub-ic">${svg("calendar")}</div>
@@ -1663,12 +1673,11 @@
     positioniereSubmenu(anchor, menu);
 
     const schliessenUndTun = (fn) => { closeSubmenu(); fn(); };
-    menu.querySelectorAll(".anlegen-item[data-art]").forEach(n => n.onclick = () => {
-      const art = n.dataset.art;
-      if (!istPremium() && art !== "miete") { schliessenUndTun(() => openUpgradeSheet("art")); return; }
-      if (!pruefeObjekt(art)) { closeSubmenu(); return; }
-      schliessenUndTun(() => assistentObjekt(art));
-    });
+    const o = menu.querySelector('[data-neu="objekt"]');
+    if (o) o.onclick = () => {
+      if (!pruefeObjekt()) { closeSubmenu(); return; }
+      schliessenUndTun(() => assistentObjekt());
+    };
     const t = menu.querySelector('[data-neu="termin"]');
     if (t) t.onclick = () => schliessenUndTun(() => openTerminEdit(null, true));
     bd.onclick = closeSubmenu;
@@ -1732,9 +1741,6 @@
     });
   }
 
-  const TITLES = {
-    overview: ["Portfolio", "Übersicht", "Alle Einnahmequellen auf einen Blick"]
-  };
   let currentView = "overview";
   function route(id) {
     currentView = id;
@@ -1832,8 +1838,43 @@
     };
   }
 
+  // Ruhige Vorschau eines Premium-Moduls für den Basic-Tarif
+  function modulVorschau(id) {
+    const m = PREMIUM_MODULE[id];
+    const karte = el(`<div class="card pad modul-sperre">
+      <div class="ms-kopf">
+        <div class="tile-ic">${svg(m.icon)}</div>
+        <div class="ms-tx">
+          <div class="card-t">${esc(m.name)} <span class="lock-badge">Premium</span></div>
+          <div class="card-s">${esc(m.nutzen)}</div>
+        </div>
+      </div>
+      <button class="add-btn wide ms-frei">Mit Premium freischalten</button>
+    </div>`);
+    karte.querySelector(".ms-frei").onclick = () => pruefeModul(id);
+    return karte;
+  }
+  const NUR_LESEN = "Im Basic-Tarif kannst du diese Daten ansehen. Zum Bearbeiten brauchst du Premium.";
+
+  // Basic: Vorschau. Gibt es schon Abrechnungsdaten (etwa aus der Testphase), bleiben sie lesbar.
+  function nebenkostenGesperrt(s) {
+    const karte = modulVorschau("nebenkosten");
+    (async () => {
+      try {
+        const { data, error } = await window.sb.from("nebenkosten").select("jahr").eq("objekt_id", s._id);
+        if (error || !data || !data.length) return;
+        const jahr = Math.max(...data.map(x => Number(x.jahr) || 0));
+        const b = el(`<button class="add-btn wide ms-lesen">Vorhandene Abrechnung ${jahr} ansehen</button>`);
+        b.onclick = () => openNkAbrechnung(s, jahr);
+        karte.appendChild(b);
+      } catch (_) {}
+    })();
+    return karte;
+  }
+
   // Karte in der Objektansicht
   function nebenkostenKarte(s) {
+    if (!hatModul()) return nebenkostenGesperrt(s);
     const jahr = new Date().getFullYear() - 1;   // Abrechnung betrifft das Vorjahr
     const karte = el(`<div class="card nk-card">
       <div class="card-h">
@@ -1911,6 +1952,7 @@
           <div class="gw-kachel"><span>${r.saldoGes >= 0 ? "Guthaben" : "Nachzahlung"}</span>
             <b class="${r.saldoGes >= 0 ? "gut" : "warn"}">${eur(Math.abs(r.saldoGes))}</b></div>
         </div>
+        ${hatModul() ? "" : `<div class="gw-hinweis">${NUR_LESEN}</div>`}
         ${r.hatVerbrauch ? `<div class="gw-hinweis">Heizung und Warmwasser werden hier ersatzweise nach Fläche verteilt. Die Heizkostenverordnung verlangt eine verbrauchsabhängige Abrechnung — nimm dafür die Werte deines Ablesedienstes.</div>` : ""}
         ${efTitel("Kostenarten " + jahr)}
         <div class="nk-liste">${liste}</div>
@@ -1927,6 +1969,7 @@
       body.querySelector("#nkAdd").onclick = () => openNkPosten(s, jahr, null, zeichne);
       const vb = body.querySelector("#nkVorlage");
       if (vb) vb.onclick = async () => {
+        if (!pruefeModul("nebenkosten")) return;
         vb.disabled = true; vb.textContent = "Wird angelegt…";
         try {
           const rows = NK_VORLAGE.map(v => ({ objekt_id: s._id, jahr, art: v.art, betrag: 0,
@@ -1949,6 +1992,7 @@
 
   // Eine Kostenart anlegen oder bearbeiten
   function openNkPosten(s, jahr, p, fertig) {
+    if (!pruefeModul("nebenkosten")) return;
     const body = `
       ${ef("Kostenart", "art", p ? p.art : "", "text", { pflicht: true, platzhalter: "z. B. Grundsteuer" })}
       ${ef("Betrag im Jahr", "betrag", p ? (p.betrag ?? "") : "", "number",
@@ -2068,8 +2112,10 @@
   const proz = (v) => (Number(v) || 0).toFixed(0) + " %";
 
   function gewerkeKarte(s) {
+    const frei = hatModul();
     const gw = gewerkeVon(s);
     if (!gw.length) {
+      if (!frei) return modulVorschau("gewerke");
       const leer = el(`<div class="card">
         <div class="card-h"><div><div class="card-t">Gewerke &amp; Kosten</div>
           <div class="card-s">Zahlung gegen Baufortschritt</div></div>
@@ -2100,11 +2146,12 @@
 
     const karte = el(`<div class="card">
       <div class="card-h">
-        <div><div class="card-t">Zahlung gegen Fortschritt</div>
+        <div><div class="card-t">Zahlung gegen Fortschritt${frei ? "" : ' <span class="lock-badge">Premium</span>'}</div>
           <div class="card-s">${gw.length} ${gw.length === 1 ? "Gewerk" : "Gewerke"} · Quote gegen Baufortschritt</div></div>
-        <button class="add-btn" id="addGewerk">+ Gewerk</button>
+        <button class="add-btn" id="addGewerk">${frei ? "+ Gewerk" : "Freischalten"}</button>
       </div>
       <div class="card-b">
+        ${frei ? "" : `<div class="gw-hinweis" style="margin:0 0 12px">${NUR_LESEN}</div>`}
         <div class="gwt">
           <div class="gwt-kopf">
             <div>Gewerk</div><div class="gwt-c">Angebot</div><div class="gwt-c">Gezahlt</div>
@@ -2206,7 +2253,7 @@
         <button class="ef-save" id="gwEdit">Gewerk bearbeiten</button>
       </div>`;
     const unter = esc(g.name) + (g.auftrag_am ? " · Auftrag vom " + dateDE(g.auftrag_am) : "");
-    const sheet = openSheet(g.gewerk || g.name, unter, body);
+    const sheet = openSheet(g.gewerk || g.name, unter, (hatModul() ? "" : `<div class="gw-hinweis" style="margin:0 0 14px">${NUR_LESEN}</div>`) + body);
     sheet.querySelector("#addRn").onclick = () => { closeSheet(); openRechnungEdit(s, g, null, true); };
     sheet.querySelector("#gwEdit").onclick = () => { closeSheet(); openGewerkEdit(s, g, false); };
     sheet.querySelectorAll("[data-rechnung]").forEach(n => n.onclick = () => {
@@ -2217,6 +2264,7 @@
 
   // Gewerk anlegen oder bearbeiten
   function openGewerkEdit(s, g, neu) {
+    if (!pruefeModul("gewerke")) return;
     const body = `
       ${efTitel("Handwerker")}
       ${ef("Firma oder Name", "name", g ? g.name : "", "text", { pflicht: true, platzhalter: "z. B. Elektro Meyer GmbH" })}
@@ -2249,6 +2297,7 @@
 
   // Rechnung anlegen oder bearbeiten
   function openRechnungEdit(s, g, r, neu) {
+    if (!pruefeModul("gewerke")) return;
     const heute = new Date().toISOString().slice(0, 10);
     const body = `
       ${efTitel("Rechnung")}
@@ -3448,6 +3497,7 @@
     const msg = sheet.querySelector("#efMsg");
     const btn = sheet.querySelector("#efSave");
     if (btn) btn.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
       msg.textContent = "Speichere…"; msg.className = "ef-msg";
       btn.disabled = true;
       try {
@@ -3463,6 +3513,7 @@
     };
     const del = sheet.querySelector("#efDel");
     if (del && loeschenFn) del.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
       if (del.dataset.sicher !== "1") {
         del.dataset.sicher = "1";
         del.textContent = loeschFrage || "Wirklich löschen?";
@@ -3514,7 +3565,7 @@
         const p = FE.creditPlan(kr); debtRest += p ? p.restAktuell : 0;
       });
     });
-    add("Einnahmen gesamt", eur(t.ist), "pro Monat über alle Quellen",
+    add("Einnahmen gesamt", eur(t.ist), "pro Monat über alle Objekte",
         "einnahmen gesamt monat portfolio umsatz miete summe wieviel verdiene ich einnahme",
         () => route("overview"));
     add("Einnahmen pro Jahr", eur(t.jahrIst), "hochgerechnet",
@@ -3524,7 +3575,7 @@
         () => route("overview"));
     add("Auslastung", Math.round(let_ / (units || 1) * 100) + " %",
         let_ + " von " + units + " Einheiten vermietet",
-        "auslastung vermietet frei leer belegung quote wieviele wohnungen",
+        "auslastung vermietet frei leer quote wieviele wohnungen",
         () => route("overview"));
     add("Restschuld", eur(debtRest), "über alle Kredite",
         "restschuld schulden kredit darlehen offen rest tilgung schuld",
@@ -3578,14 +3629,6 @@
             + " % · abbezahlt " + (p.abzahlDatum ? monthYear(p.abzahlDatum) : "—"),
             kr.name + " kredit darlehen restschuld zins laufzeit " + s.name,
             () => { route(s.id); setTimeout(() => openCreditSheet(kr), 260); });
-      });
-
-      // Pacht
-      (s.vertraege || []).forEach(v => {
-        add(v.paechter, eur(v.jahr), "Pacht pro Jahr · " + v.flaeche.toLocaleString("de-DE")
-            + " ha · " + v.art,
-            v.paechter + " pacht pächter hektar acker grünland land",
-            () => { route(s.id); setTimeout(() => openPachtSheet(s, v), 260); });
       });
     });
 
@@ -3769,16 +3812,11 @@
 
     // objektbezogene Fakten
     (D.streams || []).forEach(s => {
-      const m = FE.streamMonthly(s);
       if (s.kind === "miete" && s.invest) {
         const k = FE.immoKPIs(s);
         if (k.bruttoRendite > 0)
           f.push(`${esc(shortLabel(s.name))} erzielt <b>${k.bruttoRendite.toLocaleString("de-DE")} %</b> Bruttomietrendite.`);
       }
-      if (s.kind === "airbnb" && m.gesamt > 0)
-        f.push(`Die Ferienwohnung bringt <b>${eur(m.gesamt)}</b> im Monat.`);
-      if (s.kind === "pacht" && m.jahr > 0)
-        f.push(`Die Landpacht bringt <b>${eur(m.jahr)}</b> jährlich – ganz ohne Aufwand.`);
     });
 
     // freie Einheit als Chance formulieren, nicht als Mangel
@@ -3861,7 +3899,7 @@
     host.appendChild(grid);
 
     const addObj = el(`<div class="card pad add-card"><button class="add-btn wide" id="addObjekt">+ Objekt anlegen</button></div>`);
-    addObj.querySelector("#addObjekt").onclick = () => { if (pruefeObjekt("miete")) assistentObjekt("miete"); };
+    addObj.querySelector("#addObjekt").onclick = () => { if (pruefeObjekt()) assistentObjekt(); };
     host.appendChild(addObj);
 
     // Verteilung + Kennzahlen
@@ -3906,7 +3944,7 @@
 
     $("#eyebrow").textContent = "Portfolio";
     $("#pageTitle").textContent = "Übersicht";
-    $("#pageSub").textContent = "Alle Einnahmequellen auf einen Blick · Stand " + ((D.meta && D.meta.version) || "");
+    $("#pageSub").textContent = "Alle Mietobjekte auf einen Blick · Stand " + ((D.meta && D.meta.version) || "");
 
     const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside };
 
@@ -3951,7 +3989,7 @@
       <span class="lv">${eur(s.value)}</span></div>`).join("");
     const compCard = el(`<div class="card pad">
       <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
-      <div class="card-s" style="margin-bottom:18px">Beitrag je Einnahmequelle / Monat</div>
+      <div class="card-s" style="margin-bottom:18px">Einnahmen je Objekt / Monat</div>
       <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`);
     compCard.querySelectorAll(".leg[data-sid]").forEach(l =>
       l.onclick = () => route(l.dataset.sid));
@@ -3968,19 +4006,14 @@
     (D.streams || []).forEach(s => {
       const m = FE.streamMonthly(s);
       let meta = "";
-      if (s.kind === "miete") {
-        const kr = FE.creditsOf(s);
-        if (kr.length) {
-          const k = FE.immoKPIs(s);
-          meta = `<span class="pillet on">Netto ${eur(m.netto)}</span><span class="pillet">${kr.length} Kredit${kr.length > 1 ? "e" : ""}</span>`;
-        }
-        else meta = `<span class="pillet on">${m.vermietet}/${m.einheiten} vermietet</span><span class="pillet">Potenzial ${eur(m.gesamtPotenzial)}</span>`;
+      const kr = FE.creditsOf(s);
+      if (kr.length) {
+        meta = `<span class="pillet on">Netto ${eur(m.netto)}</span><span class="pillet">${kr.length} Kredit${kr.length > 1 ? "e" : ""}</span>`;
       }
-      else if (s.kind === "airbnb") meta = `<span class="pillet on">${m.detail.naechte} Nächte/Mon.</span><span class="pillet">${s.airbnb.auslastung}% Auslastung</span>`;
-      else if (s.kind === "pacht") meta = `<span class="pillet on">${m.anzahl} Verträge</span><span class="pillet">${m.flaeche.toLocaleString("de-DE")} ha</span>`;
+      else meta = `<span class="pillet on">${m.vermietet}/${m.einheiten} vermietet</span><span class="pillet">Potenzial ${eur(m.gesamtPotenzial)}</span>`;
       const t = el(`<div class="tile" data-id="${s.id}">
         <div class="tile-go">${svg("trend")}</div>
-        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "euro")}</div>
+        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "home")}</div>
           <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
         <div class="tile-num">${eur(m.gesamt)} <small>/ Mon.</small></div>
         <div class="tile-meta">${meta}</div></div>`);
@@ -4098,7 +4131,7 @@
           const c = EVT[e.typ] || EVT.termin;
           // Betrag je Ereignistyp ableiten
           let betrag = "";
-          if (e.typ === "miete") betrag = eur(t.miete + t.airbnb);
+          if (e.typ === "miete") betrag = eur(t.miete);
           else if (e.typ === "zahlung" && e.info) {
             const mm = String(e.info).match(/([\d.]+(?:,\d+)?)\s*€/);
             if (mm) betrag = mm[0];
@@ -4113,7 +4146,7 @@
         // Tagessumme, falls Mieteingang dabei
         const hatMiete = evts.some(e => e.typ === "miete");
         const foot = hatMiete
-          ? `<div class="note" style="margin-top:10px">Zufluss an diesem Tag: ${eur(t.miete + t.airbnb)} aus ${mietStreams().length + 1} Quellen.</div>`
+          ? `<div class="note" style="margin-top:10px">Zufluss an diesem Tag: ${eur(t.miete)} aus ${mietStreams().length === 1 ? "einem Objekt" : mietStreams().length + " Objekten"}.</div>`
           : "";
         detail.innerHTML = `<div class="cal-detail"><div class="cal-detail-h">${esc(head)}</div>${list}${foot}</div>`;
       };
@@ -4268,9 +4301,9 @@
   /* ---------- STREAM DETAIL ---------- */
   function renderStream(host, id) {
     const s = (D.streams || []).find(x => x.id === id);
-    if (!s) { host.appendChild(el(`<div class="card pad note">Quelle nicht gefunden.</div>`)); return; }
+    if (!s) { host.appendChild(el(`<div class="card pad note">Objekt nicht gefunden.</div>`)); return; }
     const m = FE.streamMonthly(s);
-    $("#eyebrow").textContent = s.kind === "airbnb" ? "Kurzzeitvermietung" : s.kind === "pacht" ? "Landpacht" : "Vermietung";
+    $("#eyebrow").textContent = "Vermietung";
     $("#pageTitle").textContent = s.name;
     $("#pageSub").textContent = s.ort || "";
 
@@ -4280,261 +4313,10 @@
     bar.querySelector("#editObj").onclick = () => openObjektEdit(s, false);
     host.appendChild(bar);
 
-    if (s.kind === "airbnb") return renderAirbnb(host, s, m);
-    if (s.kind === "pacht") return renderPacht(host, s, m);
     return renderMiete(host, s, m);
   }
 
   function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
-
-  function renderAirbnb(host, s, m) {
-    const cfg = s.airbnb || {};
-    let occ = Number(cfg.auslastung) || 0;
-
-    const kpiHost = el(`<div id="abKpi"></div>`);
-    const calcHost = el(`<div id="abCalc"></div>`);
-
-    // Slider
-    const sld = el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Auslastung simulieren</div>
-      <div class="card-s" style="margin-bottom:16px">Regler verschieben – alle Zahlen rechnen live mit</div>
-      <div class="sld-wrap">
-        <div class="sld-top"><span class="sld-lab">Belegung im Monat</span>
-          <span class="sld-val" id="abVal">${occ} %</span></div>
-        <input type="range" class="sld" id="abSld" min="0" max="100" step="1" value="${occ}" style="--p:${occ}%">
-        <div class="sld-marks"><span>0 %</span><span>25 %</span><span>50 %</span><span>75 %</span><span>100 %</span></div>
-      </div>
-      <div class="stat-strip" id="abQuick"></div>
-    </div>`);
-
-    const paint = () => {
-      const a = FE.airbnbIncome(cfg, occ);
-      kpiHost.innerHTML = `<div class="grid g-kpi">
-        ${kpiCard("bed", eur(a.netto), "Netto / Monat", "nach Gebühr & Kosten", true)}
-        ${kpiCard("euro", eur(cfg.nachtpreis), "pro Nacht", "Listenpreis")}
-        ${kpiCard("trend", a.naechte.toLocaleString("de-DE"), "Nächte / Monat", a.buchungen.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " Buchungen")}
-        ${kpiCard("chart", eur(a.netto * 12), "pro Jahr", "hochgerechnet")}
-      </div>`;
-      const q = sld.querySelector("#abQuick");
-      q.innerHTML = `
-        <div class="s"><span>Umsatz</span><b>${eur(a.brutto)}</b></div>
-        <div class="s"><span>Gebühr</span><b>−${eur(a.fee)}</b></div>
-        <div class="s"><span>Kosten</span><b>−${eur(a.kosten)}</b></div>
-        <div class="s"><span>Netto</span><b style="color:var(--mint-2)">${eur(a.netto)}</b></div>`;
-      sld.querySelector("#abVal").textContent = occ + " %";
-      sld.querySelector("#abSld").style.setProperty("--p", occ + "%");
-
-      // Rechenweg
-      calcHost.innerHTML = `<div class="card pad clickable" id="abDetail">
-        <span class="tapme">Details ›</span>
-        <div class="card-t" style="margin-bottom:4px">Rechenweg</div>
-        <div class="card-s" style="margin-bottom:16px">bei ${occ} % Auslastung · Ø ${cfg.aufenthaltsdauer} Nächte pro Buchung</div>
-        ${kv("Übernachtungen (" + a.naechte.toLocaleString("de-DE") + " × " + eur(cfg.nachtpreis) + ")", eur(a.uebernachtung))}
-        ${kv("Reinigungsgebühr (" + a.buchungen.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " × " + eur(cfg.reinigungsgebuehr) + ")", eur(a.reinigungUmsatz))}
-        ${kv("Umsatz gesamt", eur(a.brutto))}
-        ${kv("− Airbnb-Gebühr (" + a.feeProz + " %)", "−" + eur(a.fee))}
-        ${kv("− Reinigungskosten", "−" + eur(a.reinigungKosten))}
-        ${kv("− Wäsche & Verbrauch", "−" + eur(a.verbrauch))}
-        ${kv("Netto", eur(a.netto))}
-        <div class="note" style="margin-top:12px">Effektiv ${eur(a.proNacht)} je vermieteter Nacht.</div>
-      </div>`;
-      calcHost.querySelector("#abDetail").onclick = () => openAirbnbSheet(cfg, occ);
-    };
-
-    host.appendChild(kpiHost);
-    host.appendChild(sld);
-    host.appendChild(calcHost);
-    const input = sld.querySelector("#abSld");
-    input.addEventListener("input", e => { occ = Number(e.target.value); paint(); });
-    paint();
-
-    // Szenarien-Chart (echtes Modell inkl. Kosten)
-    const occs = [30, 40, 50, 60, 70, 80, 90, 100];
-    const vals = occs.map(o => FE.airbnbIncome(cfg, o).netto);
-    host.appendChild(el(`<div class="card"><div class="card-h"><div><div class="card-t">Auslastungs-Szenarien</div>
-      <div class="card-s">Netto nach Gebühren und Betriebskosten</div></div>
-      <div class="head-pill" style="padding:7px 13px">Basis ${cfg.auslastung} %</div></div>
-      <div class="card-b">${areaChart(vals, occs.map(o => o + "%"))}</div></div>`));
-
-    // Break-even
-    let be = null;
-    for (let o = 0; o <= 100; o++) { if (FE.airbnbIncome(cfg, o).netto > 0) { be = o; break; } }
-    host.appendChild(el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Kennzahlen</div>
-      <div class="card-s" style="margin-bottom:14px">Modellannahmen und Schwellen</div>
-      ${kv("Ø Aufenthaltsdauer", cfg.aufenthaltsdauer + " Nächte")}
-      ${kv("Reinigungsgebühr (Gast)", eur(cfg.reinigungsgebuehr))}
-      ${kv("Reinigungskosten (real)", eur(cfg.reinigungskosten))}
-      ${kv("Verbrauch je Buchung", eur(cfg.verbrauchProBuchung))}
-      ${kv("Gebührenmodell", cfg.gebuehrenmodell === "vereinfacht" ? "Vereinfachte Preise (~15 %)" : "Host-Fee (" + cfg.servicegebuehrProzent + " %)")}
-      ${be != null ? kv("Kostendeckung ab", be + " % Auslastung") : ""}
-      <div class="note" style="margin-top:12px">Die Airbnb-Gebühr wird auf den Gesamtumsatz inkl. Reinigungsgebühr berechnet. Mehr Buchungen bei gleicher Nächtezahl erhöhen daher Umsatz <em>und</em> Kosten.</div>
-    </div>`));
-  }
-
-  function openAirbnbSheet(cfg, occ) {
-    const a = FE.airbnbIncome(cfg, occ);
-    const rows = [
-      { label: "Übernachtung", value: a.uebernachtung, color: PALETTE[0] },
-      { label: "Reinigung", value: a.reinigungUmsatz, color: PALETTE[2] }
-    ];
-    const abzug = [
-      { label: "Airbnb-Gebühr", value: a.fee, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" },
-      { label: "Reinigung", value: a.reinigungKosten, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" },
-      { label: "Verbrauch", value: a.verbrauch, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
-    ];
-    // Vergleich Aufenthaltsdauer
-    const dauern = [2, 3, 5, 7, 14];
-    const trs = dauern.map(d => {
-      const alt = FE.airbnbIncome({ ...cfg, aufenthaltsdauer: d }, occ);
-      const cur = d === Number(cfg.aufenthaltsdauer);
-      return `<tr><td>${cur ? "<b>" + d + " N</b>" : d + " N"}</td>
-        <td>${alt.buchungen.toLocaleString("de-DE", { maximumFractionDigits: 1 })}</td>
-        <td>${eur(alt.brutto)}</td><td>${eur(alt.kosten + alt.fee)}</td>
-        <td class="${cur ? "hl" : ""}">${eur(alt.netto)}</td></tr>`;
-    }).join("");
-    const body = `
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Nächte</span><b>${a.naechte.toLocaleString("de-DE")}</b></div>
-        <div class="s"><span>Buchungen</span><b>${a.buchungen.toLocaleString("de-DE", { maximumFractionDigits: 1 })}</b></div>
-        <div class="s"><span>Netto/Nacht</span><b>${eur(a.proNacht)}</b></div>
-        <div class="s"><span>Marge</span><b>${a.brutto ? Math.round(a.netto / a.brutto * 100) : 0} %</b></div>
-      </div>
-      <div class="card-t" style="font-size:14px;margin-bottom:10px">Umsatz</div>
-      ${miniBars(rows)}
-      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Abzüge</div>
-      ${miniBars(abzug)}
-      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Einfluss der Aufenthaltsdauer</div>
-      <div class="tbl-wrap"><table class="tbl">
-        <thead><tr><th>Ø Dauer</th><th>Buch.</th><th>Umsatz</th><th>Abzüge</th><th>Netto</th></tr></thead>
-        <tbody>${trs}</tbody></table></div>
-      <div class="note" style="margin-top:12px">Kürzere Aufenthalte bringen mehr Reinigungsgebühren, verursachen aber auch mehr Reinigungs- und Verbrauchskosten.</div>
-      <button class="ef-open" id="efEdit">Werte bearbeiten</button>`;
-    const sh = openSheet("Airbnb-Kalkulation", occ + " % Auslastung · " + eur(cfg.nachtpreis) + "/Nacht", body);
-    const astream = (D.streams || []).find(x => x.kind === "airbnb");
-    sh.querySelector("#efEdit").onclick = () => openAirbnbEdit(astream);
-  }
-
-  function renderPacht(host, s, m) {
-    const jahr = m.jahr, flaeche = m.flaeche;
-    const proHa = flaeche ? jahr / flaeche : 0;
-    host.appendChild(el(`<div class="grid g-kpi">
-      ${kpiCard("sprout", eur(m.gesamt), "Pacht / Monat", "umgerechnet", true)}
-      ${kpiCard("euro", eur(jahr), "Pacht / Jahr", "Zahlung zum 01.12.")}
-      ${kpiCard("layers", flaeche.toLocaleString("de-DE") + " ha", "Fläche gesamt", m.anzahl + " Verträge")}
-      ${kpiCard("trend", eur(proHa), "Ø pro Hektar", "Jahrespacht / ha")}
-    </div>`));
-
-    // Verteilung nach Pächter (Balken)
-    const sorted = (s.vertraege || []).slice().sort((a, b) => b.jahr - a.jahr);
-    const maxJ = Math.max(...sorted.map(v => v.jahr), 1);
-    const bars = sorted.map(v => {
-      const w = Math.round(v.jahr / maxJ * 100);
-      const abgelaufen = v.ende && v.ende !== "jährlich" && new Date(v.ende) < new Date();
-      return `<div>
-        <div class="hbar-top"><div class="hbar-name">${esc(v.paechter)}<span class="loc">${v.flaeche.toLocaleString("de-DE")} ha · ${esc(v.art)}</span></div>
-          <div class="hbar-val">${eur(v.jahr)}/J ${abgelaufen ? '<span class="badge b-off">läuft aus</span>' : '<span class="badge b-on">aktiv</span>'}</div></div>
-        <div class="track"><span style="width:${w}%"></span></div></div>`;
-    }).join("");
-    host.appendChild(el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Pacht je Pächter</div>
-      <div class="card-s" style="margin-bottom:18px">${esc(s.note || "")}</div>
-      <div class="hbars">${bars}</div></div>`));
-
-    // Donut nach Fläche/Ertrag
-    const segs = sorted.map((v, i) => ({ name: v.paechter, value: v.jahr, color: PALETTE[i % PALETTE.length] }));
-    const legend = segs.map(x => `<div class="leg"><span class="sw" style="background:${x.color}"></span>
-      <span class="lt">${esc(x.name)}</span><span class="lv">${eur(x.value)}</span></div>`).join("");
-    host.appendChild(el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Anteil am Pachtertrag</div>
-      <div class="card-s" style="margin-bottom:18px">Jahrespacht je Vertrag</div>
-      <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`));
-
-    // Vertragstabelle
-    const rows = sorted.map((v, i) => {
-      const abgelaufen = v.ende && v.ende !== "jährlich" && new Date(v.ende) < new Date();
-      const laufzeit = v.ende === "jährlich" ? "jährlich verlängert" : `${dateDE(v.start)} – ${v.ende.match(/\d{4}-\d{2}-\d{2}/) ? dateDE(v.ende) : esc(v.ende)}`;
-      return `<div class="drow clickable" data-vi="${i}"><div class="drow-l"><div class="drow-badge">${svg("sprout")}</div>
-        <div><div class="drow-name">${esc(v.paechter)}</div>
-        <div class="drow-sub">${v.flaeche.toLocaleString("de-DE")} ha · ${esc(v.art)} · ${laufzeit}</div></div></div>
-        <div class="drow-val"><b>${eur(v.jahr / 12)}</b><span>${eur(v.jahr)}/Jahr${abgelaufen ? " · verlängert" : ""}</span></div></div>`;
-    }).join("");
-    const pTbl = el(`<div class="card"><div class="card-h"><div><div class="card-t">Pachtverträge</div>
-      <div class="card-s">Zeile antippen für Vertragsdetails</div></div>
-      <button class="add-btn" id="addPacht">+ Vertrag</button></div><div class="card-b">${rows}</div></div>`);
-    pTbl.querySelectorAll(".drow[data-vi]").forEach(r =>
-      r.onclick = () => openPachtSheet(s, sorted[Number(r.dataset.vi)]));
-    pTbl.querySelector("#addPacht").onclick = () => openPachtEdit(s, null, true);
-    host.appendChild(pTbl);
-
-    // Zusatz-Insights: Preisvergleich und Kündigungsfristen
-    const proHaListe = sorted.map((v, i) => ({
-      label: v.paechter.split(" ").slice(-1)[0], value: v.flaeche ? v.jahr / v.flaeche : 0,
-      color: PALETTE[i % PALETTE.length],
-      display: eur(v.flaeche ? v.jahr / v.flaeche : 0) + "/ha"
-    }));
-    const heute = new Date();
-    const fristen = sorted.filter(v => v.ende && v.ende !== "jährlich").map(v => {
-      const e = new Date(v.ende);
-      const kuend = new Date(e); kuend.setMonth(kuend.getMonth() - 6);
-      return { v, ende: e, kuend, offen: kuend > heute };
-    }).sort((a, b) => a.kuend - b.kuend);
-    host.appendChild(el(`<div class="grid g-2">
-      <div class="card pad"><div class="card-t" style="margin-bottom:4px">Pachtpreis je Hektar</div>
-        <div class="card-s" style="margin-bottom:16px">Ø ${eur(proHa)} · Spanne ${eur(Math.min(...proHaListe.map(x => x.value)))} – ${eur(Math.max(...proHaListe.map(x => x.value)))}</div>
-        ${miniBars(proHaListe)}
-        <div class="note" style="margin-top:12px">Ackerland erzielt höhere Pachten als Grünland – die Unterschiede spiegeln die Flächenart wider.</div></div>
-      <div class="card pad"><div class="card-t" style="margin-bottom:4px">Laufzeiten & Fristen</div>
-        <div class="card-s" style="margin-bottom:16px">Kündigung jeweils 6 Monate vor Ablauf</div>
-        <div class="tl">
-          ${fristen.length ? fristen.map(f => `<div class="tl-i">
-            <span class="tl-dot" style="background:${f.offen ? "var(--gold)" : "var(--mint)"}"></span>
-            <div class="tl-b"><div class="tl-t">${esc(f.v.paechter)}</div>
-              <div class="tl-s">Ende ${dateDE(f.v.ende)} · Kündigung bis ${dateDE(f.kuend.toISOString().slice(0, 10))}</div></div>
-            <span class="tl-v">${eur(f.v.jahr)}</span></div>`).join("")
-            : `<div class="note">Alle Verträge laufen jährlich weiter.</div>`}
-        </div>
-        <div class="note" style="margin-top:12px">Ohne fristgerechte Kündigung verlängern sich die Verträge automatisch um ein Jahr.</div></div>
-    </div>`));
-  }
-
-  function openPachtSheet(s, v) {
-    if (!v) return;
-    const m = FE.streamMonthly(s);
-    const anteil = m.jahr ? Math.round(v.jahr / m.jahr * 100) : 0;
-    const proHa = v.flaeche ? v.jahr / v.flaeche : 0;
-    const schnitt = m.flaeche ? m.jahr / m.flaeche : 0;
-    const laufzeit = v.ende === "jährlich" ? "jährlich verlängert"
-      : dateDE(v.start) + " – " + (v.ende.match(/\d{4}-\d{2}-\d{2}/) ? dateDE(v.ende) : v.ende);
-    let kuendTxt = "—";
-    if (v.ende && v.ende !== "jährlich") {
-      const k = new Date(v.ende); k.setMonth(k.getMonth() - 6);
-      kuendTxt = dateDE(k.toISOString().slice(0, 10));
-    }
-    const body = `
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>je Jahr</span><b style="color:var(--mint-2)">${eur(v.jahr)}</b></div>
-        <div class="s"><span>je Monat</span><b>${eur(v.jahr / 12)}</b></div>
-        <div class="s"><span>Fläche</span><b>${v.flaeche.toLocaleString("de-DE")} ha</b></div>
-        <div class="s"><span>je Hektar</span><b>${eur(proHa)}</b></div>
-      </div>
-      <div class="card-t" style="font-size:14px;margin-bottom:6px">Vertrag</div>
-      ${kv("Pächter", esc(v.paechter))}
-      ${kv("Flächenart", esc(v.art))}
-      ${kv("Laufzeit", laufzeit)}
-      ${kv("Kündigung bis", kuendTxt)}
-      ${kv("Zahlungstermin", "jährlich zum 01.12.")}
-      ${kv("Anteil am Pachtertrag", anteil + " %")}
-      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Im Vergleich</div>
-      ${miniBars([
-        { label: "dieser Vertrag", value: proHa, color: PALETTE[0], display: eur(proHa) + "/ha" },
-        { label: "Ø alle Flächen", value: schnitt, color: PALETTE[4], display: eur(schnitt) + "/ha" }
-      ])}
-      <div class="note" style="margin-top:12px">${proHa >= schnitt ? "Über" : "Unter"} dem Durchschnitt von ${eur(schnitt)} je Hektar (${proHa >= schnitt ? "+" : ""}${eur(proHa - schnitt)}).</div>
-      <button class="ef-open" id="efEdit">Bearbeiten</button>`;
-    const sh = openSheet(v.paechter, v.flaeche.toLocaleString("de-DE") + " ha · " + v.art, body);
-    sh.querySelector("#efEdit").onclick = () => openPachtEdit(s, v, false);
-  }
 
   // Eine Kredit-Tilgungskarte (Zins, optional Sondertilgung, Restschuld-Kurve)
   function creditCard(kr) {
@@ -4711,7 +4493,7 @@
     tblCard.querySelector("#addUnit").onclick = () => { if (pruefeEinheit()) assistentEinheit(s); };
     host.appendChild(tblCard);
     host.appendChild(gewerkeKarte(s));
-    if (s.kind === "miete") host.appendChild(nebenkostenKarte(s));
+    host.appendChild(nebenkostenKarte(s));
   }
 
   /* ---------- DETAIL-SHEETS ---------- */
@@ -4880,13 +4662,11 @@
       monate.push({ d, anzahl, typen });
     }
     const t = FE.totals(D);
-    // Sondertilgungen & Pacht im Jahresverlauf
+    // Sondertilgungen im Jahresverlauf
     let sonderJahr = 0;
     (D.streams || []).forEach(s => FE.creditsOf(s).forEach(kr => {
       if (kr.sondertilgung) sonderJahr += (kr.sondertilgung.betrag || 0) * (kr.sondertilgung.monate || []).length;
     }));
-    const pachtStream = (D.streams || []).find(s => s.kind === "pacht");
-    const pachtJahr = pachtStream ? FE.streamMonthly(pachtStream).jahr : 0;
 
     const trs = monate.map(x => `<tr>
       <td>${x.d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" })}</td>
@@ -4895,17 +4675,17 @@
 
     const body = `
       <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Mieteingang/Mon.</span><b>${eur(t.miete + t.airbnb)}</b></div>
-        <div class="s"><span>Pacht/Jahr</span><b>${eur(pachtJahr)}</b></div>
+        <div class="s"><span>Mieteingang/Mon.</span><b>${eur(t.miete)}</b></div>
+        <div class="s"><span>Mieteingang/Jahr</span><b>${eur(t.miete * 12)}</b></div>
         <div class="s"><span>Sondertilgung/Jahr</span><b>${eur(sonderJahr)}</b></div>
         <div class="s"><span>Termine 12 Mon.</span><b>${monate.reduce((a, x) => a + x.anzahl, 0)}</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Wiederkehrende Ereignisse</div>
       <div class="tl">
-        ${(t.miete + t.airbnb) > 0 ? `<div class="tl-i"><span class="tl-dot" style="background:${EVT.miete.col}"></span>
+        ${t.miete > 0 ? `<div class="tl-i"><span class="tl-dot" style="background:${EVT.miete.col}"></span>
           <div class="tl-b"><div class="tl-t">Mieteingang</div>
             <div class="tl-s">jeden 1. des Monats · alle Objekte</div></div>
-          <span class="tl-v">${eur(t.miete + t.airbnb)}</span></div>` : ""}
+          <span class="tl-v">${eur(t.miete)}</span></div>` : ""}
         ${(D.streams || []).flatMap(s => FE.creditsOf(s).filter(kr => kr.sondertilgung).map(kr => {
           const st = kr.sondertilgung;
           const monLabel = (st.monate || []).map(m => ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"][m-1]).join(" und ");
@@ -4914,16 +4694,12 @@
               <div class="tl-s">${monLabel || "jährlich"}</div></div>
             <span class="tl-v">${eur(st.betrag || 0)}</span></div>`;
         })).join("")}
-        ${pachtJahr > 0 ? `<div class="tl-i"><span class="tl-dot" style="background:${EVT.zahlung.col}"></span>
-          <div class="tl-b"><div class="tl-t">Pachtzahlung</div>
-            <div class="tl-s">jährlich</div></div>
-          <span class="tl-v">${eur(pachtJahr)}</span></div>` : ""}
       </div>
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Termine je Monat</div>
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>Monat</th><th>Miete</th><th>Einzug</th><th>Zahlung</th><th>Gesamt</th></tr></thead>
         <tbody>${trs}</tbody></table></div>
-      <div class="note" style="margin-top:12px">Sondertilgungen und Pacht summieren sich über das Jahr auf ${eur(sonderJahr + pachtJahr)}.</div>`;
+      ${sonderJahr > 0 ? `<div class="note" style="margin-top:12px">Sondertilgungen summieren sich über das Jahr auf ${eur(sonderJahr)}.</div>` : ""}`;
     openSheet("Kalender-Übersicht", "Zahlungsströme der nächsten 12 Monate", body);
   }
 
@@ -4942,16 +4718,10 @@
           <div class="s"><span>je Quartal</span><b>${eur(t.ist * 3)}</b></div>
           <div class="s"><span>je Tag</span><b>${eur(t.ist * 12 / 365)}</b></div>
         </div>
-        <div class="card-t" style="font-size:14px;margin-bottom:10px">Nach Quelle</div>
-        ${miniBars(rows)}
-        <div class="card-t" style="font-size:14px;margin:20px 0 10px">Nach Art</div>
-        ${miniBars([
-          { label: "Wohnraum", value: t.miete, color: PALETTE[0] },
-          { label: "Kurzzeit", value: t.airbnb, color: PALETTE[2] },
-          { label: "Landpacht", value: t.pacht, color: PALETTE[3] }
-        ].filter(x => x.value > 0))}
+        <div class="card-t" style="font-size:14px;margin-bottom:10px">Nach Objekt</div>
+        ${rows.length ? miniBars(rows) : `<div class="note">Noch keine Einnahmen erfasst.</div>`}
         <div class="note" style="margin-top:12px">Nebenkosten sind nicht enthalten – sie laufen als Rücklage separat.</div>`;
-      return openSheet("Einnahmen", "Alle Quellen · Stand heute", body);
+      return openSheet("Einnahmen", "Alle Objekte · Stand heute", body);
     }
     if (kind === "potenzial") {
       const rows = streams.map((s, i) => {
@@ -5167,57 +4937,21 @@
       "Kredit endgültig löschen?");
   }
 
-  // --- Pachtvertrag ---
-  function openPachtEdit(s, v, neu) {
-    const body = `
-      ${efTitel("Vertrag")}
-      ${ef("Pächter", "paechter", v ? v.paechter : "", "text", { pflicht: true })}
-      ${ef("Pacht je Jahr", "jahr_betrag", v ? v.jahr : "", "number", { pflicht: true })}
-      ${ef("Fläche in ha", "flaeche", v ? v.flaeche : "", "number", { step: "0.01" })}
-      ${ef("Flächenart", "art", v ? (v.art || "") : "", "text", { platzhalter: "z. B. Ackerland" })}
-      ${efTitel("Laufzeit")}
-      ${ef("Beginn", "start", v ? (v.start || "") : "", "date")}
-      ${ef("Ende", "ende", v ? (v.ende || "") : "", "text",
-        { platzhalter: "JJJJ-MM-TT oder „jährlich“", hinweis: "„jährlich“ bei automatischer Verlängerung" })}
-      ${efAktionen({ loeschen: neu ? null : "Löschen" })}`;
-
-    const sheet = openSheet(neu ? "Neuer Pachtvertrag" : "Vertrag bearbeiten",
-      neu ? s.name : v.paechter, body);
-
-    const bauen = (w) => ({
-      paechter: text(w.paechter) || "Pächter",
-      jahr_betrag: zahl(w.jahr_betrag) || 0,
-      flaeche: zahl(w.flaeche),
-      art: text(w.art),
-      start: text(w.start),
-      ende: text(w.ende)
-    });
-    efBind(sheet,
-      async (w) => neu ? await neuerPachtvertrag(s._id, bauen(w)) : await speicherePacht(v._id, bauen(w)),
-      neu ? null : async () => await loeschePacht(v._id),
-      "Vertrag endgültig löschen?");
-  }
-
   // --- Objekt ---
-  function openObjektEdit(s, neu, artVorgabe, opt) {
+  function openObjektEdit(s, neu, opt) {
     opt = opt || {};
     const nkPos = (s && s.nkPositionen) || [];
-    const art = neu ? (artVorgabe || "miete") : (s ? s.kind : "miete");
-    const artName = ART_INFO[art] ? ART_INFO[art].name : "Objekt";
     const body = `
       ${opt.nachOnboarding ? `<div class="wc-hero" style="padding-bottom:14px">
         <div class="wc-steps"><span class="done"></span><span class="on"></span><span></span></div>
         <div class="wc-badge">Dein erstes Objekt</div>
         <div class="wc-d">Gib deiner Immobilie einen Namen und trag die Eckdaten ein. Danach legst du gleich die erste Wohnung an.</div>
       </div>` : ""}
-      ${neu && !opt.nachOnboarding ? `<div class="anlegen-kopf">${svg(ART_INFO[art] ? ART_INFO[art].icon : "home")}<span>${esc(artName)}</span></div>` : ""}
+      ${neu && !opt.nachOnboarding ? `<div class="anlegen-kopf">${svg("home")}<span>Mietobjekt</span></div>` : ""}
       ${efTitel("Grunddaten")}
-      ${ef("Name", "name", s ? s.name : "", "text", { pflicht: true, platzhalter: art === "pacht" ? "z. B. Ackerland Nord" : "z. B. Haus Bergstraße 12" })}
+      ${ef("Name", "name", s ? s.name : "", "text", { pflicht: true, platzhalter: "z. B. Haus Bergstraße 12" })}
       ${ef("Kurzname (intern)", "slug", s ? s.id : "", "text",
         { pflicht: true, hinweis: "Ohne Leerzeichen, z. B. haus-nord" })}
-      ${neu ? "" : efSel("Art", "art", art,
-        [{ v: "miete", t: "Vermietung" }, { v: "airbnb", t: "Kurzzeitvermietung" }, { v: "pacht", t: "Landpacht" }],
-        { hinweis: "Nachträgliche Änderung kann Daten unbrauchbar machen" })}
       ${ef("Ort", "ort", s ? (s.ort || "") : "")}
       ${efArea("Notiz", "notiz", s ? (s.note || "") : "")}
       ${efTitel("Wirtschaftlich")}
@@ -5229,9 +4963,9 @@
       ${efArea("Nebenkosten-Arten", "nk_positionen",
         nkPos.map(p => p.titel + " | " + (p.betrag != null ? p.betrag : (p.anteil || 0))).join("\n"),
         { hinweis: "Je Zeile eine Position: Bezeichnung | Betrag pro Monat in €. Beispiel: Grundsteuer | 45" })}
-      ${efAktionen({ loeschen: neu ? null : "Objekt löschen", speichern: opt.nachOnboarding ? (art === "miete" ? "Weiter zur Wohnung" : "Weiter") : "Speichern" })}`;
+      ${efAktionen({ loeschen: neu ? null : "Objekt löschen", speichern: opt.nachOnboarding ? "Weiter zur Wohnung" : "Speichern" })}`;
 
-    const sheet = openSheet(neu ? "Neu: " + artName : "Objekt bearbeiten", neu ? "" : s.name, body);
+    const sheet = openSheet(neu ? "Neues Mietobjekt" : "Objekt bearbeiten", neu ? "" : s.name, body);
 
     const bauen = (w) => {
       // Nebenkosten-Zeilen "Bezeichnung | Betrag" einlesen (€ pro Monat)
@@ -5239,13 +4973,11 @@
         .map(z => z.split("|"))
         .filter(t => t.length === 2 && t[0].trim())
         .map(t => ({ titel: t[0].trim(), betrag: Number(String(t[1]).replace(",", ".").trim()) || 0 }));
-      // Art: bei Neuanlage aus Vorgabe, sonst aus Feld
-      const gewaehlteArt = neu ? art : (w.art || art);
       return {
         name: text(w.name) || "Objekt",
         slug: (text(w.slug) || "objekt").toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-        art: gewaehlteArt,
-        icon: ART_ICON[gewaehlteArt] || "home",   // automatisch passendes Symbol
+        art: "miete",
+        icon: "home",
         ort: text(w.ort),
         notiz: text(w.notiz),
         invest: zahl(w.invest),
@@ -5255,25 +4987,17 @@
     };
     efBind(sheet,
       async (w) => {
-        if (neu) {
-          // Im Onboarding darf das erste Objekt jeder Art angelegt werden
-          if (!opt.nachOnboarding && !istPremium() && art !== "miete") {
-            closeSheet(); openUpgradeSheet("art");
-            throw new Error("Diese Objektart ist Premium vorbehalten.");
-          }
-          await neuesObjekt(bauen(w));
-        }
+        if (neu) { await neuesObjekt(bauen(w)); }
         else { await speichereObjekt(s._id, bauen(w)); }
       },
       neu ? null : async () => { await loescheObjekt(s._id); currentView = "overview"; },
       "Objekt mit allen Daten löschen?",
       opt.nachOnboarding ? () => {
-        // Nach dem Objekt: bei Vermietung direkt eine Einheit anlegen (füllt das Dashboard),
-        // bei AirBNB/Pacht geht es weiter zu den Fragen.
+        // Nach dem Objekt direkt eine Einheit anlegen (füllt das Dashboard).
         // Das gerade angelegte Objekt ist das zuletzt erstellte (höchste created_at bzw. letztes in der Liste).
         const streams = (D.streams || []);
         const neuesObj = streams[streams.length - 1];
-        if (art === "miete" && neuesObj) {
+        if (neuesObj) {
           setTimeout(() => openErsteEinheitSheet(neuesObj), 300);
         } else {
           setTimeout(() => openTarifFragenSheet(), 300);
@@ -5322,45 +5046,6 @@
       () => { setTimeout(() => openTarifFragenSheet(), 250); });
 
     sheet.querySelector("#ehSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => openTarifFragenSheet(), 200); };
-  }
-
-  // --- AirBNB-Einstellungen ---
-  function openAirbnbEdit(s) {
-    const a = s.airbnb || {};
-    const body = `
-      ${efTitel("Preise")}
-      ${ef("Preis je Nacht", "nachtpreis", a.nachtpreis ?? "", "number", { pflicht: true })}
-      ${ef("Auslastung in %", "auslastung", a.auslastung ?? "", "number",
-        { hinweis: "Ausgangswert für den Regler" })}
-      ${ef("Reinigungsgebühr (Gast)", "reinigungsgebuehr", a.reinigungsgebuehr ?? "", "number")}
-      ${efTitel("Kosten")}
-      ${ef("Reinigungskosten je Buchung", "reinigungskosten", a.reinigungskosten ?? "", "number")}
-      ${ef("Verbrauch je Buchung", "verbrauchProBuchung", a.verbrauchProBuchung ?? "", "number",
-        { hinweis: "Wäsche, Verbrauchsmaterial" })}
-      ${efTitel("Buchungen")}
-      ${ef("Ø Aufenthaltsdauer", "aufenthaltsdauer", a.aufenthaltsdauer ?? "", "number",
-        { step: "1", hinweis: "Nächte je Buchung – bestimmt die Anzahl der Reinigungen" })}
-      ${ef("Servicegebühr in %", "servicegebuehrProzent", a.servicegebuehrProzent ?? "", "number", { step: "0.1" })}
-      ${efSel("Gebührenmodell", "gebuehrenmodell", a.gebuehrenmodell || "host",
-        [{ v: "host", t: "Host-Fee (Gast zahlt Servicegebühr)" },
-         { v: "vereinfacht", t: "Vereinfachte Preise (~15 %)" }])}
-      ${efAktionen({})}`;
-
-    const sheet = openSheet("Kalkulation bearbeiten", s.name, body);
-    efBind(sheet, async (w) => {
-      await speichereObjekt(s._id, {
-        airbnb_config: {
-          nachtpreis: zahl(w.nachtpreis) || 0,
-          auslastung: zahl(w.auslastung) || 0,
-          reinigungsgebuehr: zahl(w.reinigungsgebuehr) || 0,
-          reinigungskosten: zahl(w.reinigungskosten) || 0,
-          verbrauchProBuchung: zahl(w.verbrauchProBuchung) || 0,
-          aufenthaltsdauer: zahl(w.aufenthaltsdauer) || 1,
-          servicegebuehrProzent: zahl(w.servicegebuehrProzent) || 0,
-          gebuehrenmodell: w.gebuehrenmodell
-        }
-      });
-    });
   }
 
   // --- Termin ---
