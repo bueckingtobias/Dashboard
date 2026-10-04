@@ -1342,15 +1342,17 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .rc-mehr-i:hover{border-color:var(--mint)}
 
 /* Diagramme */
-.chart-wrap{position:relative;width:100%;overflow:hidden}
-.chart-heute{position:absolute;top:10px;transform:translateX(8px);font-size:var(--eq-t-1);font-weight:600;color:var(--mint-2);pointer-events:none}
+/* Verlaufs-Diagramm: Linie und Fläche dehnen sich mit der Breite, die Punkte liegen darüber und bleiben rund */
+.chart-wrap{width:100%}
+.chart-feld{position:relative;height:180px}
+.chart{position:absolute;inset:0;width:100%;height:100%;display:block}
+.chart .grid-l{stroke:var(--stroke);stroke-width:1;vector-effect:non-scaling-stroke}
+.chart .line{fill:none;stroke:var(--mint);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.chart .heute-l{stroke:var(--soft);stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.chart-punkt{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--mint);border:2px solid var(--panel-solid);pointer-events:none}
+.chart-punkt.heute{width:14px;height:14px;margin:-7px 0 0 -7px;background:var(--panel-solid);border:3px solid var(--mint)}
+.chart-heute{position:absolute;top:0;transform:translateX(8px);font-size:var(--eq-t-1);font-weight:600;color:var(--soft);pointer-events:none}
 .chart-heute.links{transform:translateX(calc(-100% - 8px))}
-.chart{width:100%;height:auto;display:block}
-.chart .grid-l{stroke:var(--stroke);stroke-width:1}
-.chart .area{fill:url(#mintFill)}
-.chart .line{fill:none;stroke:var(--mint);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.chart .dot{fill:var(--panel-solid);stroke:var(--mint);stroke-width:2.5}
-.chart .lastdot{fill:var(--mint)}
 .chart-x{display:flex;justify-content:space-between;margin-top:8px;font-size:var(--eq-t-1);color:var(--softer)}
 .donut-row{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
 .donut{flex:0 0 auto}
@@ -1642,25 +1644,11 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .mk-actions .ef-knoepfe .eq-btn{flex:1 1 160px}
 
 /* Handwerker: Zahlung gegen Fortschritt */
-.gwt{margin-bottom:22px}
-.gwt-kopf,.gwt-row{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;align-items:center}
-.gwt-kopf,.gwr-kopf,.nk-t-kopf{font-size:var(--eq-t-1);font-weight:600;color:var(--softer);padding:0 12px 10px;border-bottom:1px solid var(--stroke-2)}
-.gwt-kopf>*:not(:first-child),.nk-t-kopf>*:not(:first-child){text-align:right}
-.gwt-row{padding:15px 14px;border-radius:11px;cursor:pointer;position:relative;border-left:3px solid transparent;margin-top:4px;
-  transition:background var(--eq-kurz) ease}
-.gwt-row:hover,.gwr-row:hover,.nk-t-row:hover{background:var(--surface-2)}
-.gwt-row.ueber{border-left-color:var(--danger)}
-.gwt-row.achtung{border-left-color:var(--warn)}
-.gwt-row.gut{border-left-color:var(--ok)}
-.gwt-row.neutral{border-left-color:var(--stroke-2)}
-.gwt-n{font-size:var(--eq-t-2);font-weight:600;min-width:0}
-.gwt-n small,.nk-t-n small{display:block;font-size:var(--eq-t-1);color:var(--softer);font-weight:400;margin-top:2px}
-.gwt-c{text-align:right;font-size:var(--eq-t-2);color:var(--soft);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gwt-c.dim,.nk-c.dim{color:var(--softer)}
-.gwt-c.stark{font-family:var(--fdisp);font-weight:600;color:var(--text)}
-.gwt-c.stark.ueber{color:var(--danger)}
-.gwt-c.stark.achtung{color:var(--warn)}
-.gwt-c.stark.gut{color:var(--ok)}
+.nk-t-kopf{font-size:var(--eq-t-1);font-weight:600;color:var(--softer);padding:0 12px 10px;border-bottom:1px solid var(--stroke-2)}
+.nk-t-kopf>*:not(:first-child){text-align:right}
+.nk-t-row:hover{background:var(--surface-2)}
+.nk-c.dim{color:var(--softer)}
+.nk-t-n small{display:block;font-size:var(--eq-t-1);color:var(--softer);font-weight:400;margin-top:2px}
 .gw-kacheln{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 18px}
 .gw-kacheln.drei{grid-template-columns:repeat(3,1fr)}
 .gw-kachel{background:var(--eq-mulde);border:1px solid var(--stroke);border-radius:13px;padding:15px 16px;min-width:0}
@@ -1692,13 +1680,6 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .gw-schritt.ok i{color:var(--ok)}
 .gw-schritt.warn{border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
 .gw-schritt.warn i{color:var(--danger)}
-.gwr-kopf,.gwr-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr) minmax(0,1fr) minmax(0,.9fr);gap:10px;align-items:center}
-.gwr-kopf{padding-bottom:9px}
-.gwr-row{padding:13px 12px;border-radius:10px;cursor:pointer;margin-top:4px;transition:background var(--eq-kurz) ease}
-.gwr-b{font-size:var(--eq-t-2);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gwr-d{font-size:var(--eq-t-1);color:var(--softer);font-variant-numeric:tabular-nums}
-.gwr-c{text-align:right;font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.gwr-s{text-align:right}
 
 /* Nebenkostenabrechnung */
 .nk-jahr{display:flex;align-items:center;justify-content:center;gap:var(--eq-a4);margin-bottom:20px}
@@ -1774,6 +1755,80 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .crop-zoom input::-moz-range-thumb{width:24px;height:24px;border:none;border-radius:50%;background:var(--mint);cursor:pointer}
 .crop-actions{display:flex;gap:10px;margin-top:20px}
 
+/* Finanzierung: Karte eines Kredits */
+.eq-kredite{grid-template-columns:repeat(2,minmax(0,1fr))}
+.eq-kredit{display:flex;flex-direction:column;gap:var(--eq-a5);padding:var(--eq-a5)}
+.eq-kredit-kopf{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--eq-a3)}
+.eq-kredit-kopf>div{min-width:0}
+.eq-kredit-kopf .eq-marke{flex:0 0 auto;white-space:nowrap}
+.eq-kredit-haupt{container-type:inline-size}
+.eq-kredit-zeile{font-size:var(--eq-t-1);font-weight:600;color:var(--soft)}
+.eq-kredit-zahl{font-family:var(--fdisp);font-weight:600;font-size:clamp(28px,4vw,40px);font-size:clamp(26px,11cqi,40px);line-height:1.08;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:4px}
+.eq-kredit .eq-fort{max-width:none;margin-top:var(--eq-a3)}
+.eq-kredit-unter{font-size:var(--eq-t-2);color:var(--soft);line-height:1.4;margin-top:var(--eq-a2)}
+/* Werte-Raster: Bezeichnung, Wert, Zeile darunter. Füllt die Breite ohne leere Kacheln. */
+.eq-werte{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--eq-a4) var(--eq-a5)}
+.eq-werte>div{min-width:0}
+.eq-werte span{display:block;font-size:var(--eq-t-1);color:var(--soft);line-height:1.3}
+.eq-werte b{display:block;font-family:var(--fdisp);font-size:var(--eq-t-5);font-weight:600;line-height:1.25;margin-top:3px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.eq-werte small{display:block;font-size:var(--eq-t-1);color:var(--softer);line-height:1.35;margin-top:2px}
+/* Die Rate im Fenster des Kredits: Betrag, Balken Zins gegen Tilgung, beide Teile in Zahlen */
+.eq-rate{padding:var(--eq-a4);margin-bottom:22px;border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke)}
+.eq-rate-kopf{display:flex;align-items:baseline;justify-content:space-between;gap:var(--eq-a3);margin-bottom:var(--eq-a3)}
+.eq-rate-kopf span{font-size:var(--eq-t-2);font-weight:600;color:var(--soft)}
+.eq-rate-kopf b{font-family:var(--fdisp);font-size:var(--eq-t-6);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-rate-teile{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--eq-a3);margin-top:var(--eq-a3)}
+.eq-rate-teile>div{display:flex;align-items:center;gap:var(--eq-a2);min-width:0;font-size:var(--eq-t-2)}
+.eq-rate-teile b{flex:0 0 auto;width:10px;height:10px;border-radius:3px}
+.eq-rate-teile b.z{background:var(--eq-reihe-4)}
+.eq-rate-teile b.t{background:var(--mint)}
+.eq-rate-teile span{color:var(--soft)}
+.eq-rate-teile strong{margin-left:auto;font-family:var(--fdisp);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-rate .note{margin-top:var(--eq-a3)}
+/* Zwischenüberschrift im Fenster */
+.eq-zwischen{font-size:var(--eq-t-3);margin:24px 0 12px}
+/* Tilgungsplan: das laufende Jahr ist hervorgehoben und in Worten markiert */
+.eq-plan th{white-space:normal;vertical-align:bottom;hyphens:manual;-webkit-hyphens:manual;line-height:1.25}
+.eq-plan{table-layout:auto}
+.eq-plan th:first-child,.eq-plan td:first-child{width:auto}
+.eq-plan td:last-child{font-weight:600}
+.eq-plan td small{display:block;font-size:var(--eq-t-1);font-weight:600;line-height:1.1}
+
+/* Handwerker: Zahlung gegen Baufortschritt */
+.eq-hw-liste{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--eq-a3);margin-bottom:var(--eq-a5)}
+.eq-hw{display:flex;flex-direction:column;gap:var(--eq-a3);min-width:0;padding:var(--eq-a4);border-radius:var(--r-sm);background:var(--eq-mulde);
+  border:1px solid var(--stroke);border-left:3px solid var(--stroke-2);cursor:pointer;transition:background var(--eq-kurz) ease,border-color var(--eq-kurz) ease}
+.eq-hw.ueber{border-left-color:var(--danger)}
+.eq-hw.achtung{border-left-color:var(--warn)}
+.eq-hw.gut{border-left-color:var(--ok)}
+@media(hover:hover){.eq-hw:hover,.eq-rn:hover{background:var(--surface-2)}}
+.eq-hw-kopf{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--eq-a3)}
+.eq-hw-kopf .eq-marke{flex:0 0 auto;white-space:nowrap}
+.eq-hw-n{min-width:0;font-size:var(--eq-t-3);font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.eq-hw-n small{display:block;font-size:var(--eq-t-1);font-weight:400;color:var(--soft);margin-top:2px}
+.eq-hw-balken{display:flex;flex-direction:column;gap:var(--eq-a2)}
+.eq-hw-b{display:grid;grid-template-columns:64px minmax(0,1fr) 48px;align-items:center;gap:var(--eq-a3)}
+.eq-hw-b span{font-size:var(--eq-t-1);color:var(--soft)}
+.eq-hw-b b{font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.eq-hw-fuss{font-size:var(--eq-t-1);color:var(--soft);line-height:1.4}
+.eq-hw-summe{padding-top:var(--eq-a4);border-top:1px solid var(--stroke)}
+/* im Fenster: die beiden Balken groß, darunter der Weg zum Baufortschritt */
+.eq-hw-gross{padding:var(--eq-a4);margin-bottom:22px;border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke)}
+.eq-hw-gross .gw-bar{height:12px}
+.eq-hw-gross .eq-hw-balken{gap:var(--eq-a3)}
+.eq-hw-gross .add-btn{margin-top:var(--eq-a4)}
+/* Rechnungen eines Handwerkers */
+.eq-rn-liste{display:flex;flex-direction:column;gap:var(--eq-a2)}
+.eq-rn{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:4px var(--eq-a4);min-height:60px;padding:10px 12px 10px 14px;
+  border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke);cursor:pointer;transition:background var(--eq-kurz) ease}
+.eq-rn-tx{min-width:0}
+.eq-rn-n{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+.eq-rn-d{font-size:var(--eq-t-1);color:var(--soft);margin-top:2px;overflow-wrap:anywhere}
+.eq-rn-b{font-family:var(--fdisp);font-size:var(--eq-t-3);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-rn-s{display:flex;align-items:center;gap:var(--eq-a2)}
+.eq-breit{width:100%;margin-top:var(--eq-a3)}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -1790,6 +1845,8 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 @media(max-width:1199px){
   .g-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
   .eq-haupt{grid-template-columns:minmax(0,1fr);gap:var(--eq-a5)}
+  .eq-kredite{grid-template-columns:minmax(0,1fr)}
+  .eq-hw-liste{grid-template-columns:minmax(0,1fr)}
 }
 /* Zwischen 900 und 1199 ist die Hauptkarte einspaltig und breit genug für drei Kacheln nebeneinander */
 @media(min-width:900px) and (max-width:1199px){
@@ -1818,18 +1875,6 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .eq-c-e .eq-warnt{color:var(--warn)}
   .eq-c-zus{display:inline;margin-left:6px}
   /* Zahlung gegen Fortschritt: fünf Spalten brauchen Platz. Darunter Zeilen mit Beschriftung. */
-  .gwt-kopf{display:none}
-  .gwt-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:13px 12px}
-  .gwt-n{grid-column:1;grid-row:1}
-  .gwt-row .gwt-c{font-size:var(--eq-t-1)}
-  .gwt-row .gwt-c:nth-child(2){grid-column:2;grid-row:1}
-  .gwt-row .gwt-c:nth-child(2)::before{content:"Angebot "}
-  .gwt-row .gwt-c:nth-child(3){grid-column:2;grid-row:2;font-size:var(--eq-t-2)}
-  .gwt-row .gwt-c:nth-child(3)::before{content:"gezahlt ";font-family:var(--fbody);font-size:var(--eq-t-1);font-weight:400;color:var(--softer)}
-  .gwt-row .gwt-c:nth-child(4){grid-column:1;grid-row:2;text-align:left}
-  .gwt-row .gwt-c:nth-child(4)::before{content:"Quote "}
-  .gwt-row .gwt-c:nth-child(5){grid-column:1;grid-row:3;text-align:left}
-  .gwt-row .gwt-c:nth-child(5)::before{content:"gebaut "}
 }
 
 /* Niedriges Querformat (Handy quer): Leiste enger, damit alle Einträge sichtbar bleiben */
@@ -1913,6 +1958,15 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 
   .eq-haupt{padding:20px var(--eq-a4);gap:20px}
   .eq-puffer{grid-template-columns:auto minmax(0,1fr)}
+  .eq-hw-kopf{flex-direction:column;gap:var(--eq-a2)}
+  .eq-hw-b{grid-template-columns:56px minmax(0,1fr) 44px;gap:var(--eq-a2)}
+  .eq-rn{grid-template-columns:minmax(0,1fr) auto}
+  .eq-rn-s{grid-column:1 / -1;justify-content:space-between;margin-top:6px}
+  .eq-kredit{padding:var(--eq-a4);gap:20px}
+  .eq-kredit-kopf{flex-direction:column;gap:var(--eq-a2)}
+  .eq-werte{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--eq-a4)}
+  .eq-werte b{font-size:var(--eq-t-4)}
+  .chart-feld{height:150px}
   .eq-puffer-z{grid-column:2;text-align:left;display:flex;align-items:baseline;gap:var(--eq-a2)}
   .eq-obj{padding:var(--eq-a4)}
   .eq-obj-fuss{grid-template-columns:minmax(0,1fr);gap:var(--eq-a2)}
@@ -1946,12 +2000,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .nk-erg-z{font-size:32px}
 
   /* Tabellen werden am Handy zu Zeilen mit Beschriftung */
-  .gwr-kopf,.nk-t-kopf{display:none}
-  .gwr-row{grid-template-columns:minmax(0,1fr) auto;gap:3px 10px}
-  .gwr-b{grid-column:1;grid-row:1}
-  .gwr-d{grid-column:1;grid-row:2}
-  .gwr-c{grid-column:2;grid-row:1}
-  .gwr-s{grid-column:2;grid-row:2}
+  .nk-t-kopf{display:none}
   .nk-t-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
   .nk-t-n{grid-column:1;grid-row:1}
   .nk-t-row .nk-c:nth-child(2){grid-column:2;grid-row:1}
@@ -2807,10 +2856,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=52"></script>
-<script src="./data-save.js?v=52"></script>
-<script src="./finance-engine.js?v=52"></script>
-<script src="./app.js?v=52"></script>
+<script src="./data-loader.js?v=54"></script>
+<script src="./data-save.js?v=54"></script>
+<script src="./finance-engine.js?v=54"></script>
+<script src="./app.js?v=54"></script>
 
 <script>
 /* =====================================================================
