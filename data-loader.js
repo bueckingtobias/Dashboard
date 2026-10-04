@@ -77,6 +77,7 @@ function zuStream(o) {
         if (e.einzug)     u.einzug     = e.einzug;
         if (e.vertrag)    u.vertrag    = e.vertrag;
         u.zahltag = e.zahltag != null ? Number(e.zahltag) : 1;   // Tag im Monat, an dem die Miete fällig ist
+        if (e.personen != null) u.personen = Number(e.personen);  // für die Nebenkosten nach Personenschlüssel
         u._id = e.id;                       // für die spätere Bearbeitung
         return u;
       });
