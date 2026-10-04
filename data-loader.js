@@ -103,6 +103,30 @@ function zuStream(o) {
   return s;
 }
 
+/* -------------------------------------------------------------
+   Projekte: Objekte, die man prüft, bevor man sie kauft (Art "projekt")
+   Sie stehen in einer eigenen Liste D.projekte und nie in D.streams.
+   ------------------------------------------------------------- */
+// Vorgaben der Planungsdaten. Es sind Annahmen; jedes Feld darf in der Datenbank fehlen.
+// grest_pct bleibt leer: Die Grunderwerbsteuer ergibt sich in app.js aus dem Bundesland.
+const PROJEKT_VORGABEN = {
+  v: 1, status: "pruefung", kaufpreis: null, bundesland: null, grest_pct: null,
+  notar_pct: 2, makler_pct: 3.57, kaufkosten_sonst: 0, sanierung: 0, sanierung_auto: false,
+  instand_m2: 1, verwaltung_einheit: 25, kosten_sonst: 0, ausfall_pct: 3,
+  baujahr: null, inserat: null, pruefliste: [], angelegt_am: null, uebernommen_am: null
+};
+// Ein Projekt wird wie ein Mietobjekt aufbereitet (kind "miete"), damit FinanceEngine unverändert rechnet.
+function zuProjekt(o) {
+  const s = zuStream({ ...o, art: "miete" });
+  s.istProjekt = true;
+  s.nkAlsPuffer = true;                         // Nebenkosten sind im Projekt durchlaufend, kein Ertrag
+  s.planRoh = (o.projekt && typeof o.projekt === "object") ? o.projekt : {};   // wie gespeichert, mit unbekannten Feldern
+  s.plan = { ...PROJEKT_VORGABEN, ...s.planRoh };
+  if (!Array.isArray(s.plan.pruefliste)) s.plan.pruefliste = [];
+  if (!s.einheiten) s.einheiten = [];
+  return s;
+}
+
 function zuTermin(t) {
   const o = { titel: t.titel, datum: t.datum, typ: t.art, _id: t.id };
   if (t.wiederholung) o.wiederholung = t.wiederholung;
@@ -127,6 +151,18 @@ async function ladeDaten() {
   const { data: termine, error: e2 } = await window.sb
     .from('termine').select('*').order('datum');
   if (e2) throw e2;
+
+  // Projekte: eigene Abfrage. Schlägt nur sie fehl, lädt die App trotzdem – dann ohne Projekte.
+  let projekte = [];
+  try {
+    const { data: pD, error: pE } = await window.sb
+      .from('objekte')
+      .select('*, einheiten(*), kredite(*)')
+      .eq('art', 'projekt')
+      .order('name');
+    if (pE) console.error('Projekte konnten nicht geladen werden:', pE.message || pE);
+    projekte = (pD || []).filter(o => o.art === 'projekt');
+  } catch (e) { console.error('Projekte:', e); }
 
   // Abo-Status laden (Tarif + Zählstände)
   let abo = { tarif: 'premium', roh_tarif: 'test', objekte: 0, einheiten: 0 };
@@ -171,6 +207,7 @@ async function ladeDaten() {
     gewerke: gewerke,
     rechnungen: rechnungen,
     streams: objekte.map(zuStream),
+    projekte: projekte.map(zuProjekt),
     termine: (termine || []).map(zuTermin)
   };
   return window.DASHBOARD_DATA;
@@ -179,6 +216,6 @@ async function ladeDaten() {
 // Damit die Benutzerauswahl schon vor dem Anmelden gefüllt werden kann
 window.DASHBOARD_DATA = {
   meta: LOKAL.meta, begruessungen: LOKAL.begruessungen,
-  wetter: LOKAL.wetter, streams: [], termine: []
+  wetter: LOKAL.wetter, streams: [], projekte: [], termine: []
 };
 window.ladeDaten = ladeDaten;
