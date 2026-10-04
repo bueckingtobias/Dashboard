@@ -18,6 +18,7 @@
 
   /* ---------- ICONS ---------- */
   const IC = {
+    suche: '<circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
     grid: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
     chart: '<path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     home: '<path d="M4 11l8-6 8 6M6 10v9h12v-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -377,10 +378,13 @@
         ${darf ? `<button class="up-cta" id="upCta">Auf Premium wechseln</button>
         <div class="up-note">Erster Monat kostenlos · monatlich kündbar</div>`
           : `<div class="nu-nur-inhaber">${esc(nurInhaberSatz())}</div>`}
-      </div>`;
+      </div>
+      <button type="button" class="add-btn wide" id="upSpaeter" style="margin-top:12px">${grund === "gesperrt" ? "Schließen" : "Nicht jetzt"}</button>
+      ${grund === "gesperrt" ? "" : `<div class="up-note">Du kannst bei Basic bleiben. Alles andere läuft weiter wie bisher.</div>`}`;
     const sheet = openSheet(grund === "gesperrt" ? "Abo" : "Mehr freischalten", "", body);
     const cta = sheet.querySelector("#upCta");
     if (cta) cta.onclick = () => { closeSheet(); openTarifSheet(); };
+    sheet.querySelector("#upSpaeter").onclick = closeSheet;
   }
 
   // Name des gebuchten Tarifs. Testphase und Onboarding sind kein gebuchter Tarif.
@@ -617,11 +621,11 @@
         <input type="file" id="pAvaFile" accept="image/*" class="hide">
         <div class="prof-cap" id="pAvaCap">Zum Ändern tippen</div>
       </div>
-      ${efTitel("Konto")}
+      ${efTitel("Deine Angaben")}
       ${ef("Name", "name", currentUser.name || "", "text", { pflicht: true })}
       ${ef("E-Mail", "email", currentUser.email || "", "email", { readonly: true, hinweis: "E-Mail kann derzeit nicht geändert werden" })}
       <div class="ef-actions">
-        <button class="ef-save" id="pSave">Speichern</button>
+        <button class="ef-save" id="pSave">Name und Bild speichern</button>
       </div>
       <div class="ef-msg" id="pMsg"></div>
       ${efTitel("Darstellung")}
@@ -929,17 +933,20 @@
           <button type="button" class="nu-btn" data-zurueck="${esc(e.id)}">Zurückziehen</button>
         </div>
       </div>`;
-
-    let h = "";
-    if (inhaber) {
-      h += `<div class="ef-row" style="margin-bottom:4px">
-          <label class="ef-l">Firmenname</label>
+    // Erst die Personen, dann das Einladen, zuletzt der Firmenname (er steht nur in der Einladung)
+    const firmaZeile = `<div class="ef-row nu-firma">
+          <label class="ef-l" for="nuFirma">Firmenname</label>
           <div class="tarif-code-row">
             <input class="ef-i" id="nuFirma" maxlength="80" value="${esc(r.firma || "")}">
             <button type="button" class="tarif-code-btn" id="nuFirmaBtn">Speichern</button>
           </div>
           <div class="ef-h">Der Name steht in der Einladung.</div>
         </div>`;
+
+    let h = "";
+    if (inhaber) {
+      if (premium) h += `<div class="nu-plaetze"><b>${belegt} von ${NUTZER_MAX} Nutzern</b>${offen.length
+          ? " · davon " + offen.length + (offen.length === 1 ? " offene Einladung" : " offene Einladungen") : ""}</div>`;
     } else {
       h += `<div class="ef-h" style="margin:0 0 2px">Diese Personen arbeiten im Konto${r.firma ? " „" + esc(r.firma) + "“" : ""}. Alle sehen dieselben Objekte und Zahlen.</div>`;
     }
@@ -947,8 +954,6 @@
     if (inhaber) {
       if (einladungen.length) h += einladungen.map(einlZeile).join("");
       if (premium) {
-        h += `<div class="nu-plaetze"><b>${belegt} von ${NUTZER_MAX} Nutzern</b>${offen.length
-          ? " · davon " + offen.length + (offen.length === 1 ? " offene Einladung" : " offene Einladungen") : ""}</div>`;
         h += belegt < NUTZER_MAX
           ? `<button type="button" class="add-btn wide" id="nuNeu">+ Nutzer einladen</button>`
           : `<div class="nu-hinweis">Alle ${NUTZER_MAX} Plätze sind belegt${offen.length ? ", offene Einladungen zählen mit" : ""}. Entferne einen Nutzer oder zieh eine Einladung zurück, dann kannst du wieder jemanden einladen.</div>`;
@@ -960,6 +965,7 @@
           <button type="button" class="add-btn wide" id="nuFrei">Mit Premium freischalten</button>`;
       }
     }
+    if (inhaber) h += firmaZeile;
     h += `<div class="ef-msg" id="nuMsg"></div>`;
     host.innerHTML = h;
 
@@ -997,15 +1003,26 @@
       const e = einladungen.find(x => String(x.id) === b.dataset.teilen);
       if (e) einladungTeilen(e, r.firma);
     });
-    host.querySelectorAll("[data-zurueck]").forEach(b => b.onclick = async () => {
+    // Zurückziehen in zwei Schritten, mit klarer Rückfrage – wie beim Entfernen
+    const zurueckziehen = async (b, kennung) => {
       b.disabled = true; sag("Einladung wird zurückgezogen…");
       try {
-        const { data, error } = await window.sb.rpc("einladung_zurueckziehen", { p_id: b.dataset.zurueck });
+        const { data, error } = await window.sb.rpc("einladung_zurueckziehen", { p_id: kennung });
         if (error) throw error;
         if (data === "kein_recht") { sag("Nur der Inhaber kann Einladungen zurückziehen.", true); b.disabled = false; return; }
         showToast(data === "ok" ? "Einladung zurückgezogen. Der Link gilt nicht mehr." : "Diese Einladung gab es nicht mehr.");
         neuZeichnen();
       } catch (e) { sag(fehlerSatz(e), true); b.disabled = false; }
+    };
+    host.querySelectorAll("[data-zurueck]").forEach(b => b.onclick = () => {
+      const kennung = b.dataset.zurueck, akt = b.parentElement;
+      const e = einladungen.find(x => String(x.id) === kennung) || {};
+      akt.innerHTML = `<div class="nu-frage">Die Einladung für <b>${esc(e.name || e.email || "diese Person")}</b> gilt dann nicht mehr. Der Link funktioniert nicht mehr.</div>
+        <button type="button" class="nu-btn weg voll" id="nuZurueckJa">Ja, zurückziehen</button>
+        <button type="button" class="nu-btn" id="nuZurueckNein">Abbrechen</button>`;
+      akt.querySelector("#nuZurueckNein").onclick = neuZeichnen;
+      const ja = akt.querySelector("#nuZurueckJa");
+      ja.onclick = () => zurueckziehen(ja, kennung);
     });
 
     // Entfernen in zwei Schritten, mit klarer Rückfrage
@@ -1492,6 +1509,8 @@
   // Für Fragen mit zwei Angaben: felder:[{ id, label, typ, einheit, platzhalter, vorgabe, auswahl:[{t,v}] }].
   // hinweis darf eine Funktion der bisherigen Antworten sein. alternative:{ text, werte } ist ein zweiter Knopf,
   // der feste Antworten setzt. wenn(antworten) === false überspringt den Schritt.
+  // Ein Feld kann wahl tragen (zweiter Eingabeweg, etwa Rate statt Tilgung): { id, label, typ, einheit, platzhalter,
+  // knoepfe, zuRate(a), zuProzent(a) }. Gewählt ist er, wenn antworten["wahl:" + feld.id] === "1".
   // aufFertig(antworten) wird am Ende aufgerufen.
   function openAssistent(titel, schritte, aufFertig) {
     const antworten = {};
@@ -1506,7 +1525,9 @@
       return `<div class="wc-steps">${schritte.map((_, i) =>
         `<span class="${i < idx ? "done" : i === idx ? "on" : ""}"></span>`).join("")}</div>`;
     }
-    function feldHtml(x, i, mitLabel) {
+    function feldHtml(feld, i, mitLabel) {
+      const zweit = !!feld.wahl && antworten["wahl:" + feld.id] === "1";
+      const x = zweit ? feld.wahl : feld;
       const wert = antworten[x.id] != null ? antworten[x.id] : (x.vorgabe != null ? x.vorgabe : "");
       const kennung = i === 0 ? "asInput" : "asInput" + (i + 1);
       const eingabe = x.auswahl
@@ -1516,7 +1537,11 @@
              placeholder="${esc(x.platzhalter || "")}" value="${esc(wert)}"
              ${x.typ === "number" ? 'inputmode="decimal" step="any"' : ""}>
            ${x.einheit ? `<span class="as-einheit">${esc(x.einheit)}</span>` : ""}`;
-      return `${mitLabel && x.label ? `<label class="ef-l eq-as-l" for="${kennung}">${esc(x.label)}</label>` : ""}
+      return `${feld.wahl ? `<div class="eq-wahl eq-as-wahl" role="group" aria-label="Eingabe wählen">
+          <button type="button" class="eq-wahl-k${zweit ? "" : " on"}" data-aswahl="${esc(feld.id)}" data-modus="0" aria-pressed="${!zweit}">${esc(feld.wahl.knoepfe[0])}</button>
+          <button type="button" class="eq-wahl-k${zweit ? " on" : ""}" data-aswahl="${esc(feld.id)}" data-modus="1" aria-pressed="${zweit}">${esc(feld.wahl.knoepfe[1])}</button>
+        </div>` : ""}
+        ${mitLabel && x.label ? `<label class="ef-l eq-as-l" for="${kennung}">${esc(x.label)}</label>` : ""}
         <div class="as-feld">${eingabe}</div>`;
     }
 
@@ -1572,6 +1597,17 @@
             if (eingaben[i + 1]) { try { eingaben[i + 1].focus(); } catch (_) {} } else abschicken();
           };
         });
+        // Zweiter Eingabeweg: Der Wert wird umgerechnet, damit beim Umschalten nichts verloren geht
+        bodyEl.querySelectorAll("[data-aswahl]").forEach(b => b.onclick = () => {
+          const feld = felder.find(x => x.id === b.dataset.aswahl), zweit = b.dataset.modus === "1";
+          if (!feld || zweit === (antworten["wahl:" + feld.id] === "1")) return;
+          eingaben.forEach(n => { antworten[n.dataset.as] = (n.value || "").trim(); });
+          const neu = zweit ? feld.wahl.zuRate(antworten) : feld.wahl.zuProzent(antworten);
+          antworten["wahl:" + feld.id] = zweit ? "1" : "0";
+          antworten[zweit ? feld.wahl.id : feld.id] = isFinite(neu) && neu > 0 ? String(rund2(neu)) : "";
+          antworten[zweit ? feld.id : feld.wahl.id] = "";
+          zeige();
+        });
         const sk = bodyEl.querySelector("#asSkip");
         if (sk) sk.onclick = (e) => { e.preventDefault(); eingaben.forEach(n => { antworten[n.dataset.as] = ""; }); weiter(); };
         const alt = bodyEl.querySelector("#asAlternative");
@@ -1606,8 +1642,10 @@
   const asZahl = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v === "" || v == null || !isFinite(n) ? null : n; };
 
   // Geführtes Anlegen eines Projekts (Abschnitt 12.8): eine Frage pro Schritt, alles außer dem Namen lässt sich überspringen.
-  function assistentProjekt() {
+  // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt }
+  function assistentProjekt(vor) {
     if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    vor = vor || {};
     // Planungsdaten aus den bisherigen Antworten – daraus ergibt sich die Gesamtinvestition
     const planAus = (a) => {
       const plan = { v: 1, status: "pruefung" };
@@ -1619,6 +1657,7 @@
     };
     const investAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] }).INV;
     const hatPreis = (a) => (asZahl(a.kaufpreis) || 0) > 0;
+    const darlehenAus = (a) => Math.max(0, investAus(a) - (asZahl(a.eigenkapital) || 0));
     const schritte = [
       { id: "name", frage: "Wie soll das Projekt heißen?",
         hinweis: "Zum Beispiel die Adresse aus dem Inserat.",
@@ -1631,7 +1670,8 @@
         ], ueberspringbar: true },
       { id: "kaufpreis", frage: "Was soll es kosten?",
         hinweis: "Der Kaufpreis ohne Nebenkosten. Die rechnet ESTRIQ dazu.",
-        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000" },
+        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000",
+        vorgabe: vor.kaufpreis > 0 ? vor.kaufpreis : undefined },
       { frage: "Kaufst du über einen Makler?",
         hinweis: "Mit Makler: Trag die Courtage ein. 3,57 % ist eine Annahme – der genaue Satz steht im Inserat.",
         felder: [{ id: "makler_pct", label: "Courtage", typ: "number", einheit: "%", vorgabe: 3.57, platzhalter: "3,57" }],
@@ -1641,17 +1681,21 @@
         hinweis: "Weitere Einheiten trägst du gleich auf der Projektseite ein.",
         felder: [
           { id: "flaeche", label: "Fläche", typ: "number", einheit: "m²", platzhalter: "z. B. 72" },
-          { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650" }
+          { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650",
+            vorgabe: vor.kalt > 0 ? vor.kalt : undefined }
         ], ueberspringbar: true },
       { id: "eigenkapital", frage: "Wie viel Eigenkapital bringst du mit?",
         hinweis: (a) => "Du brauchst insgesamt " + eur(investAus(a)) + ".",
         typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 60000",
         wenn: hatPreis },
       { frage: "Zu welchen Bedingungen finanzierst du den Rest?",
-        hinweis: (a) => "Du finanzierst " + eur(Math.max(0, investAus(a) - (asZahl(a.eigenkapital) || 0))) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank.",
+        hinweis: (a) => "Du finanzierst " + eur(darlehenAus(a)) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen.",
         felder: [
           { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: 3.5 },
-          { id: "tilgung", label: "Anfangstilgung im Jahr", typ: "number", einheit: "%", vorgabe: 2 }
+          { id: "tilgung", label: "Anfangstilgung im Jahr", typ: "number", einheit: "%", vorgabe: 2,
+            wahl: { id: "rate", label: "Rate im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 1050", knoepfe: ["Tilgung in %", "Rate im Monat"],
+              zuRate: (a) => darlehenAus(a) * ((asZahl(a.zins) || 0) + (asZahl(a.tilgung) || 0)) / 1200,
+              zuProzent: (a) => darlehenAus(a) > 0 ? (asZahl(a.rate) || 0) * 1200 / darlehenAus(a) - (asZahl(a.zins) || 0) : 0 } }
         ], ueberspringbar: true,
         wenn: (a) => hatPreis(a) && a.eigenkapital !== "" && investAus(a) - (asZahl(a.eigenkapital) || 0) > 0 }
     ];
@@ -1675,9 +1719,12 @@
       }
       const zins = asZahl(a.zins), tilgung = asZahl(a.tilgung);
       const summe = rund2(Math.max(0, INV - (asZahl(a.eigenkapital) || 0)));
-      if (hatPreis(a) && a.eigenkapital != null && a.eigenkapital !== "" && zins != null && tilgung != null && summe > 0) {
+      // Rate: entweder direkt eingegeben oder aus Zins und Tilgung berechnet
+      const rate = a["wahl:tilgung"] === "1" ? asZahl(a.rate)
+        : (zins != null && tilgung != null ? summe * (zins + tilgung) / 100 / 12 : null);
+      if (hatPreis(a) && a.eigenkapital != null && a.eigenkapital !== "" && zins != null && rate != null && rate > 0 && summe > 0) {
         try {
-          await neuerKredit(neu.id, { name: "Darlehen", summe, zins_pa: zins, rate_monat: rund2(summe * (zins + tilgung) / 100 / 12),
+          await neuerKredit(neu.id, { name: "Darlehen", summe, zins_pa: zins, rate_monat: rund2(rate),
             start: null, rest_stand_betrag: null, rest_stand_datum: null, sondertilgung: null });
         } catch (_) { fehlt.push("das Darlehen"); }
       }
@@ -2662,6 +2709,11 @@
         <div class="sub-tx"><div class="sub-n">Mietobjekt</div>
           <div class="sub-m">Wohnung oder Haus mit Mietern</div></div>
         <div class="sub-v">${svg("plus")}</div></div>
+      <div class="sub-item anlegen-item" data-neu="projekt">
+        <div class="sub-ic">${svg("chart")}</div>
+        <div class="sub-tx"><div class="sub-n">Projekt</div>
+          <div class="sub-m">Ein Objekt prüfen, bevor du es kaufst</div></div>
+        <div class="sub-v">${svg("plus")}</div></div>
       <div class="anlegen-sep"></div>
       <div class="sub-item anlegen-item" data-neu="termin">
         <div class="sub-ic">${svg("calendar")}</div>
@@ -2678,6 +2730,8 @@
       if (!pruefeObjekt()) { closeSubmenu(); return; }
       schliessenUndTun(() => assistentObjekt());
     };
+    const pr = menu.querySelector('[data-neu="projekt"]');
+    if (pr) pr.onclick = () => schliessenUndTun(() => assistentProjekt());
     const t = menu.querySelector('[data-neu="termin"]');
     if (t) t.onclick = () => schliessenUndTun(() => openTerminEdit(null, true));
     bd.onclick = closeSubmenu;
@@ -2700,7 +2754,15 @@
     menu.querySelectorAll(".sub-item").forEach(it => {
       it.setAttribute("role", "menuitem");
       it.setAttribute("tabindex", "0");
-      it.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); it.click(); } });
+      it.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); it.click(); return; }
+        // Pfeiltasten, Pos1 und Ende wandern durch die Einträge
+        const alle = Array.from(menu.querySelectorAll(".sub-item"));
+        const i = alle.indexOf(it);
+        const ziel = e.key === "ArrowDown" ? alle[(i + 1) % alle.length] : e.key === "ArrowUp" ? alle[(i - 1 + alle.length) % alle.length]
+          : e.key === "Home" ? alle[0] : e.key === "End" ? alle[alle.length - 1] : null;
+        if (ziel) { e.preventDefault(); try { ziel.focus({ preventScroll: true }); } catch (_) {} }
+      });
     });
     if (feinerZeiger()) {
       menu._zurueck = anchor;
@@ -3557,6 +3619,34 @@
         <p><b>Forward-Darlehen</b> sichern dir den heutigen Zins bis zu 60 Monate im Voraus. Dafür zahlst du einen kleinen Aufschlag je Monat Vorlauf.</p>
         <p><b>Sondertilgung</b> senkt die Restschuld und damit dein Risiko bei der Anschlussfinanzierung. Viele Verträge erlauben 5 Prozent jährlich.</p>
         <div class="wi-merke">Trag dir das Ende der Zinsbindung drei Jahre vorher in den Kalender. Wer erst im letzten Monat verhandelt, hat keine Verhandlungsposition.</div>`
+    },
+    { id: "objekt-pruefen", kat: "grundlagen", icon: "home", titel: "Ein Objekt prüfen in fünf Schritten",
+      kurz: "Von der ganzen Investition bis zum schlechten Fall.", verweis: "projekte",
+      inhalt: `
+        <p><b>Erstens: die ganze Investition.</b> Rechne Kaufpreis, Kaufnebenkosten und Sanierung zusammen. Erst diese Summe zeigt, was dich das Objekt kostet.</p>
+        <p><b>Zweitens: die Miete von heute.</b> Rechne mit der Miete, die heute gezahlt wird – nicht mit der erhofften.</p>
+        <p><b>Drittens und viertens: Kosten und Finanzierung.</b> Zieh die laufenden Kosten ab, die du nicht umlegen kannst. Stell dann die Finanzierung dagegen.</p>
+        <p><b>Fünftens: der schlechte Fall.</b> Prüf zum Schluss, was bei höherem Zins, niedrigerer Miete und Leerstand passiert.</p>
+        <div class="wi-merke">Ein Objekt, das sich nur im besten Fall trägt, trägt sich nicht.</div>
+        <div class="wi-hinweis">Die Angaben dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`
+    },
+    { id: "afa-erklaert", kat: "grundlagen", icon: "beleg", titel: "Abschreibung kurz erklärt",
+      kurz: "Warum das Gebäude deine Steuer senkt.", rechner: ["afa"],
+      inhalt: `
+        <p>Abgeschrieben wird nur das <b>Gebäude</b>, nie das Grundstück.</p>
+        <p>Der Satz hängt vom Baujahr ab: 2 % bei Baujahr 1925 bis 2022, 2,5 % davor, 3 % bei Fertigstellung ab 2023.</p>
+        <p>Die Abschreibung senkt die zu versteuernden Mieteinnahmen, ohne dass Geld abfließt. Für Neubauten gibt es weitere Möglichkeiten, die der Steuerberater kennt.</p>
+        <div class="wi-merke">Die Abschreibung ist der Teil der Rendite, den man auf dem Konto nicht sieht.</div>
+        <div class="wi-hinweis">Die Angaben dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`
+    },
+    { id: "grenze15-erklaert", kat: "grundlagen", icon: "tool", titel: "Die 15-Prozent-Grenze bei Sanierungen",
+      kurz: "Warum du vor der Sanierung rechnen solltest.", rechner: ["grenze15"],
+      inhalt: `
+        <p>Die Grenze gilt in den <b>ersten drei Jahren</b> nach dem Kauf.</p>
+        <p>Übersteigen die Kosten für Sanierung und Modernisierung ohne Umsatzsteuer 15 Prozent der Anschaffungskosten des Gebäudes, lassen sie sich nicht sofort absetzen, sondern nur über viele Jahre mit der Abschreibung.</p>
+        <p>Wer knapp an der Grenze liegt, plant die Arbeiten zeitlich mit dem Steuerberater.</p>
+        <div class="wi-merke">Erst rechnen, dann sanieren.</div>
+        <div class="wi-hinweis">Die Angaben dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`
     }
   ];
 
@@ -3567,10 +3657,38 @@
     { id: "finanzierung", name: "Finanzierung", info: "Kredit, Zins und Tilgung" }
   ];
 
+  /* ---------- Helfer für die neuen Rechner (Phase 9) ---------- */
+  // Zahlen: negative Beträge mit Minuszeichen, unter 10.000 € mit Cent, darüber ohne. Prozent mit zwei Stellen.
+  const rcEur = (n) => {
+    const v = Number(n) || 0, a = Math.abs(v);
+    return (v < 0 && a >= 0.005 ? "−" : "") + (a < 9999.995 ? eur2(a) : eur(a));
+  };
+  const rcZahl = (n) => (Math.abs(Number(n) || 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rcProz = (n) => ((Number(n) || 0) <= -0.005 ? "−" : "") + rcZahl(n) + " %";
+  const RC_BERATUNG = "Dient der Orientierung und ersetzt keine Rechts- oder Steuerberatung.";
+  // Fehlt eine Angabe, steht im Ergebnis ein Strich und im Fazit, was fehlt. Geteilt durch null wird nie.
+  const rcLeer = (namen, was) => ({
+    zeilen: namen.map((l, i) => ({ l, v: "—", gross: i === 0 })),
+    fazit: "Trag " + was + " ein. Dann rechnet ESTRIQ."
+  });
+  // Restschuld nach m Monaten bei fester Rate (Zins in Prozent im Jahr), nie unter null
+  function rcRestschuld(summe, zins, rate, m) {
+    const i = zins / 1200;
+    return Math.max(0, i ? summe * Math.pow(1 + i, m) - rate * (Math.pow(1 + i, m) - 1) / i : summe - rate * m);
+  }
+  // Zweiter Eingabeweg für ein Tilgungsfeld: statt der Tilgung in Prozent die Rate im Monat
+  const tilgWahl = (feld, rateId, darlehen, zins, label) => ({
+    id: rateId, label: label || "Rate im Monat", einheit: "€", wert: "", knoepfe: ["Tilgung in %", "Rate im Monat"],
+    zuRate: (w) => darlehen(w) * (zins(w) + w[feld]) / 1200,
+    zuProzent: (w) => darlehen(w) ? w[rateId] * 1200 / darlehen(w) - zins(w) : 0,
+    zinsen: (w) => darlehen(w) * zins(w) / 1200
+  });
+
   const RECHNER = [
     {
       id: "rendite", titel: "Renditerechner", icon: "trend", kat: "kauf",
       kurz: "Was wirft eine Immobilie im Verhältnis zum Kaufpreis ab?",
+      projekt: (w) => ({ kaufpreis: w.kaufpreis, kalt: w.miete }),
       felder: [
         { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
         { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12, hinweis: "Notar, Grunderwerbsteuer, Makler" },
@@ -3602,7 +3720,12 @@
       felder: [
         { id: "summe", label: "Darlehenssumme", einheit: "€", wert: 200000 },
         { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
-        { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2 }
+        { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2,
+          wahl: { id: "rate", label: "Rate im Monat", einheit: "€", wert: 917, knoepfe: ["Tilgung in %", "Rate im Monat"],
+            zuRate: (w) => w.summe * (w.zins + w.tilgung) / 100 / 12,
+            zuProzent: (w) => w.summe ? w.rate * 12 / w.summe * 100 - w.zins : 0,
+            zinsen: (w) => w.summe * w.zins / 100 / 12,
+            zeile: (w) => ({ l: "Entspricht Anfangstilgung", v: prozent2(w.tilgung) + " p. a." }) } }
       ],
       rechne: (w) => {
         const rate = w.summe * (w.zins + w.tilgung) / 100 / 12;
@@ -3618,7 +3741,7 @@
             { l: "Monatliche Rate", v: eur(rate), gross: true },
             { l: "davon Zinsen", v: eur(zinsM) },
             { l: "davon Tilgung", v: eur(tilgM) },
-            { l: "Schuldenfrei nach", v: jahre + " Jahren " + restM + " Monaten", gross: true },
+            { l: "Schuldenfrei nach", v: jahre + (jahre === 1 ? " Jahr " : " Jahren ") + restM + (restM === 1 ? " Monat" : " Monaten"), gross: true },
             { l: "Zinskosten gesamt", v: eur(Math.max(0, rate * monate - w.summe)) }
           ],
           verhaeltnis: { zins: rate ? zinsM / rate * 100 : 0, tilgung: rate ? tilgM / rate * 100 : 0 },
@@ -3683,6 +3806,9 @@
       kurz: "Was zum Kaufpreis noch obendrauf kommt.",
       felder: [
         { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
+        { id: "land", label: "Bundesland", hinweis: "Belegt die Grunderwerbsteuer vor. " + "Stand Juli 2026, bitte prüfen.",
+          auswahl: () => [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] + " · " + prozent(x[2], 1) }))),
+          setzt: { feld: "grest", wert: (kuerzel) => grestVon(kuerzel) } },
         { id: "grest", label: "Grunderwerbsteuer", einheit: "%", wert: 5, hinweis: "Bundeslandabhängig: 3,5 bis 6,5 %" },
         { id: "notar", label: "Notar und Grundbuch", einheit: "%", wert: 2 },
         { id: "makler", label: "Maklercourtage", einheit: "%", wert: 3.57, hinweis: "Oft geteilt, entfällt beim Direktkauf" }
@@ -3712,6 +3838,7 @@
     {
       id: "cashflow", titel: "Cashflow-Rechner", icon: "wallet", kat: "kauf",
       kurz: "Was bleibt nach allen Kosten und der Kreditrate übrig?",
+      projekt: (w) => ({ kalt: w.miete }),
       felder: [
         { id: "miete", label: "Kaltmiete pro Monat", einheit: "€", wert: 950 },
         { id: "rate", label: "Kreditrate pro Monat", einheit: "€", wert: 780 },
@@ -3786,7 +3913,12 @@
         { id: "rest", label: "Restschuld bei Ablauf", einheit: "€", wert: 150000 },
         { id: "altZins", label: "Bisheriger Zins", einheit: "% p. a.", wert: 2 },
         { id: "neuZins", label: "Erwarteter neuer Zins", einheit: "% p. a.", wert: 4.5 },
-        { id: "tilgung", label: "Tilgung", einheit: "% p. a.", wert: 2 }
+        { id: "tilgung", label: "Tilgung", einheit: "% p. a.", wert: 2,
+          wahl: { id: "rate", label: "Bisherige Rate im Monat", einheit: "€", wert: 500, knoepfe: ["Tilgung in %", "Rate im Monat"],
+            zuRate: (w) => w.rest * (w.altZins + w.tilgung) / 100 / 12,
+            zuProzent: (w) => w.rest ? w.rate * 12 / w.rest * 100 - w.altZins : 0,
+            zinsen: (w) => w.rest * w.altZins / 100 / 12,
+            zeile: (w) => ({ l: "Entspricht Tilgung", v: prozent2(w.tilgung) + " p. a." }) } }
       ],
       rechne: (w) => {
         const alt = w.rest * (w.altZins + w.tilgung) / 100 / 12;
@@ -3882,6 +4014,423 @@
           grenzen: { aktuell: w.aktuell, kappung: maxKappung, vergleich: w.vergleich, neu: neu },
           fazit: "Es gilt immer die niedrigere der beiden Grenzen. Zwischen zwei Erhöhungen müssen zwölf Monate liegen, die Miete muss fünfzehn Monate unverändert gewesen sein.",
           rechtlich: true
+        };
+      }
+    },
+    /* ----- Die dreizehn neuen Rechner (Abschnitt 13.3 des Auftrags). Die Beispielwerte sind verbindlich: Mit ihnen stimmt die Rechenprobe. ----- */
+    {
+      id: "hebel", titel: "Eigenkapitalrendite", icon: "trend", kat: "kauf",
+      kurz: "Was bringt dein eingesetztes Geld, wenn die Bank mitzahlt?",
+      felder: [
+        { id: "invest", label: "Gesamtinvestition", einheit: "€", wert: 280000, hinweis: "Kaufpreis mit Nebenkosten und Sanierung" },
+        { id: "ek", label: "Eigenkapital", einheit: "€", wert: 60000 },
+        { id: "miete", label: "Kaltmiete pro Monat", einheit: "€", wert: 950 },
+        { id: "bewirt", label: "Bewirtschaftungskosten", einheit: "% der Miete", wert: 20, hinweis: "Instandhaltung, Verwaltung, Mietausfall" },
+        { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
+        { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2,
+          wahl: tilgWahl("tilgung", "rate", w => Math.max(0, w.invest - w.ek), w => w.zins) }
+      ],
+      rechne: (w) => {
+        const namen = ["Eigenkapitalrendite", "Darlehen", "Objektrendite", "Rate pro Monat", "Cashflow pro Monat"];
+        if (!(w.invest > 0)) return rcLeer(namen, "die Gesamtinvestition");
+        if (!(w.ek > 0)) return rcLeer(namen, "dein Eigenkapital");
+        const darlehen = Math.max(0, w.invest - w.ek);
+        const reinertrag = w.miete * 12 * (1 - w.bewirt / 100);
+        const zinsen = darlehen * w.zins / 100;
+        const rate = darlehen * (w.zins + w.tilgung) / 100 / 12;
+        const objekt = reinertrag / w.invest * 100;
+        const ekRendite = (reinertrag - zinsen) / w.ek * 100;
+        return {
+          zeilen: [
+            { l: "Darlehen", v: rcEur(darlehen) },
+            { l: "Objektrendite", v: rcProz(objekt), gross: true },
+            { l: "Eigenkapitalrendite", v: rcProz(ekRendite), gross: true, haupt: true },
+            { l: "Rate pro Monat", v: rcEur(rate) },
+            { l: "Cashflow pro Monat", v: rcEur(reinertrag / 12 - rate) }
+          ],
+          fazit: objekt > w.zins ? "Der Kredit hebt deine Rendite."
+            : "Der Kredit drückt deine Rendite. Jeder geliehene Euro kostet mehr, als er bringt."
+        };
+      }
+    },
+    {
+      id: "afa", titel: "Abschreibung und Steuerersparnis", icon: "beleg", kat: "kauf",
+      kurz: "Wie viel Steuer spart dir die Abschreibung im Jahr?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
+        { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12 },
+        { id: "gebaeude", label: "Gebäudeanteil", einheit: "%", wert: 75, hinweis: "Der Rest ist Grundstück und wird nicht abgeschrieben. Den Anteil findest du im Kaufvertrag oder klärst ihn mit dem Steuerberater." },
+        { id: "afa", label: "Abschreibung", einheit: "% p. a.", wert: 2, hinweis: "Sätze aus dem Einkommensteuergesetz: 2 % bei Baujahr 1925 bis 2022, 2,5 % bei Baujahr vor 1925, 3 % bei Fertigstellung ab 2023." },
+        { id: "steuer", label: "Persönlicher Steuersatz", einheit: "%", wert: 35 }
+      ],
+      rechne: (w) => {
+        if (!(w.kaufpreis > 0)) return rcLeer(["Steuerersparnis pro Jahr", "Gebäudewert für die Abschreibung", "Abschreibung pro Jahr", "Steuerersparnis pro Monat"], "den Kaufpreis");
+        const bemessung = w.kaufpreis * (1 + w.nebenkosten / 100) * w.gebaeude / 100;
+        const afa = bemessung * w.afa / 100, ersparnis = afa * w.steuer / 100;
+        return {
+          zeilen: [
+            { l: "Gebäudewert für die Abschreibung", v: rcEur(bemessung) },
+            { l: "Abschreibung pro Jahr", v: rcEur(afa), gross: true },
+            { l: "Steuerersparnis pro Jahr", v: rcEur(ersparnis), gross: true, haupt: true },
+            { l: "Steuerersparnis pro Monat", v: rcEur(ersparnis / 12) }
+          ],
+          fazit: "Die Abschreibung kostet dich kein Geld, senkt aber deine zu versteuernden Mieteinnahmen um " + rcEur(afa) + " im Jahr.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "grenze15", titel: "Sanierung und 15-Prozent-Grenze", icon: "tool", kat: "kauf",
+      kurz: "Wie viel darfst du in den ersten drei Jahren sanieren, ohne den sofortigen Steuerabzug zu verlieren?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
+        { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12 },
+        { id: "gebaeude", label: "Gebäudeanteil", einheit: "%", wert: 75 },
+        { id: "sanierung", label: "Geplante Sanierung in drei Jahren", einheit: "€", wert: 30000, hinweis: "ohne Umsatzsteuer" }
+      ],
+      rechne: (w) => {
+        if (!(w.kaufpreis > 0)) return rcLeer(["Grenze", "Anschaffungskosten des Gebäudes", "Geplante Sanierung", "Abstand zur Grenze"], "den Kaufpreis");
+        const gebaeude = w.kaufpreis * (1 + w.nebenkosten / 100) * w.gebaeude / 100;
+        const grenze = gebaeude * 15 / 100, abstand = grenze - w.sanierung;
+        return {
+          zeilen: [
+            { l: "Anschaffungskosten des Gebäudes", v: rcEur(gebaeude) },
+            { l: "Grenze", v: rcEur(grenze), gross: true },
+            { l: "Geplante Sanierung", v: rcEur(w.sanierung) },
+            { l: "Abstand zur Grenze", v: rcEur(abstand), gross: true }
+          ],
+          vergleich: { a: w.sanierung, b: grenze, la: "Sanierung", lb: "Grenze", waehrung: true },
+          fazit: abstand >= 0
+            ? "Du bleibst " + rcEur(abstand) + " unter der Grenze. Die Kosten lassen sich in der Regel sofort absetzen."
+            : "Du liegst " + rcEur(-abstand) + " über der Grenze. Dann werden die Kosten in der Regel wie der Kaufpreis über viele Jahre abgeschrieben.",
+          hinweis: "Gilt für die ersten drei Jahre nach dem Kauf. Welche Arbeiten mitzählen, klärst du mit dem Steuerberater.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "stress", titel: "Stresstest", icon: "layers", kat: "kauf",
+      kurz: "Hält dein Objekt, wenn es anders kommt?",
+      felder: [
+        { id: "miete", label: "Kaltmiete pro Monat", einheit: "€", wert: 950 },
+        { id: "rate", label: "Kreditrate pro Monat", einheit: "€", wert: 780 },
+        { id: "kosten", label: "Laufende Kosten pro Monat", einheit: "€", wert: 130, hinweis: "Instandhaltung, Verwaltung, Mietausfall" },
+        { id: "darlehen", label: "Darlehenssumme", einheit: "€", wert: 170000 }
+      ],
+      rechne: (w) => {
+        if (!(w.miete > 0)) return rcLeer(["Heute", "Zins +2 Punkte", "Miete −10 %", "2 Monate Leerstand", "Alles zusammen", "Tragbarer Leerstand im Jahr"], "die Kaltmiete");
+        const mehr = w.darlehen * 2 / 100 / 12;
+        const heute = w.miete - w.kosten - w.rate;
+        const faelle = [
+          ["Heute", "Heute", heute],
+          ["Zins +2 Punkte", "Zins", heute - mehr],
+          ["Miete −10 %", "Miete", w.miete * 0.9 - w.kosten - w.rate],
+          ["2 Monate Leerstand", "Leer", w.miete * 10 / 12 - w.kosten - w.rate],
+          ["Alles zusammen", "Alles", w.miete * 0.9 * 10 / 12 - w.kosten - w.rate - mehr]
+        ];
+        const tragbar = Math.max(0, 12 * (1 - (w.kosten + w.rate) / w.miete));
+        return {
+          zeilen: faelle.map((f, i) => ({ l: f[0], v: rcEur(f[2]), gross: i === 0 }))
+            .concat([{ l: "Tragbarer Leerstand im Jahr", v: rcZahl(tragbar) + " Monate" }]),
+          wasserfall: faelle.map(f => ({ l: f[1], v: Math.abs(f[2]), typ: f[2] >= 0 ? "rest" : "neg", text: rcEur(f[2]) })),
+          fazit: faelle.every(f => f[2] >= 0) ? "Robust. Das Objekt trägt sich in allen fünf Fällen."
+            : heute >= 0 ? "Trägt sich heute, aber ohne Puffer."
+            : "Trägt sich schon heute nicht."
+        };
+      }
+    },
+    {
+      id: "exit", titel: "Verkauf nach Jahren", icon: "key", kat: "vermoegen",
+      kurz: "Was bleibt dir, wenn du nach einigen Jahren verkaufst?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "€", wert: 250000 },
+        { id: "ek", label: "Eingesetztes Eigenkapital", einheit: "€", wert: 60000, hinweis: "mit Nebenkosten" },
+        { id: "darlehen", label: "Darlehen", einheit: "€", wert: 220000 },
+        { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
+        { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2,
+          wahl: tilgWahl("tilgung", "rate", w => w.darlehen, w => w.zins) },
+        { id: "wert", label: "Wertsteigerung", einheit: "% p. a.", wert: 1.5, hinweis: "Annahme. Niemand kennt sie vorher. Rechne auch mit 0." },
+        { id: "jahre", label: "Haltedauer", einheit: "Jahre", wert: 10 },
+        { id: "cashflow", label: "Cashflow pro Monat", einheit: "€", wert: 40, minus: true }
+      ],
+      rechne: (w) => {
+        const namen = ["Vermögen am Ende", "Wert beim Verkauf", "Restschuld", "Cashflow in der Zeit", "Gewinn", "Verzinsung des Eigenkapitals pro Jahr"];
+        if (!(w.kaufpreis > 0)) return rcLeer(namen, "den Kaufpreis");
+        if (!(w.ek > 0)) return rcLeer(namen, "dein Eigenkapital");
+        if (!(w.jahre > 0)) return rcLeer(namen, "die Haltedauer");
+        const rate = w.darlehen * (w.zins + w.tilgung) / 1200;
+        const stand = (j) => w.kaufpreis * Math.pow(1 + w.wert / 100, j) - rcRestschuld(w.darlehen, w.zins, rate, j * 12) + w.cashflow * 12 * j;
+        const wert = w.kaufpreis * Math.pow(1 + w.wert / 100, w.jahre);
+        const rest = rcRestschuld(w.darlehen, w.zins, rate, w.jahre * 12);
+        const cf = w.cashflow * 12 * w.jahre;
+        const vermoegen = wert - rest + cf;
+        const verlauf = [];
+        for (let j = 0; j <= Math.min(60, Math.ceil(w.jahre)); j++) verlauf.push(Math.max(0, stand(Math.min(j, w.jahre))));
+        return {
+          zeilen: [
+            { l: "Wert beim Verkauf", v: rcEur(wert) },
+            { l: "Restschuld", v: rcEur(rest) },
+            { l: "Cashflow in der Zeit", v: rcEur(cf) },
+            { l: "Vermögen am Ende", v: rcEur(vermoegen), gross: true },
+            { l: "Gewinn", v: rcEur(vermoegen - w.ek) },
+            { l: "Verzinsung des Eigenkapitals pro Jahr", v: vermoegen > 0 ? rcProz((Math.pow(vermoegen / w.ek, 1 / w.jahre) - 1) * 100) : "—", gross: true }
+          ],
+          verlauf,
+          fazit: "Aus " + rcEur(w.ek) + " Eigenkapital werden " + rcEur(vermoegen) + ". Verkaufskosten und Steuern sind nicht eingerechnet.",
+          hinweis: "Bei privat gehaltenen Mietobjekten ist ein Gewinn aus dem Verkauf in der Regel erst nach zehn Jahren steuerfrei.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "angebote", titel: "Finanzierungsangebote vergleichen", icon: "bank", kat: "finanzierung",
+      kurz: "Welches Angebot der Bank ist für dich günstiger?",
+      einspaltig: true,   // je Angebot drei Felder untereinander – nebeneinander gerieten A und B durcheinander
+      felder: [
+        { id: "summe", label: "Darlehenssumme", einheit: "€", wert: 200000 },
+        { id: "zinsA", label: "Angebot A: Sollzins", einheit: "% p. a.", wert: 3.4 },
+        { id: "tilgA", label: "Angebot A: Tilgung", einheit: "% p. a.", wert: 2,
+          wahl: tilgWahl("tilgA", "rateA", w => w.summe, w => w.zinsA, "Angebot A: Rate im Monat") },
+        { id: "bindA", label: "Angebot A: Zinsbindung", einheit: "Jahre", wert: 10 },
+        { id: "zinsB", label: "Angebot B: Sollzins", einheit: "% p. a.", wert: 3.7 },
+        { id: "tilgB", label: "Angebot B: Tilgung", einheit: "% p. a.", wert: 2,
+          wahl: tilgWahl("tilgB", "rateB", w => w.summe, w => w.zinsB, "Angebot B: Rate im Monat") },
+        { id: "bindB", label: "Angebot B: Zinsbindung", einheit: "Jahre", wert: 15 }
+      ],
+      rechne: (w) => {
+        const namen = ["Unterschied der Rate im Monat", "Angebot A: Rate pro Monat", "Angebot A: Zinsen in der Zinsbindung", "Angebot A: Restschuld am Ende",
+          "Angebot B: Rate pro Monat", "Angebot B: Zinsen in der Zinsbindung", "Angebot B: Restschuld am Ende"];
+        if (!(w.summe > 0)) return rcLeer(namen, "die Darlehenssumme");
+        if (!(w.bindA > 0) || !(w.bindB > 0)) return rcLeer(namen, "die Zinsbindung beider Angebote");
+        const angebot = (zins, tilgung, jahre) => {
+          const m = jahre * 12, rate = w.summe * (zins + tilgung) / 1200;
+          const rest = rcRestschuld(w.summe, zins, rate, m);
+          return { rate, rest, zinsen: rate * m - (w.summe - rest) };
+        };
+        const a = angebot(w.zinsA, w.tilgA, w.bindA), b = angebot(w.zinsB, w.tilgB, w.bindB);
+        const diff = Math.abs(a.rate - b.rate), gleich = diff < 0.005;
+        const guenstig = a.rate <= b.rate ? "A" : "B", laenger = w.bindA > w.bindB ? "A" : "B", jahre = Math.abs(w.bindA - w.bindB);
+        let fazit;
+        if (w.bindA === w.bindB) {
+          fazit = Math.abs(a.zinsen - b.zinsen) < 0.5 ? "Beide Angebote kosten in der Zinsbindung gleich viel Zinsen."
+            : "Angebot " + (a.zinsen < b.zinsen ? "A" : "B") + " kostet in der Zinsbindung " + rcEur(Math.abs(a.zinsen - b.zinsen)) + " weniger Zinsen.";
+        } else {
+          const sicher = "gibt dir " + rcZahl(jahre).replace(",00", "") + (jahre === 1 ? " Jahr" : " Jahre") + " länger Sicherheit.";
+          fazit = gleich ? "Beide Raten sind gleich hoch. Angebot " + laenger + " " + sicher
+            : guenstig === laenger ? "Angebot " + guenstig + " ist " + rcEur(diff) + " im Monat günstiger und " + sicher
+            : "Angebot " + guenstig + " ist " + rcEur(diff) + " im Monat günstiger. Angebot " + laenger + " " + sicher;
+        }
+        return {
+          zeilen: [
+            { l: "Angebot A: Rate pro Monat", v: rcEur(a.rate) },
+            { l: "Angebot A: Zinsen in der Zinsbindung", v: rcEur(a.zinsen) },
+            { l: "Angebot A: Restschuld am Ende", v: rcEur(a.rest) },
+            { l: "Angebot B: Rate pro Monat", v: rcEur(b.rate) },
+            { l: "Angebot B: Zinsen in der Zinsbindung", v: rcEur(b.zinsen) },
+            { l: "Angebot B: Restschuld am Ende", v: rcEur(b.rest) },
+            { l: gleich ? "Unterschied der Rate im Monat" : "Angebot " + guenstig + " ist im Monat günstiger um", v: rcEur(diff), gross: true }
+          ],
+          vergleich: { a: a.rate, b: b.rate, la: "Angebot A", lb: "Angebot B", waehrung: true },
+          fazit
+        };
+      }
+    },
+    {
+      id: "budget", titel: "Was kann ich mir leisten?", icon: "wallet", kat: "finanzierung",
+      kurz: "Wie teuer darf ein Objekt sein?",
+      projekt: (w, e) => ({ kaufpreis: e.kaufpreis }),
+      felder: [
+        { id: "ek", label: "Eigenkapital", einheit: "€", wert: 60000 },
+        { id: "rate", label: "Rate, die du tragen kannst", einheit: "€/Monat", wert: 900 },
+        { id: "zins", label: "Sollzins", einheit: "% p. a.", wert: 3.5 },
+        { id: "tilgung", label: "Anfangstilgung", einheit: "% p. a.", wert: 2 },
+        { id: "nebenkosten", label: "Kaufnebenkosten", einheit: "%", wert: 12 },
+        { id: "sanierung", label: "Geplante Sanierung", einheit: "€", wert: 0 }
+      ],
+      rechne: (w) => {
+        if (!(w.zins + w.tilgung > 0)) return rcLeer(["Höchster Kaufpreis", "Mögliches Darlehen", "Gesamtbudget", "Davon Kaufnebenkosten"], "Sollzins und Tilgung");
+        const darlehen = w.rate * 1200 / (w.zins + w.tilgung);
+        const budget = w.ek + darlehen;
+        const kaufpreis = Math.max(0, (budget - w.sanierung) / (1 + w.nebenkosten / 100));
+        const neben = Math.max(0, budget - w.sanierung - kaufpreis);
+        return {
+          zeilen: [
+            { l: "Mögliches Darlehen", v: rcEur(darlehen) },
+            { l: "Gesamtbudget", v: rcEur(budget) },
+            { l: "Davon Kaufnebenkosten", v: rcEur(neben) },
+            { l: "Höchster Kaufpreis", v: rcEur(kaufpreis), gross: true }
+          ],
+          stapel: [
+            { l: "Kaufpreis", v: kaufpreis, f: "a" },
+            { l: "Kaufnebenkosten", v: neben, f: "b" },
+            { l: "Sanierung", v: Math.max(0, w.sanierung), f: "c" }
+          ],
+          kaufpreis: Math.round(kaufpreis),
+          fazit: budget - w.sanierung <= 0 ? "Die Sanierung ist höher als dein Budget. Für den Kauf bleibt nichts übrig."
+            : "Mit " + rcEur(w.ek) + " Eigenkapital und " + rcEur(w.rate) + " Rate kannst du bis " + rcEur(kaufpreis) + " kaufen."
+        };
+      }
+    },
+    {
+      id: "modernisierung", titel: "Modernisierungsumlage", icon: "tool", kat: "betrieb",
+      kurz: "Wie viel Miete darfst du nach einer Modernisierung mehr verlangen?",
+      felder: [
+        { id: "kosten", label: "Kosten der Modernisierung für die Wohnung", einheit: "€", wert: 20000 },
+        { id: "instand", label: "Davon ohnehin fällige Instandhaltung", einheit: "€", wert: 5000, hinweis: "Dieser Teil darf nicht umgelegt werden." },
+        { id: "flaeche", label: "Wohnfläche", einheit: "m²", wert: 70 },
+        { id: "miete", label: "Aktuelle Kaltmiete", einheit: "€/Monat", wert: 560 },
+        { id: "umlage", label: "Umlage", einheit: "% p. a.", wert: 8, hinweis: "Gesetzlicher Satz aus dem Bürgerlichen Gesetzbuch" }
+      ],
+      rechne: (w) => {
+        if (!(w.flaeche > 0)) return rcLeer(["Zulässige Erhöhung pro Monat", "Umlagefähige Kosten", "Rechnerische Erhöhung", "Kappungsgrenze", "Neue Kaltmiete", "Bis die Kosten wieder drin sind"], "die Wohnfläche");
+        const umlagefaehig = Math.max(0, w.kosten - w.instand);
+        const rechnerisch = umlagefaehig * w.umlage / 100 / 12;
+        const jeM2 = w.miete / w.flaeche;
+        const kappung = w.flaeche * (jeM2 < 7 ? 2 : 3);
+        const zulaessig = Math.min(rechnerisch, kappung);
+        return {
+          zeilen: [
+            { l: "Umlagefähige Kosten", v: rcEur(umlagefaehig) },
+            { l: "Rechnerische Erhöhung", v: rcEur(rechnerisch) },
+            { l: "Kappungsgrenze", v: rcEur(kappung) },
+            { l: "Zulässige Erhöhung pro Monat", v: rcEur(zulaessig), gross: true },
+            { l: "Neue Kaltmiete", v: rcEur(w.miete + zulaessig) },
+            { l: "Bis die Kosten wieder drin sind", v: zulaessig > 0 ? rcZahl(umlagefaehig / (zulaessig * 12)).replace(/,00$/, "").replace(/(,\d)0$/, "$1") + " Jahre" : "—" }
+          ],
+          grenzen: { zeilen: [
+            { l: "rechnerisch", v: rechnerisch, kl: "alt" },
+            { l: "Kappung", v: kappung, kl: "alt" },
+            { l: "zulässig", v: zulaessig, kl: "" }
+          ] },
+          fazit: kappung < rechnerisch ? "Die Kappungsgrenze begrenzt die Erhöhung auf " + rcEur(zulaessig) + "."
+            : "Du darfst die Miete um " + rcEur(zulaessig) + " im Monat erhöhen.",
+          hinweis: "Die Kappung gilt für sechs Jahre. Für den Heizungstausch mit Förderung gelten eigene Regeln, die dieser Rechner nicht abbildet.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "index", titel: "Indexmiete", icon: "chart", kat: "betrieb",
+      kurz: "Wie hoch ist die Miete nach der Anpassung an den Verbraucherpreisindex?",
+      felder: [
+        { id: "miete", label: "Aktuelle Kaltmiete", einheit: "€/Monat", wert: 700 },
+        { id: "alt", label: "Indexstand bei der letzten Anpassung", einheit: "Punkte", wert: 110, hinweis: "Den Verbraucherpreisindex veröffentlicht das Statistische Bundesamt. Trag die echten Werte ein, die Beispiele sind erfunden." },
+        { id: "neu", label: "Indexstand heute", einheit: "Punkte", wert: 115.5 }
+      ],
+      rechne: (w) => {
+        if (!(w.alt > 0)) return rcLeer(["Neue Kaltmiete", "Veränderung des Index", "Erhöhung pro Monat", "Erhöhung pro Jahr"], "den Indexstand bei der letzten Anpassung");
+        const neu = w.miete * w.neu / w.alt, plus = neu - w.miete, proz = (w.neu / w.alt - 1) * 100;
+        return {
+          zeilen: [
+            { l: "Veränderung des Index", v: rcProz(proz) },
+            { l: "Neue Kaltmiete", v: rcEur(neu), gross: true },
+            { l: plus < 0 ? "Senkung pro Monat" : "Erhöhung pro Monat", v: rcEur(Math.abs(plus)) },
+            { l: plus < 0 ? "Senkung pro Jahr" : "Erhöhung pro Jahr", v: rcEur(Math.abs(plus) * 12) }
+          ],
+          fazit: Math.abs(proz) < 0.005 ? "Der Index ist unverändert. Die Miete bleibt gleich."
+            : proz > 0 ? "Der Index ist um " + rcProz(proz) + " gestiegen. Die Miete steigt um " + rcEur(plus) + " im Monat."
+            : "Der Index ist um " + rcProz(-proz) + " gefallen. Die Miete sinkt um " + rcEur(-plus) + " im Monat.",
+          hinweis: "Gilt nur, wenn im Mietvertrag eine Indexmiete vereinbart ist. Die Miete muss vorher mindestens ein Jahr unverändert gewesen sein.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "leerstand", titel: "Leerstandskosten", icon: "home", kat: "betrieb",
+      kurz: "Was kostet dich eine leere Wohnung?",
+      felder: [
+        { id: "miete", label: "Kaltmiete", einheit: "€/Monat", wert: 700 },
+        { id: "nk", label: "Nebenkosten-Vorauszahlung", einheit: "€/Monat", wert: 180, hinweis: "Im Leerstand trägst du die Nebenkosten selbst." },
+        { id: "monate", label: "Leerstand", einheit: "Monate", wert: 3 },
+        { id: "rate", label: "Kreditrate", einheit: "€/Monat", wert: 600 }
+      ],
+      rechne: (w) => {
+        const entgangen = w.miete * w.monate, nk = w.nk * w.monate, kosten = entgangen + nk, rate = w.rate * w.monate;
+        return {
+          zeilen: [
+            { l: "Entgangene Kaltmiete", v: rcEur(entgangen) },
+            { l: "Selbst getragene Nebenkosten", v: rcEur(nk) },
+            { l: "Kosten des Leerstands", v: rcEur(kosten), gross: true },
+            { l: "Anteil an der Jahreskaltmiete", v: w.miete > 0 ? rcProz(entgangen / (w.miete * 12) * 100) : "—" },
+            { l: "In der Zeit trotzdem fällige Kreditraten", v: rcEur(rate) }
+          ],
+          fazit: w.miete > 0
+            ? rcZahl(w.monate).replace(/,00$/, "") + (w.monate === 1 ? " Monat" : " Monate") + " Leerstand " + (w.monate === 1 ? "kostet" : "kosten") + " dich " + rcEur(kosten) + ". In dieser Zeit zahlst du " + rcEur(rate) + " an die Bank weiter."
+            : "Trag die Kaltmiete ein. Dann rechnet ESTRIQ."
+        };
+      }
+    },
+    {
+      id: "vorauszahlung", titel: "Nebenkosten-Vorauszahlung anpassen", icon: "coins", kat: "betrieb",
+      kurz: "Welche Vorauszahlung passt nach der letzten Abrechnung?",
+      felder: [
+        { id: "voraus", label: "Bisherige Vorauszahlung", einheit: "€/Monat", wert: 180 },
+        { id: "ergebnis", label: "Ergebnis der letzten Abrechnung", einheit: "€", wert: 240, minus: true, hinweis: "Nachzahlung des Mieters als positive Zahl, Guthaben mit Minus" },
+        { id: "steigerung", label: "Erwartete Kostensteigerung", einheit: "%", wert: 5 }
+      ],
+      rechne: (w) => {
+        const kosten = w.voraus * 12 + w.ergebnis;
+        const neu = Math.max(0, kosten * (1 + w.steigerung / 100) / 12);
+        return {
+          zeilen: [
+            { l: "Tatsächliche Kosten im Jahr", v: rcEur(kosten) },
+            { l: "Neue Vorauszahlung pro Monat", v: rcEur(neu), gross: true },
+            { l: "Änderung pro Monat", v: rcEur(neu - w.voraus) }
+          ],
+          fazit: "Mit " + rcEur(neu) + " im Monat sind die Kosten voraussichtlich gedeckt.",
+          hinweis: "Eine Anpassung ist nach einer Abrechnung möglich und muss angemessen sein."
+        };
+      }
+    },
+    {
+      id: "kaution", titel: "Mietkaution", icon: "key", kat: "betrieb",
+      kurz: "Wie viel Kaution darfst du verlangen?",
+      felder: [
+        { id: "miete", label: "Nettokaltmiete", einheit: "€/Monat", wert: 700 }
+      ],
+      rechne: (w) => {
+        const hoechst = w.miete * 3;
+        return {
+          zeilen: [
+            { l: "Höchste Kaution", v: rcEur(hoechst), gross: true },
+            { l: "Zahlbar in drei Raten von je", v: rcEur(hoechst / 3) }
+          ],
+          fazit: "Höchstens drei Nettokaltmieten. Der Mieter darf in drei Monatsraten zahlen, die erste zu Beginn des Mietverhältnisses.",
+          hinweis: "Die Kaution legst du getrennt von deinem Vermögen an.",
+          beratung: true
+        };
+      }
+    },
+    {
+      id: "tilgen-anlegen", titel: "Tilgen oder anlegen?", icon: "debt", kat: "vermoegen",
+      kurz: "Was bringt mehr: Sondertilgung oder Geldanlage?",
+      felder: [
+        { id: "betrag", label: "Betrag", einheit: "€", wert: 10000 },
+        { id: "zins", label: "Sollzins des Kredits", einheit: "% p. a.", wert: 3.5 },
+        { id: "jahre", label: "Zeitraum", einheit: "Jahre", wert: 10 },
+        { id: "rendite", label: "Erwartete Rendite der Anlage", einheit: "% p. a.", wert: 6, hinweis: "Annahme, nicht sicher" },
+        { id: "steuer", label: "Steuer auf Erträge", einheit: "%", wert: 26.375, hinweis: "Abgeltungsteuer mit Solidaritätszuschlag, ohne Kirchensteuer" }
+      ],
+      rechne: (w) => {
+        const namen = ["Gesparte Zinsen durch Tilgen", "Ertrag der Anlage nach Steuer", "Unterschied", "Rendite, ab der sich Anlegen lohnt"];
+        if (!(w.jahre > 0)) return rcLeer(namen, "den Zeitraum");
+        const tilgen = w.betrag * (Math.pow(1 + w.zins / 100, w.jahre) - 1);
+        const anlegen = w.betrag * (Math.pow(1 + w.rendite / 100, w.jahre) - 1) * (1 - w.steuer / 100);
+        const diff = anlegen - tilgen;
+        const gleichstand = w.steuer < 100
+          ? (Math.pow(1 + (Math.pow(1 + w.zins / 100, w.jahre) - 1) / (1 - w.steuer / 100), 1 / w.jahre) - 1) * 100 : null;
+        return {
+          zeilen: [
+            { l: "Gesparte Zinsen durch Tilgen", v: rcEur(tilgen), gross: true },
+            { l: "Ertrag der Anlage nach Steuer", v: rcEur(anlegen), gross: true },
+            { l: "Unterschied", v: rcEur(diff) },
+            { l: "Rendite, ab der sich Anlegen lohnt", v: gleichstand != null ? rcProz(gleichstand) : "—" }
+          ],
+          vergleich: { a: Math.max(0, tilgen), b: Math.max(0, anlegen), la: "Tilgen", lb: "Anlegen", waehrung: true },
+          fazit: diff > 0
+            ? "Rechnerisch bringt die Anlage " + rcEur(diff) + " mehr, wenn die Rendite so eintritt. Die Tilgung ist sicher, die Anlage schwankt."
+            : "Die Sondertilgung bringt " + rcEur(-diff) + " mehr und ist sicher.",
+          beratung: true
         };
       }
     }
@@ -4071,7 +4620,7 @@
   // Themenwelten: jede Kategorie zeigt Rechner UND passende Artikel zusammen
   const THEMEN = [
     { id: "kauf", name: "Kauf & Rendite", info: "Lohnt sich dieses Objekt?",
-      wissen: ["versteckte-kosten", "cashflow-rendite", "mietarten"] },
+      wissen: ["versteckte-kosten", "cashflow-rendite", "mietarten", "objekt-pruefen", "afa-erklaert", "grenze15-erklaert"] },
     { id: "finanzierung", name: "Finanzierung", info: "Was kostet dich die Bank?",
       wissen: ["zinsbindung"] },
     { id: "betrieb", name: "Betrieb & Miete", info: "Laufende Kosten und Mieteinnahmen",
@@ -4080,7 +4629,40 @@
       wissen: [] }
   ];
   let toolFilter = "alle";
+  let toolSuche = "";               // Suchwort der Tools-Seite, gilt, solange die App offen ist
+  const toolsOffen = new Set();     // Themenwelten, in denen „Alle anzeigen" angetippt wurde
 
+  // Reihenfolge je Themenwelt: die drei meistgebrauchten zuerst, der Rest steht hinter „Alle anzeigen"
+  const RECHNER_FOLGE = {
+    kauf: ["rendite", "cashflow", "kaufneben", "kauffaktor", "hebel", "stress", "afa", "grenze15"],
+    finanzierung: ["kredit", "budget", "angebote", "sondertilgung", "anschluss"],
+    betrieb: ["mieterhoehung", "instandhaltung", "leerstand", "modernisierung", "index", "vorauszahlung", "kaution"],
+    vermoegen: ["zinseszins", "opportunitaet", "tilgen-anlegen", "exit"]
+  };
+  function rechnerVon(kat) {
+    const folge = RECHNER_FOLGE[kat] || [];
+    const platz = (r) => { const i = folge.indexOf(r.id); return i < 0 ? 99 : i; };
+    return RECHNER.filter(r => r.kat === kat).sort((a, b) => platz(a) - platz(b));
+  }
+  const rechnerZeile = (r) => {
+    const z = ZIELE[r.id];
+    return `<button class="tw-r" data-rechner="${r.id}">
+      <span class="tw-r-ic">${svg(r.icon)}</span>
+      <span class="tw-r-tx">
+        <b>${esc(r.titel)}</b>
+        <small>${esc(r.kurz)}</small>
+        ${z ? `<span class="tw-r-ziele">${z.map(x => `<i data-rechner="${r.id}" data-ziel="${x.id}">${esc(x.label)}</i>`).join("")}</span>` : ""}
+      </span>
+      <span class="tw-r-pfeil">›</span>
+    </button>`;
+  };
+  const wissenZeile = (a) => `<button class="tw-w" data-wissen="${a.id}">
+      <span class="tw-w-ic">${svg(a.icon || "chart")}</span>
+      <span class="tw-w-tx"><b>${esc(a.titel)}</b><small>${esc(a.kurz)}</small></span>
+      <span class="tw-r-pfeil">›</span></button>`;
+
+  // Frage: Finde ich in zehn Sekunden den Rechner, den ich brauche?
+  // Reihenfolge der Seite: Projekte, Rechner, Wissen. Die Suche filtert Rechner und Artikel nach Titel und Frage.
   function renderTools(host) {
     const anzahl = projekte().filter(p => !istVerworfen(p)).length;
     $("#eyebrow").textContent = "Planen und rechnen";
@@ -4090,6 +4672,12 @@
     // Projekte stehen ganz oben, über Rechnern und Wissen
     projekteBereich().forEach(k => host.appendChild(k));
     host.appendChild(abschnittKopf("Rechner und Wissen", "Schnelle Einzelfragen – gespeichert wird hier nichts"));
+
+    const suche = el(`<div class="search-box eq-tl-suche">
+      <span class="search-ic">${svg("suche")}</span>
+      <input id="tlSuche" type="search" placeholder="Rechner oder Thema suchen" autocomplete="off" enterkeyhint="search"
+        aria-label="Rechner und Themen durchsuchen" value="${esc(toolSuche)}"></div>`);
+    host.appendChild(suche);
 
     // Filterleiste
     const filter = el(`<div class="tl-filter">
@@ -4101,45 +4689,79 @@
     });
     host.appendChild(filter);
 
-    const sichtbar = THEMEN.filter(t => toolFilter === "alle" || toolFilter === t.id);
-    sichtbar.forEach(t => {
-      const rechner = RECHNER.filter(r => r.kat === t.id);
-      const artikel = t.wissen.map(id => WISSEN.find(a => a.id === id)).filter(Boolean);
-      if (!rechner.length && !artikel.length) return;
-
-      const block = el(`<div class="card tw-card">
-        <div class="card-h"><div><div class="card-t">${esc(t.name)}</div>
-          <div class="card-s">${esc(t.info)}</div></div>
-          <div class="head-pill" style="padding:7px 13px">${rechner.length} Rechner</div></div>
-        <div class="card-b">
-          <div class="tw-rechner">${rechner.map(r => {
-            const z = ZIELE[r.id];
-            return `<button class="tw-r" data-rechner="${r.id}">
-              <span class="tw-r-ic">${svg(r.icon)}</span>
-              <span class="tw-r-tx">
-                <b>${esc(r.titel)}</b>
-                <small>${esc(r.kurz)}</small>
-                ${z ? `<span class="tw-r-ziele">${z.map(x => `<i data-rechner="${r.id}" data-ziel="${x.id}">${esc(x.label)}</i>`).join("")}</span>` : ""}
-              </span>
-              <span class="tw-r-pfeil">›</span>
-            </button>`;
-          }).join("")}</div>
-          ${artikel.length ? `<div class="tw-wissen">
-            <div class="tw-w-kopf">Zum Nachlesen</div>
-            ${artikel.map(a => `<button class="tw-w" data-wissen="${a.id}">
-              <span class="tw-w-ic">${svg(a.icon || "chart")}</span>
-              <span class="tw-w-tx"><b>${esc(a.titel)}</b><small>${esc(a.kurz)}</small></span>
-              <span class="tw-r-pfeil">›</span></button>`).join("")}
-          </div>` : ""}
-        </div></div>`);
-
-      block.querySelectorAll("[data-ziel]").forEach(n => n.onclick = (e) => {
+    const liste = el(`<div class="eq-tl-liste" id="tlListe"></div>`);
+    host.appendChild(liste);
+    const verdrahte = () => {
+      liste.querySelectorAll("[data-ziel]").forEach(n => n.onclick = (e) => {
         e.stopPropagation(); openRechner(n.dataset.rechner, n.dataset.ziel);
       });
-      block.querySelectorAll(".tw-r").forEach(n => n.onclick = () => openRechner(n.dataset.rechner));
-      block.querySelectorAll(".tw-w").forEach(n => n.onclick = () => openWissen(n.dataset.wissen));
-      host.appendChild(block);
+      liste.querySelectorAll(".tw-r").forEach(n => n.onclick = () => openRechner(n.dataset.rechner));
+      liste.querySelectorAll(".tw-w").forEach(n => n.onclick = () => openWissen(n.dataset.wissen));
+      liste.querySelectorAll("[data-mehr]").forEach(n => n.onclick = () => {
+        if (toolsOffen.has(n.dataset.mehr)) toolsOffen.delete(n.dataset.mehr); else toolsOffen.add(n.dataset.mehr);
+        zeichne();
+      });
+    };
+    const kopf = (text, zahl) => `<div class="eq-tl-kopf" role="heading" aria-level="3">${esc(text)}<span>${zahl}</span></div>`;
+
+    function zeichne() {
+      const worte = toolSuche.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      filter.hidden = worte.length > 0;
+      if (worte.length) {
+        // Suche: über alle Themenwelten, nach Titel und Frage (bei Rechnern auch die Zielgrößen)
+        const passt = (text) => { const t = text.toLowerCase(); return worte.every(w => t.includes(w)); };
+        const rechner = RECHNER.filter(r => passt(r.titel + " " + r.kurz + " " + (ZIELE[r.id] || []).map(z => z.label + " " + (z.frage || "")).join(" ")));
+        const artikel = WISSEN.filter(a => passt(a.titel + " " + a.kurz));
+        liste.innerHTML = !rechner.length && !artikel.length
+          ? `<div class="card"><div class="eq-leer">Zu „${esc(toolSuche.trim())}“ gibt es keinen Rechner und kein Thema. Versuch ein anderes Wort, zum Beispiel „Rendite“ oder „Kredit“.</div></div>`
+          : `<div class="card tw-card"><div class="card-b">
+              ${rechner.length ? kopf("Rechner", rechner.length) + `<div class="tw-rechner">${rechner.map(rechnerZeile).join("")}</div>` : ""}
+              ${artikel.length ? `<div class="${rechner.length ? "tw-wissen" : ""}">${kopf("Wissen", artikel.length)}${artikel.map(wissenZeile).join("")}</div>` : ""}
+            </div></div>`;
+        verdrahte();
+        return;
+      }
+      const sichtbar = THEMEN.filter(t => toolFilter === "alle" || toolFilter === t.id);
+      const rechnerKarten = sichtbar.map(t => {
+        const alle = rechnerVon(t.id);
+        if (!alle.length) return "";
+        // Ist nur eine Themenwelt gewählt, stehen gleich alle da
+        const offen = toolFilter === t.id || toolsOffen.has(t.id) || alle.length <= 3;
+        const zeigen = offen ? alle : alle.slice(0, 3);
+        return `<div class="card tw-card">
+          <div class="card-h"><div><div class="card-t">${esc(t.name)}</div>
+            <div class="card-s">${esc(t.info)}</div></div>
+            <div class="head-pill" style="padding:7px 13px">${alle.length} Rechner</div></div>
+          <div class="card-b">
+            <div class="tw-rechner">${zeigen.map(rechnerZeile).join("")}</div>
+            ${alle.length > 3 && toolFilter !== t.id ? `<div class="eq-verworfen"><button type="button" class="eq-umschalter" data-mehr="${t.id}" aria-expanded="${offen}">${offen ? "Weniger anzeigen" : "Alle anzeigen (" + (alle.length - 3) + " weitere)"}</button></div>` : ""}
+          </div></div>`;
+      }).join("");
+      const wissenKarten = sichtbar.map(t => {
+        const artikel = t.wissen.map(id => WISSEN.find(a => a.id === id)).filter(Boolean);
+        if (!artikel.length) return "";
+        return `<div class="card tw-card eq-tl-wissen">
+          <div class="card-h"><div><div class="card-t">${esc(t.name)}</div>
+            <div class="card-s">Zum Nachlesen</div></div>
+            <div class="head-pill" style="padding:7px 13px">${mehrzahl(artikel.length, "Thema", "Themen")}</div></div>
+          <div class="card-b">${artikel.map(wissenZeile).join("")}</div></div>`;
+      }).join("");
+      liste.innerHTML = `
+        ${rechnerKarten ? `<div class="eq-tl-kopf eq-tl-gross" role="heading" aria-level="3">Rechner</div>${rechnerKarten}` : ""}
+        ${wissenKarten ? `<div class="eq-tl-kopf eq-tl-gross" role="heading" aria-level="3">Wissen</div>${wissenKarten}` : ""}`;
+      verdrahte();
+    }
+    const eingabe = suche.querySelector("#tlSuche");
+    let warte = null;
+    eingabe.addEventListener("input", () => {
+      clearTimeout(warte);
+      warte = setTimeout(() => { toolSuche = eingabe.value; zeichne(); }, 140);
     });
+    eingabe.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && eingabe.value) { e.stopPropagation(); eingabe.value = ""; toolSuche = ""; zeichne(); }
+      if (e.key === "Enter") { clearTimeout(warte); toolSuche = eingabe.value; zeichne(); eingabe.blur(); }
+    });
+    zeichne();
 
     host.appendChild(el(`<div class="note" style="margin-top:2px">
       Angaben zu Mietrecht und Betriebskosten dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`));
@@ -4152,7 +4774,9 @@
     const woerter = a.inhalt.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
     const minuten = Math.max(1, Math.round(woerter / 200));
     const thema = THEMEN.find(t => (t.wissen || []).includes(a.id));
-    const passende = RECHNER.filter(r => r.kat === a.kat ||
+    // Nennt der Artikel eigene Rechner, stehen die darunter – sonst die ersten zwei der Themenwelt
+    const eigene = (a.rechner || []).map(rid => RECHNER.find(r => r.id === rid)).filter(Boolean);
+    const passende = eigene.length ? eigene : RECHNER.filter(r => r.kat === a.kat ||
       (thema && r.kat === thema.id)).slice(0, 2);
 
     const body = `
@@ -4164,6 +4788,7 @@
         <div class="wi-lead">${esc(a.kurz)}</div>
       </div>
       <div class="wi-inhalt">${a.inhalt}</div>
+      ${a.verweis === "projekte" ? `<button type="button" class="add-btn wide" id="wiProjekte" style="margin-top:16px">Zu den Projekten</button>` : ""}
       ${passende.length ? `${efTitel("Selbst durchrechnen")}
         <div class="rc-mehr">${passende.map(r => `
           <button class="rc-mehr-i" data-oeffne-rechner="${r.id}">
@@ -4180,25 +4805,58 @@
             </button>`).join("")}</div>` : "";
       })()}`;
     const sheet = openSheet(a.titel, "", body);
+    const zuProjekten = sheet.querySelector("#wiProjekte");
+    if (zuProjekten) zuProjekten.onclick = () => { closeSheet(); geheZu("tools"); };
     sheet.querySelectorAll("[data-oeffne-rechner]").forEach(b =>
       b.onclick = () => { closeSheet(); setTimeout(() => openRechner(b.dataset.oeffneRechner), 220); });
     sheet.querySelectorAll("[data-oeffne-wissen]").forEach(b =>
       b.onclick = () => { closeSheet(); setTimeout(() => openWissen(b.dataset.oeffneWissen), 220); });
   }
 
-  function openRechner(id, zielId) {
+  // start: wahlweise Startwerte je Feld, zum Beispiel aus einem Projekt. Ohne sie stehen die Beispielwerte in den Feldern.
+  // Im Rechner wird nichts gespeichert.
+  function openRechner(id, zielId, start) {
     const r = RECHNER.find(x => x.id === id);
     if (!r) return;
+    start = start || {};
     // Zielgrößen: entweder definiert, oder der Rechner hat nur einen Modus
     const ziele = (ZIELE[r.id] || [{ id: "standard", label: r.titel, frage: r.kurz }])
       .map(z => ({ ...z, felder: z.felder || r.felder, rechne: z.rechne || r.rechne }));
     let aktiv = Math.max(0, ziele.findIndex(z => z.id === zielId));
+    // Felder mit zwei Eingabewegen (wahl): Tilgung in Prozent oder Rate im Monat. Gemerkt, solange das Fenster offen ist.
+    const alsRate = {};
 
-    const sheet = openSheet(r.titel, "", `<div id="rcBody"></div>`);
+    const sheet = openSheet(r.titel, THEMEN.filter(t => t.id === r.kat).map(t => t.name)[0] || "", `<div id="rcBody"></div>`);
     const bodyEl = sheet.querySelector("#rcBody");
+    const startwert = (x, sonst) => start[x.id] != null && start[x.id] !== "" ? start[x.id] : sonst;
 
     function zeichne() {
       const z = ziele[aktiv];
+      const feldHtml = (f) => {
+        // Auswahl, die ein anderes Feld vorbelegt (Bundesland → Grunderwerbsteuer)
+        if (f.auswahl) {
+          const optionen = f.auswahl(), jetzt = String(startwert(f, ""));
+          return `<div class="rc-row rc-breit">
+            <label class="rc-l" for="rc-${f.id}">${esc(f.label)}${f.hinweis ? `<small>${esc(f.hinweis)}</small>` : ""}</label>
+            <select class="ef-i rc-s" id="rc-${f.id}" data-s="${f.id}">${optionen.map(o =>
+              `<option value="${esc(o.v)}"${String(o.v) === jetzt ? " selected" : ""}>${esc(o.t)}</option>`).join("")}</select>
+          </div>`;
+        }
+        const rate = f.wahl && alsRate[f.id];
+        const x = rate ? f.wahl : f;
+        return `<div class="rc-row${f.wahl ? " rc-breit" : ""}"${f.wahl ? ` data-wahlfeld="${f.id}"` : ""}>
+            ${f.wahl ? `<div class="eq-wahl" role="group" aria-label="Eingabe wählen">
+              <button type="button" class="eq-wahl-k${rate ? "" : " on"}" data-wahl="0" aria-pressed="${!rate}">${esc(f.wahl.knoepfe[0])}</button>
+              <button type="button" class="eq-wahl-k${rate ? " on" : ""}" data-wahl="1" aria-pressed="${!!rate}">${esc(f.wahl.knoepfe[1])}</button>
+            </div>` : ""}
+            <label class="rc-l" for="rc-${f.id}">${esc(x.label)}${x.hinweis ? `<small>${esc(x.hinweis)}</small>` : ""}</label>
+            <div class="rc-feld">
+              <input class="ef-i rc-i" id="rc-${f.id}" type="number" step="any"${f.minus ? "" : ' inputmode="decimal"'}
+                data-f="${x.id}" value="${esc(startwert(x, rate ? f.wahl.wert : f.wert))}">
+              <span class="rc-e">${esc(x.einheit)}</span>
+            </div>
+          </div>`;
+      };
       bodyEl.innerHTML = `
         ${ziele.length > 1 ? `<div class="rc-ziel">
           <div class="rc-ziel-l">Was möchtest du berechnen?</div>
@@ -4206,16 +4864,10 @@
             `<button class="rc-ziel-t${i === aktiv ? " on" : ""}" data-z="${i}">${esc(x.label)}</button>`).join("")}</div>
         </div>` : ""}
         <div class="rechner-kurz">${esc(z.frage || r.kurz)}</div>
-        <div id="rcFelder">${z.felder.map(f => `
-          <div class="rc-row">
-            <label class="rc-l">${esc(f.label)}${f.hinweis ? `<small>${esc(f.hinweis)}</small>` : ""}</label>
-            <div class="rc-feld">
-              <input class="ef-i rc-i" type="number" step="any" inputmode="decimal"
-                data-f="${f.id}" value="${f.wert}">
-              <span class="rc-e">${esc(f.einheit)}</span>
-            </div>
-          </div>`).join("")}</div>
-        <div id="rcErgebnis" class="rc-erg"></div>
+        <div id="rcFelder" class="rc-felder${r.einspaltig ? " rc-eine" : ""}">${z.felder.map(feldHtml).join("")}</div>
+        <div id="rcErgebnis" class="rc-erg" role="status" aria-live="polite"></div>
+        ${r.projekt && aktiv === 0 ? `<div class="rc-bruecke"><button type="button" class="add-btn wide" id="rcProjekt">Als Projekt anlegen</button>
+          <div class="wi-hinweis">Übernimmt die Werte aus dem Rechner in ein neues Projekt. Der Rechner selbst speichert nichts.</div></div>` : ""}
         ${verwandtes(r)}`;
 
       bodyEl.querySelectorAll(".rc-ziel-t").forEach(b => b.onclick = () => {
@@ -4226,14 +4878,69 @@
       bodyEl.querySelectorAll("[data-oeffne-rechner]").forEach(b =>
         b.onclick = () => { closeSheet(); setTimeout(() => openRechner(b.dataset.oeffneRechner), 220); });
 
-      const rechnen = () => {
+      const lesen = () => {
         const w = {};
         bodyEl.querySelectorAll(".rc-i").forEach(i => {
           w[i.dataset.f] = Number(String(i.value).replace(",", ".")) || 0;
         });
-        bodyEl.querySelector("#rcErgebnis").innerHTML = ergebnisHtml(z.rechne(w));
+        return w;
+      };
+      const mitRate = () => z.felder.filter(f => f.wahl && alsRate[f.id]);
+      // Rate statt Tilgung eingegeben: Daraus ergibt sich die Tilgung in Prozent. Die Formel des Rechners bleibt dieselbe.
+      const werte = () => { const w = lesen(); mitRate().forEach(f => { w[f.id] = f.wahl.zuProzent(w); }); return w; };
+      const rechnen = () => {
+        const w = werte();
+        const zuNiedrig = mitRate().find(f => !(w[f.id] > 0));
+        if (zuNiedrig) {
+          bodyEl.querySelector("#rcErgebnis").innerHTML = `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
+            <div class="eq-zustand-t">Mit dieser Rate wird der Kredit nicht kleiner</div>
+            <div class="eq-zustand-d">Allein die Zinsen kosten ${eur2(zuNiedrig.wahl.zinsen(w))} im Monat. Die Rate muss höher sein, damit etwas getilgt wird.</div></div></div>`;
+          return null;
+        }
+        const e = z.rechne(w);
+        mitRate().forEach(f => { if (f.wahl.zeile) e.zeilen.splice(1, 0, f.wahl.zeile(w)); });
+        bodyEl.querySelector("#rcErgebnis").innerHTML = ergebnisHtml(e);
+        return e;
       };
       bodyEl.querySelectorAll(".rc-i").forEach(i => i.addEventListener("input", rechnen));
+      // Auswahl belegt ein Feld vor; das Feld bleibt änderbar
+      bodyEl.querySelectorAll(".rc-s").forEach(s => s.onchange = () => {
+        const f = z.felder.find(x => x.id === s.dataset.s);
+        const neu = f && f.setzt ? f.setzt.wert(s.value) : null;
+        const ziel = f && f.setzt ? bodyEl.querySelector(`.rc-i[data-f="${f.setzt.feld}"]`) : null;
+        if (ziel && neu != null) ziel.value = neu;
+        rechnen();
+      });
+      // Umschalten zwischen Tilgung und Rate: Der Wert wird umgerechnet, das Ergebnis bleibt zunächst dasselbe
+      bodyEl.querySelectorAll("[data-wahlfeld]").forEach(zeile => {
+        const f = z.felder.find(x => x.id === zeile.dataset.wahlfeld);
+        zeile.querySelectorAll("[data-wahl]").forEach(b => b.onclick = () => {
+          const zuRate = b.dataset.wahl === "1";
+          if (zuRate === !!alsRate[f.id]) return;
+          const w = lesen();
+          const neu = zuRate ? f.wahl.zuRate(w) : f.wahl.zuProzent(w);
+          alsRate[f.id] = zuRate;
+          const x = zuRate ? f.wahl : f;
+          const inp = zeile.querySelector(".rc-i");
+          inp.dataset.f = x.id;
+          inp.value = isFinite(neu) && neu > 0 ? rund2(neu) : (zuRate ? f.wahl.wert : f.wert);
+          zeile.querySelector(".rc-l").textContent = x.label;
+          zeile.querySelector(".rc-e").textContent = x.einheit;
+          zeile.querySelectorAll("[data-wahl]").forEach(k => {
+            const an = (k.dataset.wahl === "1") === zuRate;
+            k.classList.toggle("on", an); k.setAttribute("aria-pressed", String(an));
+          });
+          rechnen();
+        });
+      });
+      // Brücke zum Projekt: Kaufpreis und Miete aus dem Rechner gehen in den Ablauf „Projekt anlegen"
+      const pb = bodyEl.querySelector("#rcProjekt");
+      if (pb) pb.onclick = () => {
+        const w = werte(), e = z.rechne(w);
+        const vor = r.projekt(w, e) || {};
+        closeSheet();
+        setTimeout(() => assistentProjekt(vor), 220);
+      };
       rechnen();
     }
     zeichne();
@@ -4261,7 +4968,7 @@
       extra = `<div class="rc-wf">${e.wasserfall.map(x =>
         `<div class="rc-wf-i">
            <i class="${x.typ}" style="height:${Math.max(5, x.v / max * 100).toFixed(1)}%"></i>
-           <span>${esc(x.l)}</span><b>${eur(x.v)}</b>
+           <span>${esc(x.l)}</span><b>${esc(x.text || eur(x.v))}</b>
          </div>`).join("")}</div>`;
     }
     else if (e.faktor != null) {
@@ -4272,9 +4979,11 @@
         </div>`;
     }
     else if (e.grenzen) {
-      const g = e.grenzen, max = Math.max(g.kappung, g.vergleich) || 1;
+      const g = e.grenzen, max = (g.zeilen ? Math.max(...g.zeilen.map(x => x.v)) : Math.max(g.kappung, g.vergleich)) || 1;
       const bar = (v, kl, l) => `<div class="rc-vg"><span>${l}</span><i class="${kl}" style="width:${(v / max * 100).toFixed(1)}%"></i><b>${eur(v)}</b></div>`;
-      extra = `<div class="rc-verg">${bar(g.aktuell, "grau", "heute")}${bar(g.kappung, "alt", "Kappung")}${bar(g.vergleich, "alt", "Vergleich")}${bar(g.neu, "", "zulässig")}</div>`;
+      // Die neuen Rechner geben ihre Zeilen selbst vor (g.zeilen), der Rechner Mieterhöhung bleibt wie bisher
+      extra = g.zeilen ? `<div class="rc-verg">${g.zeilen.map(x => bar(x.v, x.kl, esc(x.l))).join("")}</div>`
+        : `<div class="rc-verg">${bar(g.aktuell, "grau", "heute")}${bar(g.kappung, "alt", "Kappung")}${bar(g.vergleich, "alt", "Vergleich")}${bar(g.neu, "", "zulässig")}</div>`;
     }
     else if (e.vergleich) {
       const max = Math.max(e.vergleich.a, e.vergleich.b) || 1;
@@ -4284,8 +4993,8 @@
         <div class="rc-vg"><span>${esc(e.vergleich.lb || "Alternative")}</span><i class="alt" style="width:${(e.vergleich.b / max * 100).toFixed(1)}%"></i><b>${f(e.vergleich.b)}</b></div>
       </div>`;
     }
-    // Die erste hervorgehobene Zeile ist die eigentliche Antwort
-    const haupt = e.zeilen.find(z => z.gross);
+    // Die erste hervorgehobene Zeile ist die eigentliche Antwort – außer eine Zeile ist eigens als Hauptzahl benannt
+    const haupt = e.zeilen.find(z => z.haupt) || e.zeilen.find(z => z.gross);
     const rest = e.zeilen.filter(z => z !== haupt);
     return `${haupt ? `<div class="rc-antwort">
         <div class="rc-a-l">${esc(haupt.l)}</div>
@@ -4295,6 +5004,8 @@
       <div class="rc-zeilen">${rest.map(z =>
         `<div class="rc-z${z.gross ? " gross" : ""}"><span>${esc(z.l)}</span><b>${esc(z.v)}</b></div>`).join("")}</div>
       <div class="rc-fazit">${esc(e.fazit)}</div>
+      ${e.hinweis ? `<div class="wi-hinweis">${esc(e.hinweis)}</div>` : ""}
+      ${e.beratung ? `<div class="wi-hinweis">${RC_BERATUNG}</div>` : ""}
       ${e.rechtlich ? `<div class="wi-hinweis">Orientierung, keine Rechtsberatung.</div>` : ""}`;
   }
 
@@ -4873,8 +5584,8 @@
   function wissensBasis() {
     const eintraege = [];
     const t = FE.totals(D);
-    const add = (titel, wert, detail, worte, aktion) =>
-      eintraege.push({ titel, wert, detail, worte: worte.toLowerCase(), aktion });
+    const add = (titel, wert, detail, worte, aktion, marke) =>
+      eintraege.push({ titel, wert, detail, worte: worte.toLowerCase(), aktion, marke });
 
     // Portfolio-Kennzahlen
     let debtMonth = 0, debtRest = 0, units = 0, let_ = 0;
@@ -4950,6 +5661,15 @@
             kr.name + " kredit darlehen restschuld zins laufzeit " + s.name,
             () => { route(s.id); setTimeout(() => openCreditSheet(kr), 260); });
       });
+    });
+
+    // Projekte: Ein Treffer ist als Projekt gekennzeichnet und führt zur Projektseite. In keiner Summe zählen sie mit.
+    projekte().filter(p => !istVerworfen(p)).forEach(p => {
+      const z = projektZahlen(p), u = projektUrteil(z);
+      add(p.name, u.offen ? (z.INV > 0 ? eur(z.INV) : "—") : eur2(z.cashflow),
+          [u.offen ? (z.INV > 0 ? "Gesamtinvestition" : "noch ohne Kaufpreis") : "Cashflow nach Plan · " + u.kurz, p.ort].filter(Boolean).join(" · "),
+          p.name + " " + (p.ort || "") + " projekt kauf kaufen prüfen planung gesamtinvestition eigenkapital " + PROJEKT_STATUS[z.plan.status],
+          () => geheZu(projektAnsicht(p)), "Projekt");
     });
 
     // Termine
@@ -5038,7 +5758,7 @@
       }
       out.innerHTML = `<div class="qres">${treffer.map((x, i) => `
         <div class="qr${i === 0 ? " top" : ""}" data-i="${i}">
-          <div class="qr-l"><div class="qr-t">${esc(x.e.titel)}</div>
+          <div class="qr-l"><div class="qr-t">${esc(x.e.titel)}${x.e.marke ? ` <span class="eq-marke">${esc(x.e.marke)}</span>` : ""}</div>
             <div class="qr-d">${esc(x.e.detail)}</div></div>
           <div class="qr-v">${x.e.wert}</div>
         </div>`).join("")}</div>`;
@@ -5544,7 +6264,7 @@
           <button class="cal-btn" id="calToday">heute</button>
           <button class="cal-btn" id="calNext" aria-label="Nächster Monat">›</button>
           <button class="cal-btn" id="calAdd" aria-label="Termin anlegen" title="Termin anlegen">+</button>
-          <button class="cal-btn" id="calInfo" aria-label="Übersicht" title="Jahresübersicht">⋯</button>
+          <button class="cal-btn" id="calInfo" aria-label="Übersicht über zwölf Monate" title="Übersicht über zwölf Monate">Jahr</button>
         </div>
       </div>
       <div class="card-b"><div id="calGridHost"></div><div id="calDetail"></div></div></div>`);
@@ -5666,14 +6386,27 @@
   }
 
   /* ---------- WETTER ---------- */
+  // Wettercode → Beschreibung und Symbol. Die Symbole sind gezeichnet (wie alle Symbole der App), keine Emojis.
   const WCODE = {
-    0: ["Klar", "☀️"], 1: ["Überwiegend klar", "🌤"], 2: ["Teils bewölkt", "⛅️"], 3: ["Bedeckt", "☁️"],
-    45: ["Nebel", "🌫"], 48: ["Reifnebel", "🌫"], 51: ["Leichter Niesel", "🌦"], 53: ["Niesel", "🌦"],
-    55: ["Starker Niesel", "🌧"], 61: ["Leichter Regen", "🌦"], 63: ["Regen", "🌧"], 65: ["Starker Regen", "🌧"],
-    71: ["Leichter Schnee", "🌨"], 73: ["Schnee", "🌨"], 75: ["Starker Schnee", "❄️"],
-    80: ["Schauer", "🌦"], 81: ["Schauer", "🌧"], 82: ["Starke Schauer", "⛈"],
-    95: ["Gewitter", "⛈"], 96: ["Gewitter mit Hagel", "⛈"], 99: ["Schweres Gewitter", "⛈"]
+    0: ["Klar", "sonne"], 1: ["Überwiegend klar", "heiter"], 2: ["Teils bewölkt", "heiter"], 3: ["Bedeckt", "wolke"],
+    45: ["Nebel", "nebel"], 48: ["Reifnebel", "nebel"], 51: ["Leichter Niesel", "regen"], 53: ["Niesel", "regen"],
+    55: ["Starker Niesel", "regen"], 61: ["Leichter Regen", "regen"], 63: ["Regen", "regen"], 65: ["Starker Regen", "regen"],
+    71: ["Leichter Schnee", "schnee"], 73: ["Schnee", "schnee"], 75: ["Starker Schnee", "schnee"],
+    80: ["Schauer", "regen"], 81: ["Schauer", "regen"], 82: ["Starke Schauer", "gewitter"],
+    95: ["Gewitter", "gewitter"], 96: ["Gewitter mit Hagel", "gewitter"], 99: ["Schweres Gewitter", "gewitter"]
   };
+  const WETTER_WOLKE = '<path d="M7 15.5h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 8.6 3.5 3.5 0 0 0 7 15.5z"/>';
+  const WETTER_IC = {
+    sonne: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+    heiter: '<circle cx="8" cy="8" r="2.6"/><path d="M8 2.6v1.3M2.6 8h1.3M4.2 4.2l.9.9M11.8 4.2l-.9.9"/><path d="M9 19.5h8a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 8.1 13.7 3 3 0 0 0 9 19.5z"/>',
+    wolke: '<path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 11.1 3.5 3.5 0 0 0 7 18z"/>',
+    nebel: '<path d="M4 8h16M6 12h12M4 16h16"/>',
+    regen: WETTER_WOLKE + '<path d="M8.5 18.5l-1 2.5M12.5 18.5l-1 2.5M16.5 18.5l-1 2.5"/>',
+    schnee: WETTER_WOLKE + '<path d="M8 19.5h.01M12 21h.01M16 19.5h.01" stroke-width="2.6"/>',
+    gewitter: WETTER_WOLKE + '<path d="M12.5 16.5l-2 2.5h3l-2 2.5"/>'
+  };
+  const wetterSymbol = (name) => WETTER_IC[name]
+    ? `<svg class="eq-wetter-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WETTER_IC[name]}</svg>` : "";
   function weatherCard() {
     const w = D.wetter || { ort: null, lat: null, lon: null };
     const card = el(`<div class="card">
@@ -5711,24 +6444,26 @@
     fetch(url).then(r => r.json()).then(j => {
       const body = card.querySelector("#wBody"), now = card.querySelector("#wNow");
       if (!j || !j.current) throw new Error("keine Daten");
-      const c = j.current, cc = WCODE[c.weather_code] || ["—", "•"];
-      now.innerHTML = `${cc[1]} <b style="margin-left:5px">${Math.round(c.temperature_2m)}°</b>`;
+      const c = j.current, cc = WCODE[c.weather_code] || ["—", ""];
+      now.innerHTML = `${wetterSymbol(cc[1])} <b style="margin-left:5px">${Math.round(c.temperature_2m)}°</b>`;
       const days = (j.daily && j.daily.time || []).map((t, i) => {
-        const dc = WCODE[j.daily.weather_code[i]] || ["—", "•"];
+        const dc = WCODE[j.daily.weather_code[i]] || ["—", ""];
         const dd = new Date(t);
-        return `<div class="w-day clickable" data-i="${i}">
+        return `<div class="w-day clickable" data-i="${i}" role="button" tabindex="0" aria-label="${esc((i === 0 ? "heute" : dd.toLocaleDateString("de-DE", { weekday: "long" })) + ": " + dc[0])}">
           <span class="w-dow">${i === 0 ? "heute" : dd.toLocaleDateString("de-DE", { weekday: "short" })}</span>
-          <span class="w-ic">${dc[1]}</span>
+          <span class="w-ic">${wetterSymbol(dc[1])}</span>
           <span class="w-t"><b>${Math.round(j.daily.temperature_2m_max[i])}°</b><i>${Math.round(j.daily.temperature_2m_min[i])}°</i></span>
         </div>`;
       }).join("");
       body.innerHTML = `<div class="w-now">
-          <div class="w-now-ic">${cc[1]}</div>
+          <div class="w-now-ic">${wetterSymbol(cc[1])}</div>
           <div><div class="w-now-t">${Math.round(c.temperature_2m)}°</div>
             <div class="w-now-d">${esc(cc[0])} · ${Math.round(c.wind_speed_10m)} km/h · ${Math.round(c.relative_humidity_2m)} % rF</div></div>
         </div><div class="w-days">${days}</div>`;
-      body.querySelectorAll(".w-day").forEach(d =>
-        d.onclick = () => openWeatherSheet(j, Number(d.dataset.i)));
+      body.querySelectorAll(".w-day").forEach(d => {
+        d.onclick = () => openWeatherSheet(j, Number(d.dataset.i));
+        d.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); d.click(); } };
+      });
     }).catch(() => {
       card.querySelector("#wNow").textContent = "offline";
       card.querySelector("#wBody").innerHTML = `<div class="note">Wetterdaten konnten nicht geladen werden (keine Internetverbindung).</div>`;
@@ -5739,7 +6474,7 @@
 
   function openWeatherSheet(j, idx) {
     const day = j.daily.time[idx];
-    const dc = WCODE[j.daily.weather_code[idx]] || ["—", "•"];
+    const dc = WCODE[j.daily.weather_code[idx]] || ["—", ""];
     const d = new Date(day);
     const head = d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
     // Stunden dieses Tages
@@ -5748,20 +6483,20 @@
       if (t.slice(0, 10) !== day) return;
       const h = Number(t.slice(11, 13));
       if (h % 3 !== 0) return; // 3-Stunden-Schritte
-      const hc = WCODE[j.hourly.weather_code[i]] || ["—", "•"];
+      const hc = WCODE[j.hourly.weather_code[i]] || ["—", ""];
       hrs.push(`<div class="hour"><div class="hh">${String(h).padStart(2, "0")}:00</div>
-        <div class="hi">${hc[1]}</div>
+        <div class="hi" title="${esc(hc[0])}">${wetterSymbol(hc[1])}</div>
         <div class="ht">${Math.round(j.hourly.temperature_2m[i])}°</div>
         <div class="hr">${j.hourly.precipitation_probability ? Math.round(j.hourly.precipitation_probability[i]) + " %" : ""}</div></div>`);
     });
     const sr = j.daily.sunrise ? j.daily.sunrise[idx].slice(11, 16) : "—";
     const ss = j.daily.sunset ? j.daily.sunset[idx].slice(11, 16) : "—";
     const body = `
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Höchst</span><b>${Math.round(j.daily.temperature_2m_max[idx])}°</b></div>
-        <div class="s"><span>Tiefst</span><b>${Math.round(j.daily.temperature_2m_min[idx])}°</b></div>
-        <div class="s"><span>Niederschlag</span><b>${(j.daily.precipitation_sum ? j.daily.precipitation_sum[idx] : 0).toLocaleString("de-DE")} mm</b></div>
-        <div class="s"><span>Wind max</span><b>${Math.round(j.daily.wind_speed_10m_max ? j.daily.wind_speed_10m_max[idx] : 0)} km/h</b></div>
+      <div class="eq-werte eq-werte-block">
+        <div><span>Höchst</span><b>${Math.round(j.daily.temperature_2m_max[idx])}°</b></div>
+        <div><span>Tiefst</span><b>${Math.round(j.daily.temperature_2m_min[idx])}°</b></div>
+        <div><span>Niederschlag</span><b>${(j.daily.precipitation_sum ? j.daily.precipitation_sum[idx] : 0).toLocaleString("de-DE")} mm</b></div>
+        <div><span>Wind max</span><b>${Math.round(j.daily.wind_speed_10m_max ? j.daily.wind_speed_10m_max[idx] : 0)} km/h</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Tagesverlauf</div>
       <div class="hours">${hrs.join("")}</div>
@@ -5769,7 +6504,7 @@
         ${kv("Sonnenaufgang", sr + " Uhr")}
         ${kv("Sonnenuntergang", ss + " Uhr")}
       </div>`;
-    openSheet(dc[1] + "  " + dc[0], head, body);
+    openSheet(dc[0], head, body);
   }
 
   /* ---------- STREAM DETAIL ---------- */
@@ -5814,7 +6549,7 @@
     karten.push(kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "hochgerechnet"));
     // Die Einheiten-Karte füllt die Reihe auf, wenn sonst eine Lücke bliebe
     if (karten.length % 2) karten.push(kpiCard("home", m.einheiten, "Einheiten", flaeche ? qm(flaeche) + " gesamt" : "noch ohne Fläche"));
-    return wireActs(el(`<div class="grid g-kpi">${karten.join("")}</div>`), { cf: () => openCashflowSheet(s) });
+    return wireActs(el(`<div class="grid g-kpi${karten.length === 6 ? " eq-kpi-plan" : ""}">${karten.join("")}</div>`), { cf: () => openCashflowSheet(s) });
   }
 
   // Einheiten: am Handy eine Liste, auf breiten Bildschirmen eine Tabelle.
@@ -6161,13 +6896,18 @@
     const teile = [abschnittKopf("Finanzierung", mehrzahl(kredite.length, "Kredit", "Kredite") + " · Karte antippen für den Tilgungsplan",
       { id: "addCredit", text: "+ Kredit", tun: anlegen })];
     if (s.istProjekt) {
-      const z = projektZahlen(s);
+      const z = projektZahlen(s), kw = projektKreditwerte(s, z);
+      const verweise = [
+        { text: "Eigenkapitalrendite", id: "hebel", start: { invest: rund2(z.INV), ek: rund2(z.EK), miete: rund2(z.KM), bewirt: z.KM > 0 ? rund2(z.BK / z.KM * 100) : null, zins: kw.zins, tilgung: kw.tilgung } },
+        { text: "Angebote vergleichen", id: "angebote", start: { summe: rund2(z.DAR), zinsA: kw.zins, tilgA: kw.tilgung } }
+      ];
       teile.push(el(`<div class="card pad eq-fin-zeile"><div class="eq-werte">
         ${wert("Darlehen", eur(z.DAR), mehrzahl(z.kredite, "Kredit", "Kredite"))}
         ${wert("Rate im Monat", eur2(z.RATE), "Zins und Tilgung")}
         ${wert("Eigenkapital", eur(z.EK), z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : "Gesamtinvestition − Darlehen")}
         ${wert("Tilgung im 1. Jahr", eur2(z.tilgung1), "so viel Schuld baust du ab")}
-      </div></div>`));
+      </div>${rechnerVerweise(verweise)}</div>`));
+      rechnerVerweiseBinden(teile[teile.length - 1], verweise);
     } else if (kredite.length > 1) teile.push(finanzKarte(kredite));
     const raster = el(`<div class="grid${kredite.length > 1 ? " eq-kredite" : ""}"></div>`);
     kredite.forEach(kr => {
@@ -6369,6 +7109,7 @@
     const plan = { v: 1, ...(p.planRoh || {}), ...aenderung, geaendert_am: new Date().toISOString() };
     const z = projektZahlen({ ...p, plan: { ...p.plan, ...aenderung } });
     await window.speichereProjektPlan(p._id, plan, rund2(z.INV) || null);
+    return plan;
   }
   // Die gespeicherte Gesamtinvestition (objekte.invest) folgt der Rechnung – etwa nach einem neuen Handwerker-Angebot
   function investAbgleichen(p) {
@@ -6421,22 +7162,28 @@
     const verworfen = projekteSortiert(alle.filter(istVerworfen));
     const teile = [abschnittKopf("Projekte",
       aktiv.length ? "Objekte, die du prüfst, bevor du sie kaufst" : "",
-      aktiv.length ? { id: "addProjekt", text: "Projekt anlegen", tun: assistentProjekt, haupt: true } : null)];
+      aktiv.length ? { id: "addProjekt", text: "Projekt anlegen", tun: () => assistentProjekt(), haupt: true } : null)];
     if (!aktiv.length) {
       const leer = el(`<div class="card"><div class="eq-leer"><div>Du überlegst, ein Objekt zu kaufen? Leg es als Projekt an und sieh, ob es sich trägt.</div>
         <div><button type="button" class="eq-btn" id="addProjekt">Projekt anlegen</button></div></div></div>`);
-      leer.querySelector("#addProjekt").onclick = assistentProjekt;
+      leer.querySelector("#addProjekt").onclick = () => assistentProjekt();
       teile.push(leer);
     } else {
       const raster = el(`<div class="grid eq-projekte"></div>`);
       aktiv.forEach(p => raster.appendChild(projektKarte(p)));
       teile.push(raster);
     }
-    if (verworfen.length) {
+    if (aktiv.length > 1 || verworfen.length) {
       const um = el(`<div class="eq-verworfen">
-        <button type="button" class="eq-umschalter" id="verworfeneZeigen" aria-expanded="${zeigeVerworfene}">${zeigeVerworfene ? "Verworfene ausblenden" : "Verworfene anzeigen"} (${verworfen.length})</button></div>`);
-      um.querySelector("button").onclick = () => { zeigeVerworfene = !zeigeVerworfene; route("tools"); };
+        ${aktiv.length > 1 ? `<button type="button" class="add-btn" id="projekteVergleichen">Vergleichen</button>` : ""}
+        ${verworfen.length ? `<button type="button" class="eq-umschalter" id="verworfeneZeigen" aria-expanded="${zeigeVerworfene}">${zeigeVerworfene ? "Verworfene ausblenden" : "Verworfene anzeigen"} (${verworfen.length})</button>` : ""}</div>`);
+      const vb = um.querySelector("#projekteVergleichen");
+      if (vb) vb.onclick = () => openVergleichWahl();
+      const ub = um.querySelector("#verworfeneZeigen");
+      if (ub) ub.onclick = () => { zeigeVerworfene = !zeigeVerworfene; route("tools"); };
       teile.push(um);
+    }
+    if (verworfen.length) {
       if (zeigeVerworfene) {
         const raster = el(`<div class="grid eq-projekte"></div>`);
         verworfen.forEach(p => raster.appendChild(projektKarte(p)));
@@ -6516,11 +7263,17 @@
     const verworfen = planVon(p).status === "verworfen";
     projektMenuZeigen(anchor, "Projekt", [
       { text: "Bearbeiten", unter: "Name, Ort, Baujahr, Inserat, Notiz", tun: () => openProjektEdit(p) },
+      { text: "Duplizieren", unter: "Als Variante mit anderem Preis oder anderer Finanzierung rechnen", tun: () => projektDuplizieren(p) },
+      vergleichbar(p).length > 1 ? { text: "Vergleichen", unter: "Neben andere Projekte stellen", tun: () => openVergleichWahl(p) } : null,
+      { text: "Besichtigung eintragen", unter: "Als Termin im Kalender", tun: () => {
+        if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+        openTerminEdit(null, true, { titel: "Besichtigung: " + p.name });
+      } },
       verworfen
         ? { text: "Wieder aufnehmen", unter: "Zurück in die Liste der Projekte", tun: () => projektStatusSetzen(p, "pruefung") }
         : { text: "Verwerfen", unter: "Aus der Liste nehmen, nichts geht verloren", tun: () => projektStatusSetzen(p, "verworfen") },
       { text: "Löschen", unter: "Mit allen Einheiten und Krediten entfernen", tun: () => openProjektLoeschen(p) }
-    ]);
+    ].filter(Boolean));
   }
 
   // Urteil: die Hauptaussage der Seite. Ein Satz, die Zahl groß, Statusfarbe und Wort.
@@ -6569,6 +7322,25 @@
       `<i style="width:${(t.wert / summe * 100).toFixed(2)}%;background:${t.farbe}"></i>`).join("")}</div>`;
   }
 
+  // Verweise zu Rechnern, vorbelegt mit den Werten des Projekts. liste = [{ text, id, start }]
+  function rechnerVerweise(liste) {
+    return `<div class="eq-verweise"><span>Im Rechner weiterrechnen</span>${liste.map((x, i) =>
+      `<button type="button" class="eq-verweis" data-rv="${i}">${esc(x.text)}</button>`).join("")}</div>`;
+  }
+  function rechnerVerweiseBinden(wurzel, liste) {
+    wurzel.querySelectorAll("[data-rv]").forEach(b => b.onclick = (e) => {
+      e.stopPropagation();
+      const x = liste[Number(b.dataset.rv)];
+      openRechner(x.id, null, x.start);
+    });
+  }
+  // Mittlerer Sollzins und Tilgung aller Darlehen eines Projekts, nach Summe gewichtet – als Startwert für Rechner
+  function projektKreditwerte(p, z) {
+    if (!(z.DAR > 0)) return {};
+    const zins = FE.creditsOf(p).reduce((a, k) => a + (Number(k.summe) || 0) * (Number(k.zinsPa) || 0), 0) / z.DAR;
+    return { zins: rund2(zins), tilgung: rund2(Math.max(0, z.RATE * 1200 / z.DAR - zins)) };
+  }
+
   // Kauf: woraus sich die Gesamtinvestition zusammensetzt und wie sie bezahlt wird
   function kaufKarte(p, z) {
     const plan = z.plan, roh = p.planRoh || {};
@@ -6594,6 +7366,12 @@
       { name: "Eigenkapital", wert: z.EK, farbe: "var(--eq-reihe-1)" }
     ];
     const anteil = (w) => z.INV > 0 ? Math.round(w / z.INV * 100) : 0;
+    const nebenProzent = rund2(z.KNK / z.KP * 100);
+    const verweise = [
+      { text: "Kaufnebenkosten", id: "kaufneben", start: { kaufpreis: z.KP, land: plan.bundesland || "", grest: plan.grest_pct, notar: plan.notar_pct, makler: plan.makler_pct } },
+      { text: "Abschreibung", id: "afa", start: { kaufpreis: z.KP, nebenkosten: nebenProzent } },
+      { text: "15-Prozent-Grenze", id: "grenze15", start: { kaufpreis: z.KP, nebenkosten: nebenProzent, sanierung: rund2(z.SAN) } }
+    ];
     const karte = el(`<div class="card">
       <div class="card-h"><div><div class="card-t">Kauf</div>
         <div class="card-s">Was der Kauf kostet und woher das Geld kommt</div></div>
@@ -6611,8 +7389,10 @@
           <div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:var(--eq-reihe-1)"></i>Eigenkapital<small>bringst du selbst mit</small></span><b>${eur2(z.EK)}</b></div>
         </div>
         ${z.zuVielFinanziert ? `<div class="note" style="margin-top:12px">Die Finanzierung ist höher als die Investition. Prüf die Darlehenssummen.</div>` : ""}
+        ${rechnerVerweise(verweise)}
       </div></div>`);
     karte.querySelector("#pKauf").onclick = () => openKaufdaten(p);
+    rechnerVerweiseBinden(karte, verweise);
     return karte;
   }
 
@@ -6683,6 +7463,230 @@
     return karte;
   }
 
+  /* ---------- Projekte, Teil 2: Stresstest, Prüfliste, Vergleichen, Duplizieren ---------- */
+
+  // Stresstest (Abschnitt 12.10): der Cashflow nach Plan in vier Fällen neu gerechnet. Nichts wird gespeichert.
+  function stresstestKarte(p, z) {
+    const u = projektUrteil(z);
+    if (u.offen) {
+      return el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Stresstest</div>
+          <div class="card-s">Was passiert, wenn es anders kommt?</div></div></div>
+        <div class="card-b"><div class="eq-leer">Trag Kaufpreis und Mieten ein. Dann rechnet ESTRIQ hier durch, was bei höherem Zins, weniger Miete oder Leerstand übrig bleibt.</div></div></div>`);
+    }
+    const mehrRate = z.DAR * 2 / 100 / 12;
+    const faelle = [
+      { name: "Zins +2 Punkte", was: z.kredite ? "Die Raten steigen um " + eur2(mehrRate) + " im Monat" : "Ohne Darlehen ändert sich nichts", fall: { rateZusatz: mehrRate } },
+      { name: "Miete −10 %", was: eur(z.kmVoll * 0.9) + " Kaltmiete statt " + eur(z.kmVoll), fall: { mieteFaktor: 0.9 } },
+      { name: "2 Monate Leerstand", was: "Im Jahr fehlen zwei Monatsmieten", fall: { mieteFaktor: 10 / 12 } },
+      { name: "Alles zusammen", was: "Höherer Zins, weniger Miete und Leerstand", fall: { mieteFaktor: 0.9 * 10 / 12, rateZusatz: mehrRate } }
+    ];
+    const zeile = (name, was, cf, klasse) => `<div class="eq-stress-z${klasse || ""}">
+        <div class="eq-stress-n">${esc(name)}<small>${esc(was)}</small></div>
+        <div class="eq-stress-w"><b${cf < 0 ? ' class="eq-minus"' : ""}>${eur2(cf)}</b>
+          <span class="eq-marke ${cf >= 0 ? "gut" : "kritisch"}">${cf >= 0 ? "trägt sich" : "trägt sich nicht"}</span></div></div>`;
+    const san = projektZahlen(p, { sanierungFaktor: 1.2 });
+    const verweise = [{ text: "Stresstest mit eigenen Zahlen", id: "stress", start: { miete: rund2(z.KM), rate: rund2(z.RATE), kosten: rund2(z.BK), darlehen: rund2(z.DAR) } }];
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Stresstest</div>
+        <div class="card-s">Was passiert, wenn es anders kommt?</div></div></div>
+      <div class="card-b">
+        <div class="eq-stress">
+          ${zeile("Nach Plan", "So, wie du es eingetragen hast", z.cashflow, " eq-stress-plan")}
+          ${faelle.map(f => zeile(f.name, f.was, projektZahlen(p, f.fall).cashflow)).join("")}
+          <div class="eq-stress-z">
+            <div class="eq-stress-n">Sanierung +20 %<small>${z.SAN > 0 ? eur(san.SAN) + " statt " + eur(z.SAN) : "Noch kein Sanierungsbudget eingetragen"}</small></div>
+            <div class="eq-stress-w eq-stress-san"><span>Eigenkapital <b>${eur2(san.EK)}</b></span><span>Rendite <b>${san.brutto != null ? prozent2(san.brutto) : "—"}</b></span></div></div>
+        </div>
+        <div class="note" style="margin-top:12px">Cashflow nach Plan im Monat. Zins +2 Punkte rechnet mit gleicher Tilgung auf die volle Darlehenssumme. Das ist eine vorsichtige Näherung.</div>
+        ${rechnerVerweise(verweise)}
+      </div></div>`);
+    rechnerVerweiseBinden(karte, verweise);
+    return karte;
+  }
+
+  // Prüfliste vor dem Kauf (Abschnitt 12.11). Gespeichert wird die Liste der abgehakten Kennungen.
+  const PRUEFLISTE = [
+    ["grundbuch", "Grundbuchauszug gelesen"],
+    ["energie", "Energieausweis liegt vor"],
+    ["mietvertrag", "Mietverträge und aktuelle Mieten geprüft"],
+    ["nkabrechnung", "Nebenkostenabrechnungen der letzten Jahre gesehen"],
+    ["weg", "Bei Eigentumswohnung: Teilungserklärung, Protokolle, Wirtschaftsplan und Rücklage geprüft"],
+    ["besichtigung", "Dach, Keller, Heizung, Fenster und Elektrik angesehen"],
+    ["sanierung", "Angebote für die Sanierung eingeholt"],
+    ["bank", "Finanzierungszusage der Bank liegt vor"],
+    ["vertrag", "Kaufvertragsentwurf vom Notar gelesen"],
+    ["versicherung", "Gebäudeversicherung geklärt"]
+  ];
+  function prueflisteKarte(p) {
+    const bekannt = new Set(PRUEFLISTE.map(x => x[0]));
+    const gespeichert = Array.isArray(p.planRoh && p.planRoh.pruefliste) ? p.planRoh.pruefliste : [];
+    const erledigt = new Set(gespeichert.filter(k => bekannt.has(k)));
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Prüfliste vor dem Kauf</div>
+        <div class="card-s" id="plStand" role="status"></div></div></div>
+      <div class="card-b">
+        <div class="eq-pl" role="group" aria-label="Prüfliste vor dem Kauf">${PRUEFLISTE.map(x =>
+          `<button type="button" class="eq-pl-z" role="checkbox" data-pl="${x[0]}"><span class="eq-pl-k" aria-hidden="true"></span><span class="eq-pl-t">${esc(x[1])}</span></button>`).join("")}</div>
+        <div class="note" style="margin-top:12px">Die Liste ist eine Gedankenstütze und ersetzt keine Beratung.</div>
+      </div></div>`);
+    const zeige = () => {
+      karte.querySelector("#plStand").textContent = erledigt.size + " von " + PRUEFLISTE.length + " erledigt";
+      karte.querySelectorAll("[data-pl]").forEach(b => {
+        const an = erledigt.has(b.dataset.pl);
+        b.classList.toggle("an", an); b.setAttribute("aria-checked", String(an));
+      });
+    };
+    // Jedes Antippen wird sofort gezeigt und der Reihe nach gespeichert. Die Seite wird dafür nicht neu geladen.
+    let kette = Promise.resolve();
+    karte.querySelectorAll("[data-pl]").forEach(b => b.onclick = () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      const k = b.dataset.pl, an = !erledigt.has(k);
+      if (an) erledigt.add(k); else erledigt.delete(k);
+      zeige();
+      kette = kette.then(async () => {
+        const fremd = (Array.isArray(p.planRoh && p.planRoh.pruefliste) ? p.planRoh.pruefliste : []).filter(x => !bekannt.has(x));
+        const liste = fremd.concat(PRUEFLISTE.map(x => x[0]).filter(x => erledigt.has(x)));
+        try {
+          p.planRoh = await planSpeichern(p, { pruefliste: liste });
+          p.plan = { ...p.plan, pruefliste: liste };
+        } catch (e) {
+          if (an) erledigt.delete(k); else erledigt.add(k);
+          zeige();
+          showToast(window.fehlerText(e));
+        }
+      });
+    });
+    zeige();
+    return karte;
+  }
+
+  // Projekte, die sich vergleichen lassen: alle, die nicht verworfen sind – und das, von dem aus man kommt
+  const vergleichbar = (vor) => projekteSortiert(projekte().filter(p => !istVerworfen(p) || (vor && p._id === vor._id)));
+
+  // Auswahl für den Vergleich: bei zwei oder drei Projekten gleich der Vergleich, sonst erst Häkchen setzen
+  function openVergleichWahl(vor) {
+    const liste = vergleichbar(vor);
+    if (liste.length < 2) { showToast("Zum Vergleichen brauchst du mindestens zwei Projekte."); return; }
+    if (liste.length <= 3) { openVergleich(liste); return; }
+    const gewaehlt = new Set(vor ? [vor._id] : []);
+    const sheet = openSheet("Projekte vergleichen", "Wähl zwei oder drei Projekte", `
+      <div class="eq-pl" role="group" aria-label="Projekte">${liste.map(p => {
+        const u = projektUrteil(projektZahlen(p));
+        return `<button type="button" class="eq-pl-z" role="checkbox" data-id="${esc(p._id)}"><span class="eq-pl-k" aria-hidden="true"></span>
+          <span class="eq-pl-t">${esc(p.name)}<small>${esc([p.ort, u.offen ? "noch kein Urteil" : u.kurz].filter(Boolean).join(" · "))}</small></span></button>`;
+      }).join("")}</div>
+      <div class="ef-actions eq-fest">
+        <div class="ef-msg" id="efMsg" role="status"></div>
+        <div class="ef-knoepfe"><button type="button" class="ef-save" id="vglStart">Vergleichen</button></div>
+      </div>`);
+    const msg = sheet.querySelector("#efMsg"), start = sheet.querySelector("#vglStart");
+    const zeige = () => {
+      sheet.querySelectorAll("[data-id]").forEach(b => {
+        const an = gewaehlt.has(b.dataset.id);
+        b.classList.toggle("an", an); b.setAttribute("aria-checked", String(an));
+      });
+      start.disabled = gewaehlt.size < 2;
+      msg.className = "ef-msg";
+      msg.textContent = gewaehlt.size + " von höchstens 3 gewählt";
+    };
+    sheet.querySelectorAll("[data-id]").forEach(b => b.onclick = () => {
+      const id = b.dataset.id;
+      if (gewaehlt.has(id)) gewaehlt.delete(id);
+      else if (gewaehlt.size >= 3) { msg.textContent = "Höchstens drei Projekte. Nimm erst eins heraus."; msg.className = "ef-msg bad"; return; }
+      else gewaehlt.add(id);
+      zeige();
+    });
+    start.onclick = () => openVergleich(liste.filter(p => gewaehlt.has(p._id)));
+    zeige();
+  }
+
+  // Vergleich (Abschnitt 12.12): zwei oder drei Projekte nebeneinander. Der beste Wert je Zeile trägt ein Häkchen.
+  function openVergleich(liste) {
+    const zahlen = liste.map(p => projektZahlen(p));
+    const urteile = zahlen.map(z => projektUrteil(z));
+    const da = (v) => v != null && isFinite(v);
+    const zeilen = [
+      { name: "Kaufpreis", wert: z => z.KP > 0 ? z.KP : null, text: eur, besser: "tief" },
+      { name: "Gesamtinvestition", wert: z => z.INV > 0 ? z.INV : null, text: eur, besser: "tief" },
+      { name: "Eigenkapitalbedarf", wert: z => z.INV > 0 ? z.EK : null, text: eur, besser: "tief" },
+      { name: "Fläche", wert: z => z.F > 0 ? z.F : null, text: qm, besser: "hoch" },
+      { name: "Kaltmiete", wert: z => z.KM > 0 ? z.KM : null, text: eur, besser: "hoch" },
+      { name: "Kaufpreis je m²", wert: z => z.kpM2, text: eur2, besser: "tief" },
+      { name: "Kaltmiete je m²", wert: z => z.KM > 0 ? z.kmM2 : null, text: eur2, besser: "hoch" },
+      { name: "Kaufpreisfaktor", wert: z => z.faktor, text: zahl2, besser: "tief" },
+      { name: "Bruttomietrendite", wert: z => z.KM > 0 ? z.brutto : null, text: prozent2, besser: "hoch" },
+      { name: "Nettomietrendite", wert: z => z.KM > 0 ? z.netto : null, text: prozent2, besser: "hoch" },
+      { name: "Cashflow nach Plan", wert: (z, i) => urteile[i].offen ? null : z.cashflow, text: eur2, besser: "hoch", minus: true },
+      { name: "Eigenkapitalrendite", wert: (z, i) => urteile[i].offen ? null : z.ekRendite, text: prozent2, besser: "hoch", minus: true }
+    ];
+    const reihen = zeilen.map(r => {
+      const werte = zahlen.map((z, i) => r.wert(z, i));
+      const gueltig = werte.filter(da);
+      // Bester Wert: nur, wenn es mindestens zwei Werte gibt und sie nicht alle gleich sind
+      const ziel = gueltig.length > 1 && Math.max(...gueltig) - Math.min(...gueltig) > 1e-9
+        ? (r.besser === "hoch" ? Math.max(...gueltig) : Math.min(...gueltig)) : null;
+      return `<tr><td>${esc(r.name)}</td>${werte.map(v => {
+        const best = ziel != null && da(v) && Math.abs(v - ziel) < 1e-9;
+        return `<td${best ? ' class="eq-best"' : ""}>${best ? `<span class="eq-best-z" role="img" aria-label="bester Wert">✓</span>` : ""}<span${r.minus && da(v) && v < 0 ? ' class="eq-minus"' : ""}>${da(v) ? esc(r.text(v)) : "—"}</span></td>`;
+      }).join("")}</tr>`;
+    }).join("");
+    const sheet = openSheet("Projekte vergleichen", mehrzahl(liste.length, "Projekt", "Projekte") + " nebeneinander", `
+      <div class="eq-vgl-wrap"><table class="tbl eq-vgl eq-vgl-${liste.length}">
+        <thead><tr><th scope="col"><span class="eq-nur-leser">Kennzahl</span></th>${liste.map(p => `<th scope="col">${esc(p.name)}<small>${esc(p.ort || "")}</small></th>`).join("")}</tr></thead>
+        <tbody>${reihen}
+          <tr><td>Urteil</td>${urteile.map(u => `<td>${u.offen ? "—" : `<span class="eq-marke ${u.stufe}">${esc(u.wort)}</span><small>${esc(u.kurz)}</small>`}</td>`).join("")}</tr>
+        </tbody></table></div>
+      <div class="note" style="margin-top:12px">Das Häkchen ✓ steht beim besten Wert der Zeile.${liste.length > 2 ? `<span class="eq-nur-schmal"> In der Tabelle kannst du zur Seite wischen.</span>` : ""}</div>
+      <div class="eq-vgl-knoepfe">${liste.map((p, i) => `<button type="button" class="add-btn" data-zu="${i}">${esc(p.name)} öffnen</button>`).join("")}</div>`);
+    sheet.querySelector(".sheet").classList.add("eq-breit");
+    sheet.querySelectorAll("[data-zu]").forEach(b => b.onclick = () => { closeSheet(); geheZu(projektAnsicht(liste[Number(b.dataset.zu)])); });
+  }
+
+  // Duplizieren (Abschnitt 12.13): Kopie mit Planungsdaten, Einheiten und Krediten. Handwerker und Nebenkosten
+  // kommen nicht mit, die Prüfliste der Kopie ist leer. Danach öffnet sich die Kopie.
+  async function projektDuplizieren(p) {
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    const z = projektZahlen(p), jetzt = new Date().toISOString();
+    const name = p.name + " (Variante)";
+    const plan = { v: 1, ...(p.planRoh || {}), pruefliste: [], angelegt_am: jetzt, geaendert_am: jetzt };
+    delete plan.uebernommen_am;
+    if (plan.status === "verworfen") plan.status = "pruefung";
+    // Die Angebote der Handwerker werden nicht kopiert. Damit die Kopie gleich rechnet, wird ihre Summe zum festen Budget.
+    if (z.plan.sanierung_auto) { plan.sanierung_auto = false; plan.sanierung = rund2(z.SAN); }
+    const oder = (v) => v === undefined ? null : v;
+    const werte = { name, slug: projektSlug(name), ort: p.ort || "", icon: p.icon || "home", notiz: p.note || "",
+      invest: rund2(z.INV) || null, nk_als_puffer: true, projekt: plan };
+    const einheiten = (p.einheiten || []).map((u, i) => ({
+      bezeichnung: u.wohnung || "Einheit", flaeche: u.flaeche || null, status: u.status,
+      kalt_pro_m2: oder(u.kaltProM2), nk_pro_m2: oder(u.nkProM2), kalt_fix: oder(u.kaltFix), nk_fix: oder(u.nkFix),
+      kueche: oder(u.kueche), strom: oder(u.strom), stellplatz: oder(u.stellplatz),
+      mieter: u.mieter || "", einzug: u.einzug || null, vertrag: u.vertrag || {}, zahltag: u.zahltag || 1, personen: oder(u.personen), sortierung: i + 1
+    }));
+    const kredite = FE.creditsOf(p).map((k, i) => ({
+      name: k.name || "Darlehen", summe: Number(k.summe) || 0, zins_pa: Number(k.zinsPa) || 0, rate_monat: Number(k.abtragMonat) || 0,
+      start: k.start || null, rest_stand_betrag: k.restStand ? k.restStand.betrag : null, rest_stand_datum: k.restStand ? k.restStand.datum : null,
+      sondertilgung: k.sondertilgung || null, sortierung: i + 1
+    }));
+    showToast("Die Variante wird angelegt …");
+    let slug = werte.slug, fehler = null;
+    try { await window.dupliziereProjekt(werte, einheiten, kredite); }
+    catch (e) {
+      if (projektNichtEingerichtet(e)) { showToast(PROJEKT_FEHLT); return; }
+      if (doppelterName(e)) {
+        slug = werte.slug + "-" + Math.floor(1000 + Math.random() * 9000);
+        try { await window.dupliziereProjekt({ ...werte, slug }, einheiten, kredite); } catch (e2) { fehler = e2; }
+      } else fehler = e;
+    }
+    try { await window.nachSpeichern(); }
+    catch (_) { showToast(NEULADEN_HINWEIS); return; }
+    const kopie = projekte().find(x => x.id === slug);
+    if (!kopie) { showToast(fehler ? window.fehlerText(fehler) : NEULADEN_HINWEIS); return; }
+    geheZu(projektAnsicht(kopie));
+    showToast(fehler ? "Die Variante ist angelegt, aber nicht vollständig. Prüf Einheiten und Kredite."
+      : "Variante angelegt. Rechne hier anders – das Original bleibt, wie es ist.");
+  }
+
   function renderProjekt(host, slug) {
     const p = projekte().find(x => x.id === slug);
     $("#eyebrow").textContent = "Projekt";
@@ -6701,7 +7705,7 @@
       projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), kaufKarte(p, z),
       einheitenKarte(p), finanzierungBereich(p), kostenKarte(p, z),
       (hatModul() || z.plan.sanierung_auto) ? sanierungSchalter(p, z) : null, gewerkeKarte(p),
-      nebenkostenKarte(p), notizKarte(p, z)
+      nebenkostenKarte(p), stresstestKarte(p, z), prueflisteKarte(p), notizKarte(p, z)
     ];
     teile.forEach(t => (Array.isArray(t) ? t : [t]).forEach(k => { if (k) host.appendChild(k); }));
     // Die gespeicherte Gesamtinvestition folgt der Rechnung (etwa nach einem neuen Angebot)
@@ -6969,11 +7973,11 @@
 
     const body = `
       ${zustand}
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Warmmiete</span><b>${eur(inc.gesamt)}</b></div>
-        <div class="s"><span>Ertrag${s.nkAlsPuffer ? " ohne Nebenkosten" : ""}</span><b style="color:var(--mint-2)">${eur(ertrag)}</b></div>
-        <div class="s"><span>€ / m²</span><b>${proM2.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
-        <div class="s"><span>Anteil Objekt</span><b>${anteil} %</b></div>
+      <div class="eq-werte eq-werte-block">
+        <div><span>Warmmiete</span><b>${eur(inc.gesamt)}</b></div>
+        <div><span>Ertrag${s.nkAlsPuffer ? " ohne Nebenkosten" : ""}</span><b>${eur(ertrag)}</b></div>
+        <div><span>€ / m²</span><b>${proM2.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+        <div><span>Anteil Objekt</span><b>${anteil} %</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Zusammensetzung</div>
       ${miniBars(parts)}
@@ -7026,6 +8030,8 @@
       <div class="eq-zustand-d">${k.tilgung > 0 ? "Auch nach 50 Jahren bliebe eine Restschuld." : "Die Rate deckt nur die Zinsen, die Restschuld von " + eur(k.rest) + " wird nicht kleiner."} Prüfe Rate und Zinssatz über „Bearbeiten“.</div></div></div>`;
     else if (k.beginntNoch) zustand = `<div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Die erste Rate ist im ${esc(monatLang(p.startKey))} fällig</div>
       <div class="eq-zustand-d">Schuldenfrei im ${esc(monatLang(k.ende))}, wenn alles nach Plan läuft.</div></div></div>`;
+    else if (kstream && kstream.istProjekt && !kr.start) zustand = `<div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Geplantes Darlehen über ${eur(k.summe)}</div>
+      <div class="eq-zustand-d">Der Beginn ist noch offen. Der Plan rechnet so, als wäre die erste Rate in diesem Monat fällig – schuldenfrei wärst du dann im ${esc(monatLang(k.ende))}.</div></div></div>`;
     else zustand = `<div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Noch ${eur(k.rest)} offen</div>
       <div class="eq-zustand-d">Schuldenfrei im ${esc(monatLang(k.ende))} – ${restzeitText(k.restMonate)}, wenn alles nach Plan läuft.</div></div></div>`;
 
@@ -7132,11 +8138,11 @@
       <div class="eq-zustand"><div class="eq-zustand-tx">
         <div class="eq-zustand-t">${eur(m.nkPuffer)} im Monat legst du für Nebenkosten zurück</div>
         <div class="eq-zustand-d">Das sind ${eur(jahr)} im Jahr. Sie zählen nicht zu deinen Einnahmen.</div></div></div>
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>je Monat</span><b>${eur(m.nkPuffer)}</b></div>
-        <div class="s"><span>je Jahr</span><b>${eur(jahr)}</b></div>
-        <div class="s"><span>je m²</span><b>${(s.einheiten || [])[0] ? ((s.einheiten[0].nkProM2 != null ? s.einheiten[0].nkProM2 : (FE.unitIncome(s.einheiten[0]).nk / (s.einheiten[0].flaeche || 1)))).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} €</b></div>
-        <div class="s"><span>Einheiten</span><b>${verm.length} vermietet</b></div>
+      <div class="eq-werte eq-werte-block">
+        <div><span>je Monat</span><b>${eur(m.nkPuffer)}</b></div>
+        <div><span>je Jahr</span><b>${eur(jahr)}</b></div>
+        <div><span>je m²</span><b>${(s.einheiten || [])[0] ? ((s.einheiten[0].nkProM2 != null ? s.einheiten[0].nkProM2 : (FE.unitIncome(s.einheiten[0]).nk / (s.einheiten[0].flaeche || 1)))).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} €</b></div>
+        <div><span>Einheiten</span><b>${verm.length} vermietet</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Beitrag je Wohnung</div>
       ${miniBars(proWohnung)}
@@ -7178,11 +8184,11 @@
       <td>${x.typen.zahlung || 0}</td><td class="hl">${x.anzahl}</td></tr>`).join("");
 
     const body = `
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Mieteingang/Mon.</span><b>${eur(t.miete)}</b></div>
-        <div class="s"><span>Mieteingang/Jahr</span><b>${eur(t.miete * 12)}</b></div>
-        <div class="s"><span>Sondertilgung/Jahr</span><b>${eur(sonderJahr)}</b></div>
-        <div class="s"><span>Termine 12 Mon.</span><b>${monate.reduce((a, x) => a + x.anzahl, 0)}</b></div>
+      <div class="eq-werte eq-werte-block">
+        <div><span>Mieteingang/Mon.</span><b>${eur(t.miete)}</b></div>
+        <div><span>Mieteingang/Jahr</span><b>${eur(t.miete * 12)}</b></div>
+        <div><span>Sondertilgung/Jahr</span><b>${eur(sonderJahr)}</b></div>
+        <div><span>Termine 12 Mon.</span><b>${monate.reduce((a, x) => a + x.anzahl, 0)}</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Wiederkehrende Ereignisse</div>
       <div class="tl">
@@ -7216,11 +8222,11 @@
         return { label: shortLabel(s.name), value: m.gesamt, color: PALETTE[i % PALETTE.length] };
       }).filter(x => x.value > 0);
       const body = `
-        <div class="stat-strip" style="margin-bottom:18px">
-          <div class="s"><span>je Monat</span><b style="color:var(--mint-2)">${eur(t.ist)}</b></div>
-          <div class="s"><span>je Jahr</span><b>${eur(t.jahrIst)}</b></div>
-          <div class="s"><span>je Quartal</span><b>${eur(t.ist * 3)}</b></div>
-          <div class="s"><span>je Tag</span><b>${eur(t.ist * 12 / 365)}</b></div>
+        <div class="eq-werte eq-werte-block">
+          <div><span>je Monat</span><b>${eur(t.ist)}</b></div>
+          <div><span>je Jahr</span><b>${eur(t.jahrIst)}</b></div>
+          <div><span>je Quartal</span><b>${eur(t.ist * 3)}</b></div>
+          <div><span>je Tag</span><b>${eur(t.ist * 12 / 365)}</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Nach Objekt</div>
         ${rows.length ? miniBars(rows) : `<div class="note">Noch keine Einnahmen erfasst.</div>`}
@@ -7238,11 +8244,11 @@
         if (u.status !== "vermietet") frei.push({ s, u, inc: FE.unitIncome(u) });
       }));
       const body = `
-        <div class="stat-strip" style="margin-bottom:18px">
-          <div class="s"><span>Ist</span><b>${eur(t.ist)}</b></div>
-          <div class="s"><span>Potenzial</span><b style="color:var(--mint-2)">${eur(t.potenzial)}</b></div>
-          <div class="s"><span>Differenz</span><b>${eur(c.upside)}</b></div>
-          <div class="s"><span>je Jahr</span><b>${eur(c.upside * 12)}</b></div>
+        <div class="eq-werte eq-werte-block">
+          <div><span>Ist</span><b>${eur(t.ist)}</b></div>
+          <div><span>Potenzial</span><b>${eur(t.potenzial)}</b></div>
+          <div><span>Differenz</span><b>${eur(c.upside)}</b></div>
+          <div><span>je Jahr</span><b>${eur(c.upside * 12)}</b></div>
         </div>
         ${rows.length ? `<div class="card-t" style="font-size:14px;margin-bottom:10px">Ungenutztes Potenzial</div>${miniBars(rows)}` : ""}
         ${frei.length ? `<div class="card-t" style="font-size:14px;margin:20px 0 10px">Leerstehende Einheiten</div>
@@ -7284,11 +8290,11 @@
       }));
       const frei = rows.filter(r => !r.on);
       const body = `
-        <div class="stat-strip" style="margin-bottom:18px">
-          <div class="s"><span>Vermietet</span><b style="color:var(--mint-2)">${c.unitsLet}</b></div>
-          <div class="s"><span>Frei</span><b style="color:var(--gold)">${c.unitsTotal - c.unitsLet}</b></div>
-          <div class="s"><span>Quote</span><b>${Math.round(c.unitsLet / c.unitsTotal * 100)} %</b></div>
-          <div class="s"><span>Fläche gesamt</span><b>${rows.reduce((a, r) => a + (Number(r.u.flaeche) || 0), 0)} m²</b></div>
+        <div class="eq-werte eq-werte-block">
+          <div><span>Vermietet</span><b>${c.unitsLet}</b></div>
+          <div><span>Frei</span><b>${c.unitsTotal - c.unitsLet}</b></div>
+          <div><span>Quote</span><b>${Math.round(c.unitsLet / c.unitsTotal * 100)} %</b></div>
+          <div><span>Fläche gesamt</span><b>${rows.reduce((a, r) => a + (Number(r.u.flaeche) || 0), 0)} m²</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Alle Einheiten</div>
         ${rows.map(r => kv(
@@ -7310,11 +8316,11 @@
         <td>${(x.kr.zinsPa || 0).toLocaleString("de-DE")} %</td>
         <td class="hl">${x.p.jahre.toLocaleString("de-DE")} J</td></tr>`).join("");
       const body = `
-        <div class="stat-strip" style="margin-bottom:18px">
-          <div class="s"><span>Restschuld</span><b>${eur(c.debtRest)}</b></div>
-          <div class="s"><span>getilgt</span><b style="color:var(--mint-2)">${eur(c.paidSoFar)}</b></div>
-          <div class="s"><span>davon getilgt</span><b>${quote.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</b></div>
-          <div class="s"><span>Rate/Monat</span><b>${eur(c.debtMonth)}</b></div>
+        <div class="eq-werte eq-werte-block">
+          <div><span>Restschuld</span><b>${eur(c.debtRest)}</b></div>
+          <div><span>getilgt</span><b>${eur(c.paidSoFar)}</b></div>
+          <div><span>davon getilgt</span><b>${quote.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</b></div>
+          <div><span>Rate/Monat</span><b>${eur(c.debtMonth)}</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Restschuld je Kredit</div>
         ${miniBars(list.map((x, i) => ({ label: x.kr.name || "Kredit", value: x.p.restAktuell, color: PALETTE[i % PALETTE.length] })))}
@@ -7491,17 +8497,18 @@
       ${ef("Name", "name", s ? s.name : "", "text", { pflicht: true, platzhalter: "z. B. Haus Bergstraße 12" })}
       ${ef("Ort", "ort", s ? (s.ort || "") : "")}
       ${efArea("Notiz", "notiz", s ? (s.note || "") : "")}
-      ${ef("Kurzname (intern)", "slug", s ? s.id : "", "text",
-        { pflicht: true, hinweis: "Nur für die App, ohne Leerzeichen, z. B. haus-nord. Im Zweifel so lassen." })}
       ${efTitel("Wirtschaftlich")}
       ${ef("Investitionssumme", "invest", s ? (s.invest ?? "") : "", "number",
         { einheit: "€", min: 0, hinweis: "Kaufpreis inkl. Kaufnebenkosten – Basis für die Rendite", platzhalter: "z. B. 250000" })}
       ${efSel("Nebenkosten", "nk_als_puffer", s && s.nkAlsPuffer ? "1" : "0",
         [{ v: "1", t: "als Rücklage behandeln" }, { v: "0", t: "als Ertrag zählen" }],
-        { hinweis: "Rücklage: NK werden für Ausgaben zurückgelegt. Ertrag: NK zählen zu den Einnahmen." })}
+        { hinweis: "Rücklage: Die Nebenkosten werden für Ausgaben zurückgelegt. Ertrag: Sie zählen zu deinen Einnahmen." })}
       ${efArea("Nebenkosten-Arten", "nk_positionen",
         nkPos.map(p => p.titel + " | " + (p.betrag != null ? p.betrag : (p.anteil || 0))).join("\n"),
         { hinweis: "Je Zeile eine Position: Bezeichnung | Betrag pro Monat in €. Beispiel: Grundsteuer | 45" })}
+      ${efTitel("Intern")}
+      ${ef("Kurzname", "slug", s ? s.id : "", "text",
+        { hinweis: neu ? "Kannst du leer lassen. ESTRIQ bildet ihn dann aus dem Namen." : "Nur für die App, ohne Leerzeichen, z. B. haus-nord. Im Zweifel so lassen." })}
       ${efAktionen({ loeschen: neu ? null : "Objekt löschen", speichern: opt.nachOnboarding ? "Weiter zur Wohnung" : "Speichern" })}`;
 
     const sheet = openSheet(neu ? "Neues Mietobjekt" : "Objekt bearbeiten", neu ? "" : s.name, body);
@@ -7514,7 +8521,8 @@
         .map(t => ({ titel: t[0].trim(), betrag: Number(String(t[1]).replace(",", ".").trim()) || 0 }));
       return {
         name: text(w.name) || "Objekt",
-        slug: (text(w.slug) || "objekt").toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+        // Bleibt der Kurzname leer, entsteht er aus dem Namen (wie im Assistenten)
+        slug: (text(w.slug) || (s && s.id) || text(w.name) || "objekt").toLowerCase().replace(/[^a-z0-9-]/g, "-"),
         art: "miete",
         icon: "home",
         ort: text(w.ort),
@@ -7592,9 +8600,10 @@
   }
 
   // --- Termin ---
-  function openTerminEdit(t, neu) {
+  // vor: Vorbelegung für einen neuen Termin, zum Beispiel { titel: "Besichtigung: …" }
+  function openTerminEdit(t, neu, vor) {
     const body = `
-      ${ef("Titel", "titel", t ? t.titel : "", "text", { pflicht: true })}
+      ${ef("Titel", "titel", t ? t.titel : ((vor && vor.titel) || ""), "text", { pflicht: true })}
       ${ef("Datum", "datum", t ? t.datum : new Date().toISOString().slice(0, 10), "date", { pflicht: true })}
       ${efSel("Art", "art", t ? t.typ : "termin",
         [{ v: "miete", t: "Mieteingang" }, { v: "einzug", t: "Einzug" },
