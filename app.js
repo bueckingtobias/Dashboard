@@ -1385,8 +1385,10 @@
     // Falls das aktuelle Objekt gelöscht wurde: zurück zur Übersicht
     const bekannt = currentView === "overview" || currentView === "vermietung"
       || (D.streams || []).some(x => x.id === currentView);
+    const weg = fokusWeg(document.activeElement);
     buildRail();
     route(bekannt ? currentView : "overview");
+    fokusAufWeg(weg);
   };
 
   function enterApp() {
@@ -1854,7 +1856,56 @@
     });
   }
 
-  /* ---------- MIETKONTROLLE ---------- */
+  /* ---------- MIETEN IM LAUFENDEN MONAT ---------- */
+
+  const monatsName = () => new Date().toLocaleDateString("de-DE", { month: "long" });
+  const qm = (n) => (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + "\u00A0m²";
+  const mehrzahl = (n, eins, viele) => n + " " + (n === 1 ? eins : viele);
+  // Hausnummer nicht vom Straßennamen trennen („Parkallee 8" bricht nicht vor der 8 um)
+  const nameOhneBruch = (s) => String(s || "").replace(/ (\d+\s?[a-zA-Z]?)$/, "\u00A0$1");
+
+  // Tag, an dem die Miete in diesem Monat fällig ist. Ein Zahltag 29 bis 31 fällt in kürzeren Monaten
+  // auf den letzten Tag – sonst würde die Miete dort nie fällig.
+  function zahltagIm(u, d) {
+    d = d || new Date();
+    const letzter = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return Math.min(Math.max(1, Math.round(Number(u.zahltag) || 1)), letzter);
+  }
+  // Mieten, die in dieser Ansicht gerade als eingegangen vermerkt wurden. Ihre Zeile bleibt stehen,
+  // bis man die Ansicht wechselt – so rutscht kein anderer Knopf unter den Finger.
+  const frischEingegangen = new Set();
+  const mieteInArbeit = new Set();      // Einheiten, deren Mieteingang gerade gespeichert wird
+  let mieteKette = Promise.resolve();   // Speichervorgänge laufen nacheinander – kein Antippen geht verloren
+  const MIETE_FRIST = 15000;            // antwortet der Server so lange nicht, endet der Versuch mit einer Meldung
+  const NEULADEN_HINWEIS = "Gespeichert. Die Anzeige ließ sich nicht neu laden – bitte lade die Seite neu.";
+
+  // Wo der Fokus in der Ansicht steht, als Weg aus Kind-Nummern. Damit übersteht er das Neuzeichnen
+  // nach dem Speichern: Wer mit der Tastatur arbeitet, macht an derselben Stelle weiter.
+  const fokusMerkmal = (n) => n.tagName + "." + (n.classList[0] || "");
+  function fokusWeg(n) {
+    const wurzel = $("#views");
+    if (!n || !wurzel || n === wurzel || !wurzel.contains(n)) return null;
+    const weg = [];
+    while (n !== wurzel) { const p = n.parentNode; weg.unshift({ i: Array.prototype.indexOf.call(p.children, n), m: fokusMerkmal(n) }); n = p; }
+    return weg;
+  }
+  function fokusAufWeg(weg) {
+    if (!weg || !feinerZeiger()) return;
+    let n = $("#views");
+    const kette = [];
+    // Nur so weit folgen, wie der Aufbau noch derselbe ist – sonst landete der Fokus auf etwas Fremdem
+    for (const s of weg) { n = n && n.children[s.i]; if (!n || fokusMerkmal(n) !== s.m) break; kette.push(n); }
+    // das Element selbst oder das nächste darüber, das den Fokus annehmen kann (etwa die Zeile statt des Knopfs)
+    for (let i = kette.length - 1; i >= 0; i--) {
+      if (kette[i].matches("button:not([disabled]), [tabindex], a[href], input, select, textarea")) {
+        try { kette[i].focus({ preventScroll: true }); } catch (_) {}
+        return;
+      }
+    }
+    // Die Stelle gibt es nicht mehr: Der Fokus geht auf den Seitentitel, die Tabulatortaste führt von dort in den Inhalt
+    const titel = $("#pageTitle");
+    if (titel) { titel.setAttribute("tabindex", "-1"); try { titel.focus({ preventScroll: true }); } catch (_) {} }
+  }
 
   // Liefert alle Einheiten, deren Miete diesen Monat fällig, aber noch nicht bestätigt ist
   function offeneMieten() {
@@ -1867,14 +1918,192 @@
     (D.streams || []).filter(s => s.kind === "miete").forEach(s => {
       (s.einheiten || []).forEach(u => {
         if (u.status !== "vermietet") return;          // nur vermietete Einheiten
-        const zahltag = Number(u.zahltag) || 1;
-        if (tagHeute < zahltag) return;                // noch nicht fällig
-        if (erledigt.has(u._id)) return;               // schon bestätigt
+        if (tagHeute < zahltagIm(u, jetzt)) return;    // noch nicht fällig
+        if (erledigt.has(u._id)) return;               // schon eingegangen
         const i = FE.unitIncome(u);
+        if (!(i.gesamt > 0)) return;                   // keine Miete hinterlegt: nichts zu bestätigen
         offen.push({ objekt: s, einheit: u, soll: i.gesamt, jahr, monat });
       });
     });
     return offen;
+  }
+
+  // Bestätigter Eingang dieser Einheit im laufenden Monat (oder nichts)
+  function zahlungVon(u) {
+    return (D.zahlungen || []).find(z => z.einheit_id === u._id && z.status === "eingegangen") || null;
+  }
+
+  // Stand der Miete einer Einheit im laufenden Monat – dieselbe Regel wie offeneMieten():
+  // "frei" · "bestaetigt" (eingegangen) · "offen" (fällig, nicht eingegangen) · "spaeter" (noch nicht fällig)
+  // · "keine" (vermietet, aber keine Miete hinterlegt)
+  function mietStand(u) {
+    if (u.status !== "vermietet") return "frei";
+    if (zahlungVon(u)) return "bestaetigt";
+    if (!(FE.unitIncome(u).gesamt > 0)) return "keine";
+    return new Date().getDate() >= zahltagIm(u) ? "offen" : "spaeter";
+  }
+
+  // Zahlen für die Hauptaussage: Was kommt rein, was steht leer, wer hat nicht gezahlt?
+  // Summen aus FE.streamMonthly, damit sie zu allen anderen Stellen passen.
+  function vermietungsStand(streams) {
+    const r = { ist: 0, pot: 0, einheiten: 0, vermietet: 0, frei: [], offen: [], bestaetigt: 0, spaeter: 0 };
+    (streams || []).forEach(s => {
+      const m = FE.streamMonthly(s);
+      r.ist += m.gesamt; r.pot += m.gesamtPotenzial;
+      r.einheiten += m.einheiten; r.vermietet += m.vermietet;
+      (s.einheiten || []).forEach(u => {
+        const stand = mietStand(u);
+        const i = FE.unitIncome(u);
+        if (stand === "frei") r.frei.push({ objekt: s, einheit: u, ertrag: m.puffer ? i.gesamt - i.nk : i.gesamt });
+        else if (stand === "offen") r.offen.push({ objekt: s, einheit: u, soll: i.gesamt });
+        else if (stand === "bestaetigt") r.bestaetigt++;
+        else if (stand === "spaeter") r.spaeter++;
+      });
+    });
+    r.summeOffen = r.offen.reduce((a, o) => a + o.soll, 0);
+    r.leerstand = r.pot - r.ist;                                   // was durch Leerstand im Monat fehlt
+    r.auslastung = r.einheiten ? Math.round(r.vermietet / r.einheiten * 100) : 0;
+    return r;
+  }
+
+  // Die drei Zustände neben der Hauptzahl. Jeder Zustand steht in Worten da, die Farbe kommt nur dazu.
+  function standFakten(stand) {
+    const frei = stand.frei.length, offen = stand.offen.length;
+    const vermietet = {
+      titel: "Vermietet",
+      wert: stand.vermietet + " von " + stand.einheiten,
+      text: stand.einheiten ? stand.auslastung + " % Auslastung" : "Noch keine Einheit angelegt",
+      zustand: stand.einheiten && !frei ? "gut" : ""
+    };
+    const leer = !stand.einheiten
+      ? { titel: "Leerstand", wert: "—", text: "Noch keine Einheit angelegt", zustand: "" }
+      : frei
+        ? { titel: "Leerstand", wert: mehrzahl(frei, "Einheit", "Einheiten") + " frei", text: eur(stand.leerstand) + " im Monat ungenutzt", zustand: "achtung" }
+        : { titel: "Leerstand", wert: "Kein Leerstand", text: "Alle Einheiten sind vermietet", zustand: "gut" };
+    const titelMiete = "Mieteingang " + monatsName();
+    let miete;
+    if (!stand.vermietet) miete = { titel: titelMiete, wert: "—", text: "Keine vermietete Einheit", zustand: "" };
+    else if (offen) miete = { titel: titelMiete, wert: mehrzahl(offen, "Miete", "Mieten") + " offen", text: "zusammen " + eur(stand.summeOffen), zustand: "achtung",
+      // Antippen öffnet die Mietkontrolle: alle offenen Mieten auf einen Blick, einzeln oder zusammen bestätigen
+      tun: () => openMietCheckSheet(stand.offen, { vonHand: true }), hinweis: "Offene Mieten ansehen" };
+    else if (stand.spaeter && !stand.bestaetigt) miete = { titel: titelMiete, wert: "Noch nichts fällig", text: mehrzahl(stand.spaeter, "Miete wird", "Mieten werden") + " später im Monat fällig", zustand: "" };
+    else if (stand.spaeter) miete = { titel: titelMiete, wert: stand.bestaetigt + " eingegangen", text: mehrzahl(stand.spaeter, "Miete wird", "Mieten werden") + " später im Monat fällig", zustand: "gut" };
+    else if (!stand.bestaetigt) miete = { titel: titelMiete, wert: "—", text: "Keine Miete hinterlegt", zustand: "" };
+    else miete = { titel: titelMiete, wert: "Alle eingegangen", text: mehrzahl(stand.bestaetigt, "Miete", "Mieten"), zustand: "gut" };
+    return [vermietet, leer, miete];
+  }
+
+  // Speichert einen Mieteingang über die Datenbankfunktion miete_bestaetigen – mit Frist,
+  // damit ein Server ohne Antwort nicht alles blockiert.
+  function mieteSpeichern(einheitId, eingegangen, betrag) {
+    const jetzt = new Date();
+    let uhr;
+    const frist = new Promise((_, nein) => { uhr = setTimeout(() => { const e = new Error("Zeit abgelaufen"); e.eqFrist = true; nein(e); }, MIETE_FRIST); });
+    return Promise.race([
+      window.mietEingangSetzen(einheitId, jetzt.getFullYear(), jetzt.getMonth() + 1, eingegangen ? "eingegangen" : "offen", eingegangen ? betrag : null),
+      frist
+    ]).finally(() => clearTimeout(uhr));
+  }
+  const mieteFehlerText = (e) => e && e.eqFrist
+    ? "Der Server antwortet gerade nicht. Bitte versuch es gleich noch einmal."
+    : window.fehlerText(e);
+
+  // Einen Mieteingang festhalten oder zurücknehmen: ein Schritt, mit sichtbarer Bestätigung.
+  // Mehrere Antipper hintereinander werden der Reihe nach gespeichert.
+  function mieteSetzen(u, eingegangen, knopf) {
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return Promise.resolve(false); }
+    if (mieteInArbeit.has(u._id)) return Promise.resolve(false);
+    mieteInArbeit.add(u._id);
+    const vorher = knopf ? knopf.textContent : "";
+    const weg = knopf && document.activeElement === knopf ? fokusWeg(knopf) : null;
+    if (knopf) { knopf.disabled = true; knopf.textContent = "Speichere…"; }
+    const lauf = mieteKette.then(() => mieteAusfuehren(u, eingegangen, knopf, vorher, weg));
+    mieteKette = lauf.catch(() => {});
+    return lauf;
+  }
+  async function mieteAusfuehren(u, eingegangen, knopf, vorher, weg) {
+    try {
+      await mieteSpeichern(u._id, eingegangen, FE.unitIncome(u).gesamt);
+    } catch (e) {
+      mieteInArbeit.delete(u._id);
+      // Der Knopf kann inzwischen neu gezeichnet sein (ein früherer Vorgang hat die Ansicht aufgefrischt)
+      if (knopf && knopf.isConnected) { knopf.disabled = false; knopf.textContent = vorher; }
+      else window.refreshView();
+      showToast(mieteFehlerText(e));
+      return false;
+    }
+    // Ab hier ist gespeichert. Scheitert nur das Neuladen, sagt die Meldung genau das.
+    mieteInArbeit.delete(u._id);
+    if (eingegangen) frischEingegangen.add(u._id); else frischEingegangen.delete(u._id);
+    const fuer = u.wohnung ? " für " + u.wohnung : "";
+    try {
+      await window.nachSpeichern();
+      fokusAufWeg(weg);
+      showToast(eingegangen ? "Gespeichert: Miete" + fuer + " ist eingegangen." : "Gespeichert: Miete" + fuer + " ist wieder offen.");
+    } catch (_) {
+      if (knopf && knopf.isConnected) {
+        knopf.textContent = eingegangen ? "eingegangen" : "zurückgenommen";
+        const zeile = knopf.closest(".mk-row, .eq-tab-z");
+        if (zeile && eingegangen) { zeile.classList.add("erledigt"); const h = zeile.querySelector(".eq-c-e .eq-nur-schmal"); if (h) h.textContent = "Miete " + monatsName(); }
+      }
+      showToast(NEULADEN_HINWEIS);
+      return "ungeladen";   // gespeichert, aber die Anzeige zeigt noch den alten Stand
+    }
+    return true;
+  }
+  // Knopf „Eingegangen" einer Zeile. Wird die Einheit gerade gespeichert, zeigt er das auch nach einem Neuzeichnen.
+  const mietKnopf = (u, attribute) => mieteInArbeit.has(u._id)
+    ? `<button type="button" class="mk-ok" ${attribute} disabled>Speichere…</button>`
+    : `<button type="button" class="mk-ok" ${attribute}>Eingegangen</button>`;
+
+  // Zeile einer Miete: offen mit dem Knopf „Eingegangen", sonst mit dem Vermerk „eingegangen"
+  function mietZeile(o, mitObjekt) {
+    return `<div class="mk-row${o.erledigt ? " erledigt" : ""}" data-einheit="${o.einheit._id}" tabindex="-1">
+      <div class="mk-tx">
+        <div class="mk-n">${esc(o.einheit.wohnung || "Einheit")}${mitObjekt ? ` <span class="mk-o">${esc(nameOhneBruch(o.objekt.name))}</span>` : ""}</div>
+        <div class="mk-m">${esc(o.einheit.mieter || "ohne Namen")}\u00A0· fällig am\u00A0${zahltagIm(o.einheit)}.</div>
+      </div>
+      <div class="mk-soll">${eur(o.soll)}</div>
+      ${o.erledigt
+        ? `<div class="mk-da"><span class="eq-marke gut">eingegangen</span></div>`
+        : mietKnopf(o.einheit, `data-einheit="${o.einheit._id}" data-betrag="${o.soll}"`)}
+    </div>`;
+  }
+
+  // Karte „Offene Mieten": Wer hat diesen Monat noch nicht gezahlt? Bestätigen in einem Schritt.
+  // Eine gerade vermerkte Miete bleibt als „eingegangen" stehen, bis man die Ansicht wechselt.
+  // Gibt nichts zurück, wenn es nichts zu zeigen gibt.
+  function offeneMietenKarte(streams) {
+    const zeilen = [];
+    (streams || []).forEach(s => (s.einheiten || []).forEach(u => {
+      const stand = mietStand(u);
+      const frisch = stand === "bestaetigt" && frischEingegangen.has(u._id);
+      if (stand === "offen" || frisch) zeilen.push({ objekt: s, einheit: u, soll: FE.unitIncome(u).gesamt, erledigt: frisch });
+    }));
+    if (!zeilen.length) return null;
+    const offen = zeilen.filter(z => !z.erledigt);
+    const summe = offen.reduce((a, o) => a + o.soll, 0);
+    // Höchstens sechs offene Mieten stehen in der Karte. Schon vermerkte Zeilen zählen nicht mit,
+    // damit hinter ihnen immer die nächsten offenen sichtbar werden.
+    const GRENZE = 6;
+    const zeigen = []; let gezeigtOffen = 0;
+    for (const z of zeilen) { if (!z.erledigt) { if (gezeigtOffen >= GRENZE) continue; gezeigtOffen++; } zeigen.push(z); }
+    const satz = !offen.length ? "Alle fälligen Mieten sind eingegangen."
+      : (offen.length === 1 ? "Eine Miete ist" : offen.length + " Mieten sind") + " fällig und noch offen · zusammen " + eur(summe);
+    const karte = el(`<div class="card eq-mieten">
+      <div class="card-h">
+        <div><div class="card-t">${offen.length ? "Offene Mieten" : "Mieteingang"} im ${esc(monatsName())}</div>
+          <div class="card-s">${satz}</div></div>
+        ${offen.length && zeilen.length > 1 ? `<button type="button" class="add-btn" data-alle>Alle ansehen</button>` : ""}
+      </div>
+      <div class="card-b">${zeigen.map(o => mietZeile(o, (streams || []).length > 1)).join("")}
+        ${offen.length > gezeigtOffen ? `<button type="button" class="add-btn wide" data-alle style="margin-top:12px">Alle ${offen.length} offenen ansehen</button>` : ""}</div></div>`);
+    karte.querySelectorAll(".mk-ok").forEach(b => b.onclick = () => {
+      const o = offen.find(x => x.einheit._id === b.dataset.einheit);
+      if (o) mieteSetzen(o.einheit, true, b);
+    });
+    karte.querySelectorAll("[data-alle]").forEach(b => b.onclick = () => openMietCheckSheet(offen, { vonHand: true }));
+    return karte;
   }
 
   // Beim Login: fällige Mieten abfragen. Gibt true zurück, wenn ein Fenster geöffnet wurde.
@@ -1887,7 +2116,9 @@
     return true;
   }
 
-  function openMietCheckSheet(offen) {
+  // opt.vonHand: selbst geöffnet (nicht die Nachfrage beim Login) – dann heißt der zweite Knopf „Schließen"
+  function openMietCheckSheet(offen, opt) {
+    opt = opt || {};
     const monatName = new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" });
     // Nach Objekt gruppieren
     const gruppen = {};
@@ -1902,76 +2133,101 @@
       <div class="wc-hero" style="padding-bottom:14px">
         <div class="wc-badge">Mietkontrolle · ${esc(monatName)}</div>
         <div class="wc-t">Sind diese Mieten eingegangen?</div>
-        <div class="wc-d">${offen.length} ${offen.length === 1 ? "Zahlung ist" : "Zahlungen sind"} fällig · zusammen ${eur(summe)}</div>
+        <div class="wc-d" id="mkStand">${offen.length === 1 ? "Eine Miete ist" : offen.length + " Mieten sind"} fällig · zusammen ${eur(summe)}</div>
       </div>
       <div id="mkListe">
         ${Object.keys(gruppen).map(k => `
           <div class="mk-obj">
-            <div class="mk-obj-h">${svg(gruppen[k].icon)}<span>${esc(gruppen[k].name)}</span></div>
-            ${gruppen[k].zeilen.map(o => `
-              <div class="mk-row" data-einheit="${o.einheit._id}">
-                <div class="mk-tx">
-                  <div class="mk-n">${esc(o.einheit.wohnung || "Einheit")}</div>
-                  <div class="mk-m">${esc(o.einheit.mieter || "ohne Mieter")} · fällig am ${Number(o.einheit.zahltag) || 1}.</div>
-                </div>
-                <div class="mk-soll">${eur(o.soll)}</div>
-                <button class="mk-ok" data-einheit="${o.einheit._id}" data-betrag="${o.soll}">Eingegangen</button>
-              </div>`).join("")}
+            <div class="mk-obj-h">${svg(gruppen[k].icon)}<span>${esc(nameOhneBruch(gruppen[k].name))}</span></div>
+            ${gruppen[k].zeilen.map(o => mietZeile(o, false)).join("")}
           </div>`).join("")}
       </div>
-      <div class="ef-msg" id="mkMsg"></div>
-      <div class="mk-actions">
-        <button class="wc-cta prem" id="mkAlle">Alle als eingegangen bestätigen</button>
-        <button class="wc-cta" id="mkSpaeter">Später erinnern</button>
+      <div class="ef-actions eq-fest mk-actions">
+        <div class="ef-msg" id="mkMsg" role="status"></div>
+        <div class="ef-knoepfe">
+          <button type="button" class="eq-btn" id="mkAlle">${offen.length === 1 ? "Eingegangen" : "Alle eingegangen"}</button>
+          <button type="button" class="eq-btn zweit" id="mkSpaeter">${opt.vonHand ? "Schließen" : "Später erinnern"}</button>
+        </div>
       </div>`;
     const sheet = openSheet("Mieteingänge", "", body);
     const msg = sheet.querySelector("#mkMsg");
+    const alle = sheet.querySelector("#mkAlle");
+    let etwasBestaetigt = false;
+
+    // Kopfzeile auf dem Stand halten: wie viele Mieten in diesem Fenster noch offen sind
+    function standZeigen() {
+      const rest = [...sheet.querySelectorAll(".mk-row:not(.erledigt) .mk-ok")];
+      const sum = rest.reduce((a, b) => a + (Number(b.dataset.betrag) || 0), 0);
+      sheet.querySelector("#mkStand").textContent = !rest.length ? "Alle Mieten sind eingegangen."
+        : (rest.length === 1 ? "Eine Miete ist" : rest.length + " Mieten sind") + " fällig · zusammen " + eur(sum);
+      if (alle.textContent !== "Speichere…") alle.textContent = rest.length === 1 ? "Eingegangen" : "Alle eingegangen";
+    }
+    // Die Ansicht dahinter neu laden. Scheitert das, ist trotzdem gespeichert – das steht dann in der Meldung.
+    async function neuLaden() {
+      try { await window.nachSpeichern(); return true; }
+      catch (_) { msg.textContent = NEULADEN_HINWEIS; msg.className = "ef-msg bad"; return false; }
+    }
+
+    // Meldung nach dem Schließen: Stehen woanders noch Mieten offen, behauptet sie nicht „alle"
+    const fertigText = () => {
+      const n = sheet.querySelectorAll(".mk-row.erledigt").length;
+      return offeneMieten().length ? "Gespeichert: " + (n === 1 ? "Die Miete ist" : "Die " + n + " Mieten sind") + " eingegangen."
+        : "Gespeichert: Alle Mieten sind eingegangen.";
+    };
 
     async function bestaetige(einheitId, betrag, zeile) {
-      const jetzt = new Date();
       try {
-        await window.mietEingangSetzen(einheitId, jetzt.getFullYear(), jetzt.getMonth() + 1, "eingegangen", betrag);
-        if (zeile) { zeile.classList.add("erledigt"); const b = zeile.querySelector(".mk-ok"); if (b) { b.textContent = "Bestätigt"; b.disabled = true; } }
+        await mieteSpeichern(einheitId, true, betrag);
+        etwasBestaetigt = true;
+        if (zeile) { zeile.classList.add("erledigt"); const b = zeile.querySelector(".mk-ok"); if (b) { b.textContent = "eingegangen"; b.disabled = true; } }
+        standZeigen();
         return true;
       } catch (e) {
-        msg.textContent = window.fehlerText(e); msg.className = "ef-msg bad";
+        msg.textContent = mieteFehlerText(e); msg.className = "ef-msg bad";
         return false;
       }
     }
 
     sheet.querySelectorAll(".mk-ok").forEach(b => b.onclick = async () => {
-      b.disabled = true; b.textContent = "…";
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true; b.textContent = "Speichere…";
       const ok = await bestaetige(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"));
       if (!ok) { b.disabled = false; b.textContent = "Eingegangen"; return; }
+      const geladen = await neuLaden();
       // Wenn alle erledigt sind, Fenster schließen
-      if (!sheet.querySelectorAll(".mk-row:not(.erledigt)").length) {
-        await window.nachSpeichern(); closeSheet(); showToast("Mieteingänge gespeichert.");
+      if (geladen && sheet.isConnected && !sheet.querySelectorAll(".mk-row:not(.erledigt)").length) {
+        const text = fertigText();
+        closeSheet(); showToast(text);
       }
     });
 
-    sheet.querySelector("#mkAlle").onclick = async (e) => {
-      const btn = e.currentTarget;
-      btn.disabled = true; btn.textContent = "Speichere…";
-      let ok = 0, fehler = 0;
+    alle.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      alle.disabled = true; alle.textContent = "Speichere…";
+      let fehler = 0;
       for (const b of sheet.querySelectorAll(".mk-row:not(.erledigt) .mk-ok")) {
         const r = await bestaetige(b.dataset.einheit, Number(b.dataset.betrag), b.closest(".mk-row"));
-        r ? ok++ : fehler++;
+        if (!r) fehler++;
       }
       if (fehler) {
         // Nicht schließen und keinen Erfolg melden, wenn etwas schiefging
-        btn.disabled = false; btn.textContent = "Erneut versuchen";
+        if (etwasBestaetigt) { try { await window.nachSpeichern(); } catch (_) {} }
+        alle.disabled = false; alle.textContent = "Erneut versuchen";
         return;
       }
-      await window.nachSpeichern();
-      // Gegenprobe: steht es wirklich in der Datenbank?
-      const nochOffen = offeneMieten().length;
+      if (!(await neuLaden())) { alle.textContent = "Gespeichert"; return; }
+      // Gegenprobe: Stehen die Mieten dieses Fensters wirklich in der Datenbank?
+      const hier = new Set(offen.map(o => o.einheit._id));
+      const nochOffen = offeneMieten().filter(o => hier.has(o.einheit._id)).length;
+      const text = nochOffen
+        ? "Gespeichert, aber " + (nochOffen === 1 ? "eine Miete ist" : nochOffen + " Mieten sind") + " noch offen."
+        : fertigText();
       closeSheet();
-      showToast(nochOffen
-        ? "Gespeichert, aber es sind noch " + nochOffen + " Zahlungen offen."
-        : "Alle Mieteingänge bestätigt.");
+      showToast(text);
     };
 
     sheet.querySelector("#mkSpaeter").onclick = () => {
+      if (opt.vonHand) { closeSheet(); return; }
       sessionStorage.setItem("estriq_miete_spaeter", "1");
       closeSheet();
       showToast("Wir erinnern dich beim nächsten Login.");
@@ -2241,30 +2497,35 @@
     });
   }
 
-  // Handy: Objekte-Menü (Sammelübersicht + einzelne Objekte)
+  // Objekte-Menü: die Sammelübersicht und jedes Objekt mit seinem Stand.
+  // Am Handy als Blatt von unten, auf iPad und Mac neben der Leiste – derselbe Inhalt.
   function openObjekteMenu(anchor) {
     closeSubmenu();
-    const inhalt = mietStreams().map(s => {
+    const streams = mietStreams();
+    const inhalt = streams.map(s => {
       const m = FE.streamMonthly(s);
+      const offen = vermietungsStand([s]).offen.length;
       const on = currentView === s.id;
+      const stand = m.vermietet + " von " + m.einheiten + " vermietet" + (offen ? " · " + mehrzahl(offen, "Miete", "Mieten") + " offen" : "");
       return `<div class="sub-item${on ? " on" : ""}" data-id="${s.id}">
         <div class="sub-ic">${svg(s.icon || "home")}</div>
         <div class="sub-tx"><div class="sub-n">${esc(s.name)}</div>
-          <div class="sub-m">${eur(m.gesamt)}/Monat</div></div></div>`;
+          <div class="sub-m">${esc(stand)}</div></div>
+        <div class="sub-v">${eur(m.gesamt)}<span>im Monat</span></div></div>`;
     }).join("");
     const bd = el(`<div class="sub-bd"></div>`);
     const menu = el(`<div class="submenu obj-menu">
-      <div class="submenu-t">Objekte</div>
+      <div class="submenu-t">Vermietung</div>
       <div class="sub-item${currentView === "vermietung" ? " on" : ""}" data-id="vermietung">
         <div class="sub-ic">${svg("layers")}</div>
-        <div class="sub-tx"><div class="sub-n">Alle Vermietungen</div>
-          <div class="sub-m">Sammelübersicht</div></div></div>
-      ${inhalt || `<div class="sub-empty">Noch keine Objekte. Tippe auf „Neu", um zu starten.</div>`}
+        <div class="sub-tx"><div class="sub-n">Alle Mietobjekte</div>
+          <div class="sub-m">${streams.length ? mehrzahl(streams.length, "Objekt", "Objekte") + " im Bestand" : "Übersicht"}</div></div></div>
+      ${inhalt || `<div class="sub-empty">Noch kein Objekt angelegt. Über „Neu“ legst du das erste an.</div>`}
     </div>`);
     document.body.appendChild(bd); document.body.appendChild(menu);
     positioniereSubmenu(anchor, menu);
     menu.querySelectorAll(".sub-item[data-id]").forEach(it =>
-      it.onclick = () => { const id = it.dataset.id; closeSubmenu(); route(id); });
+      it.onclick = () => { const id = it.dataset.id; closeSubmenu(); geheZu(id); });
     bd.onclick = closeSubmenu;
   }
 
@@ -2327,35 +2588,8 @@
     document.addEventListener("keydown", subEsc);
   }
 
-  /* ---------- SUBMENU (Mietobjekte) ---------- */
-  function openSubmenu(anchor) {
-    closeSubmenu();
-    const items = mietStreams().map(s => {
-      const m = FE.streamMonthly(s);
-      const on = currentView === s.id;
-      return `<div class="sub-item${on ? " on" : ""}" data-id="${s.id}">
-        <div class="sub-ic">${svg(s.icon || "home")}</div>
-        <div class="sub-tx"><div class="sub-n">${esc(s.name)}</div>
-          <div class="sub-m">${m.vermietet}/${m.einheiten} vermietet</div></div>
-        <div class="sub-v">${eur(m.gesamt)}</div></div>`;
-    }).join("");
-    const bd = el(`<div class="sub-bd"></div>`);
-    const menu = el(`<div class="submenu">
-      <div class="submenu-t">Vermietung</div>
-      <div class="sub-item${currentView === "vermietung" ? " on" : ""}" data-id="vermietung">
-        <div class="sub-ic">${svg("layers")}</div>
-        <div class="sub-tx"><div class="sub-n">Alle Objekte</div>
-          <div class="sub-m">Sammelübersicht</div></div></div>
-      ${items}</div>`);
-    document.body.appendChild(bd); document.body.appendChild(menu);
-
-    positioniereSubmenu(anchor, menu);
-
-    menu.querySelectorAll(".sub-item").forEach(it => {
-      it.onclick = () => { const id = it.dataset.id; closeSubmenu(); route(id); };
-    });
-    bd.onclick = closeSubmenu;
-  }
+  // Leiste auf iPad und Mac: dasselbe Menü wie am Handy
+  function openSubmenu(anchor) { openObjekteMenu(anchor); }
   function subEsc(e) { if (e.key === "Escape") closeSubmenu(); }
   function closeSubmenu() {
     document.removeEventListener("keydown", subEsc);
@@ -2375,6 +2609,7 @@
     // Eine neue Ansicht blendet sanft ein und beginnt oben. Werden nur die Daten derselben
     // Ansicht neu gezeichnet (nach dem Speichern), bewegt sich nichts und die Stelle bleibt.
     const wechsel = id !== gezeigteAnsicht || !host.childElementCount;
+    if (wechsel) frischEingegangen.clear();
     gezeigteAnsicht = id;
     currentView = id;
     railMarkieren(id);
@@ -3811,9 +4046,9 @@
     },
     cashflow: {
       titel: "Netto-Cashflow",
-      kurz: "Was am Monatsende wirklich übrig bleibt.",
-      text: "Die ehrlichste Zahl im Dashboard. Von den Einnahmen wird die Kreditrate abgezogen. Ist sie negativ, legst du jeden Monat Geld drauf.",
-      formel: "Einnahmen − Tilgung − Zinsen",
+      kurz: "Was von den Einnahmen nach den Kreditraten übrig bleibt.",
+      text: "Von den Einnahmen wird die Kreditrate abgezogen. <b>Laufende Kosten sind nicht abgezogen</b> – Instandhaltung, Verwaltung, nicht umlagefähige Nebenkosten und Steuern kommen noch dazu. Ist die Zahl negativ, legst du schon ohne diese Kosten jeden Monat Geld drauf.",
+      formel: "Einnahmen − Kreditraten (Zins und Tilgung)",
       merke: "Ein negativer Cashflow ist nicht automatisch schlecht: Tilgung ist Vermögensaufbau. Aber du musst ihn dir leisten können.",
       grafik: "wasserfall"
     },
@@ -3939,7 +4174,7 @@
   // Kleines "i" für eine Kennzahl
   function infoIcon(schluessel) {
     return KPI_INFO[schluessel]
-      ? `<button class="kpi-i" data-info="${schluessel}" aria-label="Erklärung" title="Was bedeutet das?">i</button>`
+      ? `<button type="button" class="kpi-i" data-info="${schluessel}" aria-label="Erklärung: ${esc(KPI_INFO[schluessel].titel)}" title="Was bedeutet das?">i</button>`
       : "";
   }
 
@@ -3949,7 +4184,7 @@
     return `<div class="card kpi${accent ? ' accent' : ''}${action ? ' clickable' : ''}"${action ? ` data-act="${action}" role="button" tabindex="0"` : ''}>
       ${infoIcon(info)}
       <div class="lab">${esc(lab)}</div>
-      <div class="num">${esc(num)}</div>
+      <div class="num" style="--eq-z:${String(num == null ? "" : num).length}">${esc(num)}</div>
       <div class="desc">${esc(desc)}</div>
       ${action ? '<span class="tapme" aria-hidden="true">›</span>' : ''}</div>`;
   }
@@ -4044,6 +4279,9 @@
   function openSheet(title, subtitle, bodyHtml) {
     // Es gibt immer nur ein Fenster: Ein neues ersetzt das alte sofort.
     document.removeEventListener("keydown", sheetEsc);
+    // Ersetzt das neue Fenster ein altes, erbt es dessen Rückweg: Nach dem Schließen steht der Fokus dort, wo alles begann.
+    const vorgaenger = $(".sheet-bd");
+    const erbe = vorgaenger && (vorgaenger._zurueck || vorgaenger._weg) ? { z: vorgaenger._zurueck, weg: vorgaenger._weg } : null;
     $$(".sheet-bd").forEach(n => n.remove());
     const bd = el(`<div class="sheet-bd on">
       <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
@@ -4090,7 +4328,9 @@
     // Mac: Der Fokus wandert ins Fenster, damit die Tabulatortaste dort weitergeht.
     // Am Handy und iPad nicht – dort würde sonst die Tastatur aufgehen oder die Seite springen.
     if (feinerZeiger()) {
-      bd._zurueck = document.activeElement;
+      const a = document.activeElement;
+      if (erbe && (!a || a === document.body)) { bd._zurueck = erbe.z; bd._weg = erbe.weg; }
+      else { bd._zurueck = a; bd._weg = fokusWeg(a); }
       try { bd.querySelector(".sheet").focus({ preventScroll: true }); } catch (_) {}
     }
     return bd;
@@ -4137,6 +4377,7 @@
       // Fokus zurück an die Stelle, von der das Fenster geöffnet wurde
       const z = n._zurueck;
       if (z && z.focus && document.contains(z) && !z.closest(".sheet-bd")) { try { z.focus({ preventScroll: true }); } catch (_) {} }
+      else if (n._weg) fokusAufWeg(n._weg);   // die Ansicht wurde inzwischen neu gezeichnet: dieselbe Stelle suchen
     });
   }
   /* ---------- BEARBEITEN: Formular-Bausteine ---------- */
@@ -4152,7 +4393,7 @@
     return `<div class="ef-row">
       <label class="ef-l" for="ef-${name}">${esc(label)}${opt.pflicht ? ' <span class="ef-req">*</span>' : ""}</label>
       <div class="${opt.einheit ? "ef-mit-e" : ""}">
-        <input class="ef-i" id="ef-${name}" data-f="${name}" type="${typ || "text"}"${step}${ph}
+        <input class="ef-i" id="ef-${name}" data-f="${name}"${opt.pflicht ? ' data-pflicht="1" aria-required="true"' : ""}${opt.min != null ? ` min="${opt.min}"` : ""}${opt.max != null ? ` max="${opt.max}"` : ""} type="${typ || "text"}"${step}${ph}
                value="${esc(v)}"${opt.readonly ? " readonly" : ""}>
         ${opt.einheit ? `<span class="ef-e">${esc(opt.einheit)}</span>` : ""}
       </div>
@@ -4201,50 +4442,102 @@
   const zahl = v => (v === "" || v === null || v === undefined) ? null : Number(v);
   const text = v => (v === "" || v === null || v === undefined) ? null : String(v).trim();
 
+  // Felder prüfen, bevor gespeichert wird: Pflichtfelder gefüllt, Zahlen in ihren Grenzen.
+  // Der Hinweis steht direkt am Feld, das erste betroffene Feld rückt ins Bild.
+  function efPflichtOk(sheet) {
+    let erstes = null;
+    sheet.querySelectorAll(".ef-row").forEach(zeile => {
+      const alt = zeile.querySelector(".ef-fehler"); if (alt) alt.remove();
+      const f = zeile.querySelector("input.ef-i, select.ef-i, textarea.ef-i");
+      if (!f) return;
+      f.classList.remove("eq-fehlt"); f.removeAttribute("aria-invalid"); f.removeAttribute("aria-describedby");
+      const wert = String(f.value || "").trim();
+      let fehler = "";
+      if (wert === "") { if (f.hasAttribute("data-pflicht")) fehler = "Bitte ausfüllen."; }
+      // Zahlen nur prüfen, wenn das Feld geändert wurde – ein alter Wert blockiert nicht das Speichern von etwas anderem
+      else if (f.type === "number" && f.value !== f.defaultValue && (f.min !== "" || f.max !== "" || f.step === "1")) {
+        const z = Number(wert), min = f.min !== "" ? Number(f.min) : null, max = f.max !== "" ? Number(f.max) : null;
+        if (f.step === "1" && !Number.isInteger(z)) fehler = "Bitte eine ganze Zahl eingeben.";
+        else if ((min != null && z < min) || (max != null && z > max))
+          fehler = min != null && max != null ? "Bitte eine Zahl von " + min + " bis " + max + " eingeben."
+            : min === 0 ? "Bitte keine negative Zahl eingeben."
+            : min != null ? "Bitte mindestens " + min + " eingeben." : "Bitte höchstens " + max + " eingeben.";
+      }
+      if (!fehler) return;
+      const id = "ef-fehler-" + (f.dataset.f || "");
+      f.classList.add("eq-fehlt"); f.setAttribute("aria-invalid", "true"); f.setAttribute("aria-describedby", id);
+      zeile.appendChild(el(`<div class="ef-fehler" id="${id}" role="alert">${fehler}</div>`));
+      if (!erstes) erstes = f;
+    });
+    // Sobald ein markiertes Feld geändert wird, verschwindet der Hinweis wieder
+    if (!sheet._pflichtHoert) {
+      sheet._pflichtHoert = true;
+      sheet.addEventListener("input", e => {
+        const f = e.target;
+        if (!f || !f.classList || !f.classList.contains("eq-fehlt")) return;
+        f.classList.remove("eq-fehlt"); f.removeAttribute("aria-invalid"); f.removeAttribute("aria-describedby");
+        const h = f.closest(".ef-row") && f.closest(".ef-row").querySelector(".ef-fehler"); if (h) h.remove();
+        // Ist nichts mehr markiert, verschwindet auch die Meldung über den Knöpfen
+        const m = sheet.querySelector("#efMsg");
+        if (m && !sheet.querySelector(".eq-fehlt") && m.classList.contains("bad")) { m.textContent = ""; m.className = "ef-msg"; }
+      });
+    }
+    if (erstes) {
+      const b = sheet.querySelector(".sheet-b");
+      if (b) b.scrollTop += erstes.getBoundingClientRect().top - b.getBoundingClientRect().top - 72;
+      try { erstes.focus({ preventScroll: true }); } catch (_) {}
+    }
+    return !erstes;
+  }
+
   // Speichern-Knopf verdrahten, inkl. Fehleranzeige
   function efBind(sheet, speichernFn, loeschenFn, loeschFrage, nachErfolg) {
     const msg = sheet.querySelector("#efMsg");
     const btn = sheet.querySelector("#efSave");
     if (btn) btn.onclick = async () => {
       if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      if (!efPflichtOk(sheet)) { msg.textContent = "Bitte prüfe die markierten Felder."; msg.className = "ef-msg bad"; return; }
       msg.textContent = "Speichere…"; msg.className = "ef-msg";
       btn.disabled = true;
-      try {
-        await speichernFn(efWerte(sheet));
-        closeSheet();
-        await window.nachSpeichern();
-        if (nachErfolg) nachErfolg();
-      } catch (e) {
+      try { await speichernFn(efWerte(sheet)); }
+      catch (e) {
         msg.textContent = window.fehlerText(e);
         msg.className = "ef-msg bad";
         btn.disabled = false;
+        return;
       }
+      closeSheet();
+      try { await window.nachSpeichern(); }
+      catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      if (nachErfolg) nachErfolg(); else showToast("Gespeichert.");
     };
     const del = sheet.querySelector("#efDel");
     if (del && loeschenFn) del.onclick = async () => {
       if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
       if (del.dataset.sicher !== "1") {
+        const beschriftung = del.textContent;
         del.dataset.sicher = "1";
         del.textContent = loeschFrage || "Wirklich löschen?";
         del.classList.add("armed");
         setTimeout(() => {
           if (del.dataset.sicher === "1") {
-            del.dataset.sicher = ""; del.textContent = "Löschen"; del.classList.remove("armed");
+            del.dataset.sicher = ""; del.textContent = beschriftung; del.classList.remove("armed");
           }
         }, 4000);
         return;
       }
       msg.textContent = "Lösche…"; msg.className = "ef-msg";
       del.disabled = true;
-      try {
-        await loeschenFn();
-        closeSheet();
-        await window.nachSpeichern();
-      } catch (e) {
+      try { await loeschenFn(); }
+      catch (e) {
         msg.textContent = window.fehlerText(e);
         msg.className = "ef-msg bad";
         del.disabled = false;
+        return;
       }
+      closeSheet();
+      try { await window.nachSpeichern(); showToast("Gelöscht."); }
+      catch (_) { showToast(NEULADEN_HINWEIS); }
     };
   }
 
@@ -4557,76 +4850,179 @@
   }
 
   /* ---------- SAMMELSEITE VERMIETUNG ---------- */
+  // Was beim Netto-Cashflow abgezogen ist – und was nicht. Steht überall gleich.
+  const CF_HINWEIS = "nach Kreditraten, ohne laufende Kosten";
+
+  // Hauptaussage einer Ansicht: eine große Zahl, darunter die Begründung, daneben bis zu drei Zustände.
+  // o: { zeile, zahl, unter, anteil (0–100 oder null), info, fakten: [{ titel, wert, text, zustand, tun, hinweis }], knopf: { text, tun } }
+  // Ein Zustand mit „tun" ist ein Knopf: Antippen führt zu den Einzelheiten.
+  function hauptKarte(o) {
+    const fakten = (o.fakten || []).map((f, i) => {
+      const innen = `<span class="eq-fakt-t">${esc(f.titel)}</span>
+        <span class="eq-fakt-w">${esc(f.wert)}</span>
+        <span class="eq-fakt-d">${esc(f.text || "")}${f.tun ? `<span class="eq-fakt-pfeil" aria-hidden="true">›</span>` : ""}</span>`;
+      const klasse = "eq-fakt" + (f.zustand ? " " + f.zustand : "");
+      return f.tun
+        ? `<button type="button" class="${klasse} eq-fakt-knopf" data-fakt="${i}" title="${esc(f.hinweis || "")}">${innen}</button>`
+        : `<div class="${klasse}">${innen}</div>`;
+    }).join("");
+    const karte = el(`<div class="card eq-haupt">
+      <div class="eq-haupt-l">
+        <div class="eq-haupt-zeile"><span>${esc(o.zeile)}</span>${o.info ? infoKnopf(o.info) : ""}</div>
+        <div class="eq-haupt-zahl">${esc(o.zahl)}</div>
+        <div class="eq-haupt-unter">${esc(o.unter || "")}</div>
+        ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${o.anteil} Prozent des möglichen Ertrags"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
+      </div>
+      ${fakten ? `<div class="eq-fakten">${fakten}</div>` : ""}
+      ${o.knopf ? `<div class="eq-haupt-fuss"><button type="button" class="add-btn eq-haupt-knopf"${o.knopf.id ? ` id="${o.knopf.id}"` : ""}>${esc(o.knopf.text)}</button></div>` : ""}</div>`);
+    if (o.knopf) karte.querySelector(".eq-haupt-knopf").onclick = o.knopf.tun;
+    karte.querySelectorAll("[data-fakt]").forEach(b => b.onclick = o.fakten[Number(b.dataset.fakt)].tun);
+    return karte;
+  }
+
+  // Satz unter der Hauptzahl. „Alles ist vermietet" steht nur da, wenn wirklich keine Einheit frei ist.
+  function ertragSatz(stand) {
+    if (!stand.einheiten) return "Noch keine Einheit angelegt";
+    if (stand.pot > stand.ist) return "von " + eur(stand.pot) + " bei Vollvermietung";
+    if (stand.frei.length) return (stand.frei.length === 1 ? "Eine Einheit ist" : stand.frei.length + " Einheiten sind") + " frei – dort ist noch keine Miete hinterlegt.";
+    return "Das ist der volle Ertrag: Alles ist vermietet.";
+  }
+  // Kleiner Erklär-Knopf in einer Zeile (die Kennzahl-Karten haben ihren eigenen in der Ecke)
+  function infoKnopf(schluessel) {
+    return KPI_INFO[schluessel]
+      ? `<button type="button" class="eq-info" data-info="${schluessel}" aria-label="Erklärung: ${esc(KPI_INFO[schluessel].titel)}" title="Was bedeutet das?">i</button>`
+      : "";
+  }
+  // Zeile „Bezeichnung – Wert" mit Erklär-Knopf
+  const kvInfo = (k, v, schluessel) => `<div class="kv"><span class="eq-kv-k">${esc(k)}${infoKnopf(schluessel)}</span><b>${v}</b></div>`;
+
+  // Überschrift eines Abschnitts, auf Wunsch mit einem zurückhaltenden Knopf rechts
+  function abschnittKopf(titel, unter, knopf) {
+    const kopf = el(`<div class="eq-abschnitt">
+      <div><div class="eq-abschnitt-t">${esc(titel)}</div>${unter ? `<div class="eq-abschnitt-s">${esc(unter)}</div>` : ""}</div>
+      ${knopf ? `<button type="button" class="add-btn" id="${knopf.id}">${esc(knopf.text)}</button>` : ""}</div>`);
+    if (knopf) kopf.querySelector("button").onclick = knopf.tun;
+    return kopf;
+  }
+
+  // Karte „Leerstand": welche Einheiten frei sind und was sie im Monat bringen würden
+  function leerstandKarte(streams) {
+    const frei = vermietungsStand(streams).frei;
+    if (!frei.length) return null;
+    const mehrere = (streams || []).length > 1;
+    // Wo Nebenkosten als Puffer zurückgelegt werden, zählen sie nicht zum Ertrag – das steht dann dabei
+    const ohneNk = frei.some(f => f.objekt.nkAlsPuffer && FE.unitIncome(f.einheit).nk > 0);
+    const zeilen = frei.map((f, i) => `<div class="drow clickable" data-i="${i}" role="button" tabindex="0">
+        <div class="drow-l"><div><div class="drow-name">${esc(f.einheit.wohnung || "Einheit")}</div>
+          <div class="drow-sub">${esc([mehrere ? nameOhneBruch(f.objekt.name) : "", f.einheit.flaeche ? qm(f.einheit.flaeche) : ""].filter(Boolean).join(" · "))}</div></div></div>
+        <div class="drow-val"><b>${eur(f.ertrag)}</b><span>möglich im Monat</span></div></div>`).join("");
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Leerstand</div>
+        <div class="card-s">${frei.length === 1 ? "Eine Einheit ist" : frei.length + " Einheiten sind"} frei. ${ohneNk ? "Die Beträge zählen ohne Nebenkosten. " : ""}Zeile antippen für die Einzelheiten.</div></div></div>
+      <div class="card-b">${zeilen}</div></div>`);
+    karte.querySelectorAll(".drow[data-i]").forEach(z => {
+      const f = frei[Number(z.dataset.i)];
+      z.onclick = () => openUnitSheet(f.objekt, f.einheit);
+      z.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); z.click(); } };
+    });
+    return karte;
+  }
+
+  // Karte eines Objekts in der Sammelübersicht: Name, Einnahmen, Zustand, drei Eckwerte
+  function objektKarte(s) {
+    const m = FE.streamMonthly(s);
+    const k = FE.immoKPIs(s);
+    const stand = vermietungsStand([s]);
+    const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+    const marken = [`<span class="eq-marke${m.einheiten && m.vermietet === m.einheiten ? " gut" : ""}">${m.vermietet} von ${m.einheiten} vermietet</span>`];
+    if (stand.frei.length) marken.push(`<span class="eq-marke achtung">${stand.frei.length} frei</span>`);
+    if (stand.offen.length) marken.push(`<span class="eq-marke achtung">${mehrzahl(stand.offen.length, "Miete", "Mieten")} offen</span>`);
+    const karte = el(`<div class="card clickable eq-obj obj-card" data-id="${s.id}" role="button" tabindex="0">
+      <div class="eq-obj-kopf">
+        <div class="tile-ic">${svg(s.icon || "home")}</div>
+        <div class="eq-obj-n"><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div>
+        <div class="eq-obj-z"><b>${eur(m.gesamt)}</b><span>pro Monat</span></div>
+      </div>
+      <div class="eq-marken">${marken.join("")}</div>
+      <div class="eq-obj-fuss">
+        <div><span>Netto-Cashflow</span><b${m.netto < 0 ? ' style="color:var(--danger)"' : ""}>${eur(m.netto)}</b></div>
+        <div><span>Bruttomietrendite</span><b>${s.invest ? k.bruttoRendite.toLocaleString("de-DE") + " %" : "—"}</b></div>
+        <div><span>Fläche</span><b>${flaeche ? qm(flaeche) : "—"}</b></div>
+      </div></div>`);
+    karte.onclick = () => geheZu(s.id);
+    karte.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === karte) { e.preventDefault(); karte.click(); } };
+    return karte;
+  }
+
+  // Sammelübersicht. Frage: Was kommt rein, was steht leer, wer hat nicht gezahlt?
   function renderVermietung(host) {
     $("#eyebrow").textContent = "Vermietung";
     $("#pageTitle").textContent = "Alle Mietobjekte";
     const streams = mietStreams();
-    $("#pageSub").textContent = streams.length + " Objekte im Bestand";
+    $("#pageSub").textContent = mehrzahl(streams.length, "Objekt", "Objekte") + " im Bestand";
 
-    let ist = 0, pot = 0, tilg = 0, rest = 0, units = 0, let_ = 0, nkP = 0, invest = 0;
+    const objektAnlegen = () => { if (pruefeObjekt()) assistentObjekt(); };
+    if (!streams.length) {
+      const leer = el(`<div class="card eq-leer">
+        <div>Noch kein Objekt im Bestand. Leg dein erstes Mietobjekt an – danach siehst du hier Einnahmen, Leerstand und Mieteingänge.</div>
+        <button type="button" class="eq-btn" id="addObjekt">Objekt anlegen</button></div>`);
+      leer.querySelector("#addObjekt").onclick = objektAnlegen;
+      host.appendChild(leer);
+      return;
+    }
+
+    let tilg = 0, rest = 0, nkP = 0, invest = 0;
     streams.forEach(s => {
       const m = FE.streamMonthly(s);
-      ist += m.gesamt; pot += m.gesamtPotenzial; tilg += m.kreditAbtrag; nkP += m.nkPuffer;
-      units += m.einheiten; let_ += m.vermietet; invest += Number(s.invest) || 0;
+      tilg += m.kreditAbtrag; nkP += m.nkPuffer; invest += Number(s.invest) || 0;
       FE.creditsOf(s).forEach(kr => { const p = FE.creditPlan(kr); rest += p ? p.restAktuell : (kr.summe || 0); });
     });
-    const netto = ist - tilg, occ = units ? Math.round(let_ / units * 100) : 0;
+    const stand = vermietungsStand(streams);
+    const ist = stand.ist, pot = stand.pot, netto = ist - tilg;
 
+    // 1 Hauptaussage
+    host.appendChild(hauptKarte({
+      zeile: "Einnahmen pro Monat", info: "einnahmen",
+      zahl: eur(ist),
+      unter: ertragSatz(stand),
+      anteil: pot > 0 ? Math.round(ist / pot * 100) : null,
+      fakten: standFakten(stand)
+    }));
+
+    // 2 Wer hat nicht gezahlt, was steht leer
+    const mieten = offeneMietenKarte(streams); if (mieten) host.appendChild(mieten);
+    const leer = leerstandKarte(streams); if (leer) host.appendChild(leer);
+
+    // 3 Geld im Überblick
     host.appendChild(el(`<div class="grid g-kpi">
-      ${kpiCard("euro", eur(ist), "Einnahmen / Monat", "alle Objekte", true, null, "einnahmen")}
-      ${kpiCard("layers", eur(pot), "Potenzial / Monat", "+" + eur(pot - ist) + " ungenutzt", false, null, "potenzial")}
-      ${kpiCard("wallet", eur(netto), "Netto-Cashflow", "nach Tilgung", netto >= 0, null, "cashflow")}
-      ${kpiCard("home", occ + " %", "Auslastung", let_ + " / " + units + " Einheiten", occ >= 60, null, "auslastung")}
+      ${kpiCard("wallet", eur(netto), "Netto-Cashflow / Monat", CF_HINWEIS, netto >= 0, null, "cashflow")}
+      ${kpiCard("bank", eur(tilg), "Tilgung / Monat", eur(tilg * 12) + " / Jahr", false, null, "tilgung")}
+      ${kpiCard("debt", eur(rest), "Restschuld heute", "exakt " + eur2(rest), false, null, "restschuld")}
+      ${kpiCard("trend", eur(ist * 12), "Einnahmen / Jahr", "hochgerechnet")}
     </div>`));
 
-    // Kerninsights je Objekt
-    const cards = streams.map(s => {
-      const m = FE.streamMonthly(s);
-      const k = FE.immoKPIs(s);
-      const o = m.einheiten ? Math.round(m.vermietet / m.einheiten * 100) : 0;
-      const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
-      return `<div class="card pad clickable obj-card" data-id="${s.id}">
-        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "home")}</div>
-          <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
-        <div class="stat-strip" style="margin-bottom:14px">
-          <div class="s"><span>Einnahmen</span><b>${eur(m.gesamt)}</b></div>
-          <div class="s"><span>Netto n. Tilgung</span><b style="color:${m.netto >= 0 ? "var(--ok)" : "var(--danger)"}">${eur(m.netto)}</b></div>
-          <div class="s"><span>Auslastung</span><b>${o} %</b></div>
-          <div class="s"><span>Fläche</span><b>${flaeche} m²</b></div>
-        </div>
-        <div class="mini">
-          <div class="mini-row"><span class="mini-lab">Vermietet</span>
-            <span class="mini-track"><span style="width:${m.einheiten > 0 ? Math.round(m.vermietet / m.einheiten * 100) : 0}%"></span></span>
-            <span class="mini-val">${m.vermietet}/${m.einheiten}</span></div>
-          <div class="mini-row"><span class="mini-lab">Rendite</span>
-            <span class="mini-track"><span style="width:${Math.max(2, Math.min(100, k.bruttoRendite / 10 * 100))}%"></span></span>
-            <span class="mini-val">${k.bruttoRendite.toLocaleString("de-DE")} %</span></div>
-        </div></div>`;
-    }).join("");
-    const grid = el(`<div class="grid g-objekte">${cards}</div>`);
-    grid.querySelectorAll(".obj-card").forEach(c => c.onclick = () => route(c.dataset.id));
+    // 4 Die Objekte
+    host.appendChild(abschnittKopf("Objekte", "Antippen öffnet das Objekt", { id: "addObjekt", text: "+ Objekt anlegen", tun: objektAnlegen }));
+    const grid = el(`<div class="grid g-objekte"></div>`);
+    streams.forEach(s => grid.appendChild(objektKarte(s)));
     host.appendChild(grid);
 
-    const addObj = el(`<div class="card pad add-card"><button class="add-btn wide" id="addObjekt">+ Objekt anlegen</button></div>`);
-    addObj.querySelector("#addObjekt").onclick = () => { if (pruefeObjekt()) assistentObjekt(); };
-    host.appendChild(addObj);
-
-    // Verteilung + Kennzahlen
+    // 5 Verteilung und weitere Kennzahlen
     const segs = streams.map((s, i) => ({ name: s.name, value: FE.streamMonthly(s).gesamt, color: PALETTE[i % PALETTE.length] })).filter(x => x.value > 0);
     const legend = segs.map(x => `<div class="leg"><span class="sw" style="background:${x.color}"></span>
       <span class="lt">${esc(x.name)}</span><span class="lv">${eur(x.value)}</span></div>`).join("");
-    host.appendChild(el(`<div class="grid g-2">
-      <div class="card pad"><div class="card-t" style="margin-bottom:4px">Verteilung</div>
+    const verteilung = segs.length > 1 ? `<div class="card pad"><div class="card-t" style="margin-bottom:4px">Verteilung</div>
         <div class="card-s" style="margin-bottom:18px">Einnahmen je Objekt</div>
-        <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>
-      <div class="card pad"><div class="card-t" style="margin-bottom:4px">Kennzahlen gesamt</div>
+        <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>` : "";
+    host.appendChild(el(`<div class="grid${verteilung ? " g-2" : ""}">
+      ${verteilung}
+      <div class="card pad"><div class="card-t" style="margin-bottom:4px">Weitere Kennzahlen</div>
         <div class="card-s" style="margin-bottom:14px">Über alle Mietobjekte</div>
-        ${kv("Investition", eur(invest))}
-        ${kv("Restschuld heute", eur(rest))}
-        ${kv("Tilgung / Monat", eur(tilg))}
-        ${kv("NK-Puffer / Monat", eur(nkP))}
-        ${kv("Einnahmen / Jahr", eur(ist * 12))}
-        ${kv("Netto / Jahr", eur(netto * 12))}
+        ${kvInfo("Auslastung", stand.einheiten ? stand.auslastung + " %" : "—", "auslastung")}
+        ${kvInfo("Potenzial / Monat", eur(pot), "potenzial")}
+        ${kvInfo("Investition", eur(invest), "invest")}
+        ${kv("Nebenkosten-Puffer / Monat", eur(nkP))}
+        ${kv("Netto-Cashflow / Jahr", eur(netto * 12))}
       </div></div>`));
   }
 
@@ -4665,7 +5061,7 @@
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
       ${kpiCard("euro", eur(t.ist), "Einnahmen / Monat", "aktuell vermietet", true, "einnahmen", "einnahmen")}
       ${kpiCard("layers", eur(t.potenzial), "Potenzial / Monat", "+" + eur(upside) + " ungenutzt", false, "potenzial", "potenzial")}
-      ${kpiCard("wallet", eur(nettoMonth), "Netto-Cashflow", "nach Tilgung", nettoMonth >= 0, "netto", "cashflow")}
+      ${kpiCard("wallet", eur(nettoMonth), "Netto-Cashflow / Monat", CF_HINWEIS, nettoMonth >= 0, "netto", "cashflow")}
       ${kpiCard("home", occ + " %", "Auslastung", unitsLet + " / " + unitsTotal + " Einheiten", occ >= 60, "auslastung", "auslastung")}
     </div>`), {
       einnahmen: () => openPortfolioSheet("einnahmen", ctx),
@@ -5008,21 +5404,213 @@
   }
 
   /* ---------- STREAM DETAIL ---------- */
+  /* ---------- OBJEKTSEITE ---------- */
+  // Die Seite besteht aus Bausteinen in fester Reihenfolge. Jeder Baustein ist einzeln
+  // aufrufbar: Er bekommt das Objekt und liefert einen Knoten, eine Liste von Knoten oder nichts.
+  // Die Projektseite (Phase 7) setzt sich aus denselben Bausteinen zusammen.
+
+  // Kopf: Hauptzahl und Zustand des Objekts
+  function objektKopf(s) {
+    const m = FE.streamMonthly(s);
+    const stand = vermietungsStand([s]);
+    return hauptKarte({
+      zeile: "Einnahmen pro Monat", info: "einnahmen",
+      zahl: eur(m.gesamt),
+      unter: ertragSatz(stand),
+      anteil: m.gesamtPotenzial > 0 ? Math.round(m.gesamt / m.gesamtPotenzial * 100) : null,
+      fakten: standFakten(stand),
+      knopf: { id: "editObj", text: "Objekt bearbeiten", tun: () => openObjektEdit(s, false) }
+    });
+  }
+
+  // Kennzahlen: was das Objekt nach Kreditraten bringt und wie es sich rechnet
+  function objektKennzahlen(s) {
+    const m = FE.streamMonthly(s);
+    const kredite = FE.creditsOf(s);
+    const hasImmo = s.invest || kredite.length || s.nkAlsPuffer;
+    const k = hasImmo ? FE.immoKPIs(s) : null;
+    const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+    const karten = [];
+    if (k && (s.invest || kredite.length))
+      karten.push(kpiCard("wallet", eur(m.netto), "Netto-Cashflow / Monat", CF_HINWEIS, m.netto >= 0, "cf", "cashflow"));
+    if (k && s.invest) {
+      karten.push(kpiCard("trend", k.bruttoRendite.toLocaleString("de-DE") + " %", "Brutto\u00ADmiet\u00ADrendite", "Jahreskaltmiete ÷ Investition", false, null, "rendite"));
+      karten.push(kpiCard("chart", k.cashflowRoi.toLocaleString("de-DE") + " %", "Cashflow-ROI", "Netto-Cashflow im Jahr ÷ Investition", false, null, "roi"));
+      karten.push(kpiCard("coins", eur(k.invest), "Investition", "eingesetztes Kapital", false, null, "invest"));
+    }
+    if (k && kredite.length) {
+      karten.push(kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", mehrzahl(kredite.length, "Kredit", "Kredite"), false, null, "tilgung"));
+      karten.push(kpiCard("debt", eur(k.restschuldGesamt), "Restschuld heute", "exakt " + eur2(k.restschuldGesamt), false, null, "restschuld"));
+    }
+    karten.push(kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "hochgerechnet"));
+    // Die Einheiten-Karte füllt die Reihe auf, wenn sonst eine Lücke bliebe
+    if (karten.length % 2) karten.push(kpiCard("home", m.einheiten, "Einheiten", flaeche ? qm(flaeche) + " gesamt" : "noch ohne Fläche"));
+    return wireActs(el(`<div class="grid g-kpi">${karten.join("")}</div>`), { cf: () => openCashflowSheet(s) });
+  }
+
+  // Einheiten: am Handy eine Liste, auf breiten Bildschirmen eine Tabelle.
+  // Spalten: Bezeichnung, Mieter, Fläche, Miete, Status, Mieteingang im laufenden Monat.
+  function einheitenKarte(s) {
+    const einheiten = s.einheiten || [];
+    const anlegen = () => { if (pruefeEinheit()) assistentEinheit(s); };
+    if (!einheiten.length) {
+      const leer = el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Einheiten</div></div></div>
+        <div class="card-b"><div class="eq-leer">Noch keine Einheit angelegt. Mit der ersten Wohnung beginnen die Zahlen zu laufen.
+          <div><button type="button" class="eq-btn" id="addUnit">Einheit anlegen</button></div></div></div></div>`);
+      leer.querySelector("#addUnit").onclick = anlegen;
+      return leer;
+    }
+    const monat = monatsName();
+    const zeilen = einheiten.map((u, i) => {
+      const inc = FE.unitIncome(u);
+      const stand = mietStand(u);
+      const frei = stand === "frei";
+      // gerade als eingegangen vermerkt: Die Zeile behält ihre Höhe, damit nichts unter den Finger rutscht
+      const frisch = stand === "bestaetigt" && frischEingegangen.has(u._id);
+      const status = frei ? `<span class="eq-marke achtung">frei</span>` : `<span class="eq-marke">vermietet</span>`;
+      const eingang = frei ? `<span class="eq-leise">—</span>`
+        : frisch ? `<span class="eq-nur-schmal">Miete ${esc(monat)}</span><span class="eq-marke gut">eingegangen</span>`
+        : stand === "bestaetigt" ? `<span class="eq-marke gut">eingegangen</span>`
+        : stand === "offen" ? `<span class="eq-nur-schmal eq-warnt">Miete ${esc(monat)} offen</span>${mietKnopf(u, `data-miete="${i}"`)}`
+        : stand === "keine" ? `<span class="eq-leise">keine Miete hinterlegt</span>`
+        : `<span class="eq-leise">fällig am ${zahltagIm(u)}.</span>`;
+      const klassen = "eq-tab-z" + (frei ? " eq-frei" : "") + (stand === "offen" || frisch ? " eq-faellig" : "");
+      return `<div class="${klassen}" data-i="${i}" role="row" tabindex="0" title="Antippen öffnet die Einheit">
+        <div class="eq-c-n" role="cell">${esc(u.wohnung || "Einheit")}</div>
+        <div class="eq-c-m" role="cell">${frei ? `<span class="eq-leise">kein Mieter</span>` : u.mieter ? esc(u.mieter) : `<span class="eq-leise">ohne Namen</span>`}<span class="eq-nur-schmal">${u.flaeche ? "\u00A0· " + qm(u.flaeche) : ""}</span></div>
+        <div class="eq-c-f" role="cell">${u.flaeche ? qm(u.flaeche) : "—"}</div>
+        <div class="eq-c-b${frei ? " eq-moeglich" : ""}" role="cell">${eur(inc.gesamt)}${frei ? `<span class="eq-c-zus">möglich</span>` : ""}</div>
+        <div class="eq-c-s" role="cell">${status}</div>
+        <div class="eq-c-e" role="cell">${eingang}</div></div>`;
+    }).join("");
+    const karte = el(`<div class="card eq-einheiten">
+      <div class="card-h"><div><div class="card-t">Einheiten</div>
+        <div class="card-s">Zeile antippen für Mieter, Vertrag und Mieteingang</div></div>
+        <button type="button" class="add-btn" id="addUnit">+ Einheit</button></div>
+      <div class="card-b"><div class="eq-tab" role="table" aria-label="Einheiten">
+        <div class="eq-tab-kopf" role="row">
+          <div role="columnheader">Bezeichnung</div><div role="columnheader">Mieter</div>
+          <div role="columnheader" class="eq-c-f">Fläche</div><div role="columnheader" class="eq-c-b">Miete</div>
+          <div role="columnheader">Status</div><div role="columnheader">Miete ${esc(monat)}</div></div>
+        ${zeilen}</div></div></div>`);
+    karte.querySelectorAll(".eq-tab-z").forEach(z => {
+      const u = einheiten[Number(z.dataset.i)];
+      z.onclick = (e) => { if (e.target.closest("button")) return; openUnitSheet(s, u); };
+      // e.repeat: Wer die Eingabetaste auf „Eingegangen" gedrückt hält, öffnet nicht danach noch das Fenster
+      z.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === z && !e.repeat) { e.preventDefault(); openUnitSheet(s, u); } };
+    });
+    karte.querySelectorAll("[data-miete]").forEach(b =>
+      b.onclick = () => mieteSetzen(einheiten[Number(b.dataset.miete)], true, b));
+    karte.querySelector("#addUnit").onclick = anlegen;
+    return karte;
+  }
+
+  // Woraus sich die Miete zusammensetzt
+  function zusammensetzungKarte(s) {
+    const einheiten = s.einheiten || [];
+    const totalKalt = einheiten.reduce((a, u) => a + FE.unitIncome(u).kalt, 0);
+    const totalNk = einheiten.reduce((a, u) => a + FE.unitIncome(u).nk, 0);
+    const totalKueche = einheiten.reduce((a, u) => a + (Number(u.kueche) || 0), 0);
+    const totalStrom = einheiten.reduce((a, u) => a + (Number(u.strom) || 0), 0);
+    const totalStell = einheiten.reduce((a, u) => a + (Number(u.stellplatz) || 0), 0);
+    const comp = [
+      { name: "Kaltmiete", value: totalKalt, color: PALETTE[0] },
+      { name: s.nkAlsPuffer ? "Nebenkosten (Puffer)" : "Nebenkosten", value: totalNk, color: PALETTE[1] },
+      { name: "Küche", value: totalKueche, color: PALETTE[3] },
+      { name: "Strom", value: totalStrom, color: PALETTE[4] },
+      { name: "Stellplatz", value: totalStell, color: PALETTE[5] }
+    ].filter(x => x.value > 0);
+    if (!comp.length) return null;
+    const legend = comp.map(x => `<div class="leg"><span class="sw" style="background:${x.color}"></span>
+      <span class="lt">${esc(x.name)}</span><span class="lv">${eur(x.value)}</span></div>`).join("");
+    return el(`<div class="card pad">
+      <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
+      <div class="card-s" style="margin-bottom:18px">${s.nkAlsPuffer ? "Alle Einheiten bei Vollvermietung, mit Nebenkosten-Puffer" : "Alle Einheiten bei Vollvermietung"}</div>
+      <div class="donut-row">${donut(comp)}<div class="legend">${legend}</div></div></div>`);
+  }
+
+  // Nebenkosten, die als Rücklage behandelt werden
+  function nkPufferKarte(s) {
+    const m = FE.streamMonthly(s);
+    if (!(m.nkPuffer > 0)) return null;
+    const karte = el(`<div class="card pad clickable" role="button" tabindex="0" style="border-color:color-mix(in srgb,var(--warn) 45%,transparent)">
+      <div class="eq-puffer">
+        <div class="tile-ic" style="color:var(--warn)">${svg("layers")}</div>
+        <div class="eq-puffer-tx"><div class="card-t">Nebenkosten als Puffer</div>
+          <div class="note">${eur(m.nkPuffer)} im Monat (${eur(m.nkPuffer * 12)} im Jahr) werden vollständig zurückgelegt. Antippen zeigt die Aufschlüsselung.</div></div>
+        <div class="eq-puffer-z"><div class="tile-num" style="color:var(--gold)">${eur(m.nkPuffer)}</div><div class="note">Rücklage im Monat</div></div>
+      </div></div>`);
+    karte.onclick = () => openNkSheet(s, m);
+    karte.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openNkSheet(s, m); } };
+    return karte;
+  }
+
+  // Finanzierung: eine Karte je Kredit
+  function finanzierungBereich(s) {
+    const kredite = FE.creditsOf(s);
+    const anlegen = () => openCreditEdit(s, null, true);
+    if (!kredite.length) {
+      const leer = el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Finanzierung</div></div></div>
+        <div class="card-b"><div class="eq-leer">Noch kein Kredit erfasst. Mit einem Kredit rechnet ESTRIQ Tilgung, Restschuld und Netto-Cashflow.
+          <div><button type="button" class="add-btn" id="addCredit">+ Kredit hinzufügen</button></div></div></div></div>`);
+      leer.querySelector("#addCredit").onclick = anlegen;
+      return leer;
+    }
+    const teile = [abschnittKopf("Finanzierung", mehrzahl(kredite.length, "Kredit", "Kredite") + " · Karte antippen für den Tilgungsplan",
+      { id: "addCredit", text: "+ Kredit", tun: anlegen })];
+    kredite.forEach(kr => {
+      const c = creditCard(kr);
+      c.classList.add("clickable");
+      c.setAttribute("role", "button"); c.setAttribute("tabindex", "0");
+      c.onclick = () => openCreditSheet(kr);
+      c.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === c && !e.repeat) { e.preventDefault(); openCreditSheet(kr); } };
+      teile.push(c);
+    });
+    return teile;
+  }
+
+  const OBJEKT_BAUSTEINE = {
+    kopf: objektKopf,
+    mieten: (s) => offeneMietenKarte([s]),
+    kennzahlen: objektKennzahlen,
+    einheiten: einheitenKarte,
+    zusammensetzung: zusammensetzungKarte,
+    ruecklage: nkPufferKarte,
+    finanzierung: finanzierungBereich,
+    handwerker: (s) => gewerkeKarte(s),
+    nebenkosten: (s) => nebenkostenKarte(s)
+  };
+  // Feste Reihenfolge der Objektseite. Der Baustein „mieten" (Karte Offene Mieten) steht hier nicht:
+  // Auf der Objektseite bestätigt man den Eingang direkt in der Einheitenliste.
+  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "nebenkosten"];
+
+  // Setzt eine Seite aus Bausteinen zusammen
+  function objektSeite(host, s, reihenfolge) {
+    (reihenfolge || OBJEKT_REIHENFOLGE).forEach(name => {
+      const teil = OBJEKT_BAUSTEINE[name](s);
+      (Array.isArray(teil) ? teil : [teil]).forEach(k => { if (k) host.appendChild(k); });
+    });
+  }
+
   function renderStream(host, id) {
     const s = (D.streams || []).find(x => x.id === id);
-    if (!s) { host.appendChild(el(`<div class="card pad note">Objekt nicht gefunden.</div>`)); return; }
+    if (!s) {
+      $("#eyebrow").textContent = "Vermietung"; $("#pageTitle").textContent = "Objekt"; $("#pageSub").textContent = "";
+      const fehlt = el(`<div class="card eq-leer"><div>Dieses Objekt gibt es nicht mehr.</div>
+        <button type="button" class="eq-btn">Zu allen Mietobjekten</button></div>`);
+      fehlt.querySelector("button").onclick = () => geheZu("vermietung");
+      host.appendChild(fehlt);
+      return;
+    }
     const m = FE.streamMonthly(s);
+    const flaeche = (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
     $("#eyebrow").textContent = "Vermietung";
     $("#pageTitle").textContent = s.name;
-    $("#pageSub").textContent = s.ort || "";
-
-    // Objektstammdaten bearbeiten
-    const bar = el(`<div class="obj-bar">
-      <button class="add-btn" id="editObj">Objekt bearbeiten</button></div>`);
-    bar.querySelector("#editObj").onclick = () => openObjektEdit(s, false);
-    host.appendChild(bar);
-
-    return renderMiete(host, s, m);
+    $("#pageSub").textContent = [s.ort, "Mietobjekt", mehrzahl(m.einheiten, "Einheit", "Einheiten"), flaeche ? qm(flaeche) : ""]
+      .filter(Boolean).join(" · ");
+    objektSeite(host, s);
   }
 
   function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
@@ -5078,135 +5666,12 @@
   }
   function monthYear(key) { const d = new Date(key + "-01"); return d.toLocaleDateString("de-DE", { month: "2-digit", year: "numeric" }); }
 
-  function renderMiete(host, s, m) {
-    const kredite = FE.creditsOf(s);
-    const hasImmo = s.invest || kredite.length || s.nkAlsPuffer;
-    const k = hasImmo ? FE.immoKPIs(s) : null;
-
-    // KPIs
-    if (k && s.invest) {
-      // Rendite-Kennzahlen für alle Objekte
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("wallet", eur(m.netto), "Netto-Cashflow / Monat", "nach Kreditrate", m.netto >= 0, "cf", "cashflow")}
-        ${kpiCard("trend", k.bruttoRendite.toLocaleString("de-DE") + " %", "Bruttomietrendite", "Kaltmiete / Invest", false, null, "rendite")}
-        ${kpiCard("chart", k.cashflowRoi.toLocaleString("de-DE") + " %", "Cashflow-ROI", "netto / Invest p.a.", false, null, "roi")}
-        ${kpiCard("coins", eur(k.invest), "Investition", "eingesetztes Kapital", false, null, "invest")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-      // Zweite Reihe mit Einnahmen/Tilgung/Restschuld (nützlich bei mehreren Krediten)
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", kredite.length + (kredite.length === 1 ? " Kredit" : " Kredite"), false, null, "tilgung")}
-        ${kpiCard("debt", eur(k.restschuldGesamt), "Restschuld heute", "exakt " + eur2(k.restschuldGesamt), false, null, "restschuld")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-    } else if (k && kredite.length) {
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", kredite.length + " Kredite")}
-        ${kpiCard("wallet", eur(m.netto), "Netto-Cashflow", "nach Tilgung", m.netto >= 0, "cf")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("home", m.einheiten, "Einheiten", (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0) + " m² gesamt")}
-        ${kpiCard("debt", eur(k.restschuldGesamt), "Restschuld gesamt", "exakt " + eur2(k.restschuldGesamt))}
-        ${kpiCard("layers", eur(m.nkPuffer), "NK-Puffer / Monat", "Rücklage")}
-        ${kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "aktuell vermietet")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-    } else {
-      host.appendChild(wireActs(el(`<div class="grid g-kpi">
-        ${kpiCard("euro", eur(m.gesamt), "Einnahmen / Monat", m.vermietet + "/" + m.einheiten + " vermietet", true)}
-        ${kpiCard("layers", eur(m.gesamtPotenzial), "Potenzial / Monat", "bei Vollvermietung")}
-        ${kpiCard("home", m.einheiten, "Einheiten", (s.einheiten || []).reduce((a, u) => a + (Number(u.flaeche) || 0), 0) + " m² gesamt")}
-        ${kpiCard("trend", eur(m.gesamt * 12), "pro Jahr", "aktuell vermietet")}
-      </div>`), { cf: () => openCashflowSheet(s) }));
-    }
-
-    // Kredit-Tilgung Karten — eine je Kredit
-    kredite.forEach(kr => {
-      const c = creditCard(kr);
-      c.classList.add("clickable");
-      c.onclick = () => openCreditSheet(kr);
-      host.appendChild(c);
-    });
-    const addKr = el(`<div class="card pad add-card"><button class="add-btn wide" id="addCredit">+ Kredit hinzufügen</button></div>`);
-    addKr.querySelector("#addCredit").onclick = () => openCreditEdit(s, null, true);
-    host.appendChild(addKr);
-
-    // NK-Puffer Hinweis (klickbar)
-    if (m.nkPuffer > 0) {
-      const nkCard = el(`<div class="card pad clickable" style="border-color:color-mix(in srgb,var(--warn) 45%,transparent)">
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <div class="tile-ic" style="color:var(--warn)">${svg("layers")}</div>
-          <div style="flex:1;min-width:180px"><div class="card-t">Nebenkosten als Puffer</div>
-            <div class="note">${eur(m.nkPuffer)}/Monat (${eur(m.nkPuffer * 12)}/Jahr) werden vollständig zurückgelegt – antippen für Aufschlüsselung.</div></div>
-          <div style="text-align:right"><div class="tile-num" style="color:var(--gold)">${eur(m.nkPuffer)}</div><div class="note">Rücklage/Mon.</div></div>
-        </div></div>`);
-      nkCard.onclick = () => openNkSheet(s, m);
-      host.appendChild(nkCard);
-    }
-
-    // Per-unit horizontal bars
-    const maxUnit = Math.max(...(s.einheiten || []).map(u => FE.unitIncome(u).gesamt), 1);
-    const bars = (s.einheiten || []).map(u => {
-      const inc = FE.unitIncome(u);
-      const on = u.status === "vermietet";
-      const w = Math.round(inc.gesamt / maxUnit * 100);
-      const mieterTxt = u.mieter ? ` · ${esc(u.mieter)}` : "";
-      return `<div class="unit-bar clickable" data-i="${(s.einheiten||[]).indexOf(u)}" style="padding:2px 0">
-        <div class="hbar-top"><div class="hbar-name">${esc(u.wohnung)}<span class="loc">${u.flaeche} m²${mieterTxt}</span></div>
-          <div class="hbar-val">${eur(inc.gesamt)} ${on ? '<span class="badge b-on">vermietet</span>' : '<span class="badge b-off">frei</span>'}</div></div>
-        <div class="track ${on ? '' : 'ghost'}"><span style="width:${w}%"></span></div></div>`;
-    }).join("");
-    const barCard = el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Einnahmen je Wohnung</div>
-      <div class="card-s" style="margin-bottom:18px">Einheit antippen für Details</div>
-      <div class="hbars">${bars}</div></div>`);
-    barCard.querySelectorAll(".unit-bar").forEach(b =>
-      b.onclick = () => openUnitSheet(s, (s.einheiten || [])[Number(b.dataset.i)]));
-    host.appendChild(barCard);
-
-    // Composition donut
-    const totalKalt = (s.einheiten || []).reduce((a, u) => a + FE.unitIncome(u).kalt, 0);
-    const totalNk = (s.einheiten || []).reduce((a, u) => a + FE.unitIncome(u).nk, 0);
-    const totalKueche = (s.einheiten || []).reduce((a, u) => a + (Number(u.kueche) || 0), 0);
-    const totalStrom = (s.einheiten || []).reduce((a, u) => a + (Number(u.strom) || 0), 0);
-    const totalStell = (s.einheiten || []).reduce((a, u) => a + (Number(u.stellplatz) || 0), 0);
-    const comp = [
-      { name: "Kaltmiete", value: totalKalt, color: PALETTE[0] },
-      { name: s.nkAlsPuffer ? "Nebenkosten (Puffer)" : "Nebenkosten", value: totalNk, color: PALETTE[1] },
-      { name: "Küche", value: totalKueche, color: PALETTE[3] },
-      { name: "Strom", value: totalStrom, color: PALETTE[4] },
-      { name: "Stellplatz", value: totalStell, color: PALETTE[5] }
-    ].filter(x => x.value > 0);
-    const legend = comp.map(x => `<div class="leg"><span class="sw" style="background:${x.color}"></span>
-      <span class="lt">${esc(x.name)}</span><span class="lv">${eur(x.value)}</span></div>`).join("");
-    host.appendChild(el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
-      <div class="card-s" style="margin-bottom:18px">${s.nkAlsPuffer ? "Warmmiete inkl. NK-Puffer" : "Alle Einheiten bei Vollvermietung"}</div>
-      <div class="donut-row">${donut(comp)}<div class="legend">${legend}</div></div></div>`));
-
-    // Detail table per unit
-    const rows = (s.einheiten || []).map((u, i) => {
-      const inc = FE.unitIncome(u);
-      return `<div class="drow clickable" data-i="${i}"><div class="drow-l"><div class="drow-badge">${esc((u.wohnung.match(/\d+/) || [i + 1])[0])}</div>
-        <div><div class="drow-name">${esc(u.wohnung)} · ${u.flaeche} m²${u.mieter ? " · " + esc(u.mieter) : ""}</div>
-        <div class="drow-sub">kalt ${eur(inc.kalt)} · NK ${eur(inc.nk)}${inc.kueche ? " · Küche " + eur(inc.kueche) : ""}${inc.strom ? " · Strom " + eur(inc.strom) : ""}${inc.stell ? " · Stellpl. " + eur(inc.stell) : ""}</div></div></div>
-        <div class="drow-val"><b>${eur(inc.gesamt)}</b><span>${u.status === "vermietet" ? "vermietet" : "frei"}</span></div></div>`;
-    }).join("");
-    const tblCard = el(`<div class="card"><div class="card-h"><div><div class="card-t">Wohneinheiten</div>
-      <div class="card-s">Zeile antippen für Mieter- und Vertragsdaten</div></div>
-      <button class="add-btn" id="addUnit">+ Einheit</button></div><div class="card-b">${rows}</div></div>`);
-    tblCard.querySelectorAll(".drow[data-i]").forEach(r =>
-      r.onclick = () => openUnitSheet(s, (s.einheiten || [])[Number(r.dataset.i)]));
-    tblCard.querySelector("#addUnit").onclick = () => { if (pruefeEinheit()) assistentEinheit(s); };
-    host.appendChild(tblCard);
-    host.appendChild(gewerkeKarte(s));
-    host.appendChild(nebenkostenKarte(s));
-  }
-
   /* ---------- DETAIL-SHEETS ---------- */
-  function openUnitSheet(s, u) {
+  // opt.geradeGeaendert: Das Fenster zeigt den Stand direkt nach „Eingegangen" oder „Zurücknehmen".
+  // Der Knopf an derselben Stelle ist dann kurz gesperrt, damit ein zweites Tippen nichts zurückdreht.
+  function openUnitSheet(s, u, opt) {
     if (!u) return;
+    opt = opt || {};
     const inc = FE.unitIncome(u);
     const alle = (s.einheiten || []).map(x => FE.unitIncome(x).gesamt);
     const gesamtAlle = alle.reduce((a, b) => a + b, 0) || 1;
@@ -5217,6 +5682,7 @@
     }, 0) / ((s.einheiten || []).length || 1);
     const v = u.vertrag || {};
     const on = u.status === "vermietet";
+    const ertrag = s.nkAlsPuffer ? inc.gesamt - inc.nk : inc.gesamt;
 
     // Mietdauer
     let dauer = "—";
@@ -5228,16 +5694,47 @@
 
     const parts = [
       { label: "Kaltmiete", value: inc.kalt, color: PALETTE[0] },
-      { label: s.nkAlsPuffer ? "NK (Puffer)" : "Nebenkosten", value: inc.nk, color: PALETTE[1] },
+      { label: "Nebenkosten", value: inc.nk, color: PALETTE[1] },
       { label: "Küche", value: inc.kueche, color: PALETTE[3] },
       { label: "Strom", value: inc.strom, color: PALETTE[4] },
       { label: "Stellplatz", value: inc.stell, color: PALETTE[5] }
     ].filter(x => x.value > 0);
 
+    // Zustand zuerst: frei, Miete da, Miete offen oder noch nicht fällig
+    const stand = mietStand(u), monat = monatsName();
+    const zahlung = zahlungVon(u);
+    const tag = zahltagIm(u);
+    let zustand;
+    if (stand === "frei") {
+      zustand = `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Diese Einheit ist frei</div>
+          <div class="eq-zustand-d">${ertrag > 0 ? "Vermietet brächte sie " + eur(ertrag) + " Ertrag im Monat" + (s.nkAlsPuffer && inc.nk > 0 ? " (ohne Nebenkosten)." : ".") : "Für sie ist noch keine Miete hinterlegt."}</div></div></div>`;
+    } else if (stand === "bestaetigt") {
+      zustand = `<div class="eq-zustand gut"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Miete für ${esc(monat)} ist eingegangen</div>
+          <div class="eq-zustand-d">${zahlung && zahlung.bestaetigt_am ? "Gespeichert am " + dateDE(zahlung.bestaetigt_am) + " · " : ""}${eur(inc.gesamt)}</div></div>
+        <button type="button" class="eq-btn zweit" data-miete="0">Zurücknehmen</button></div>`;
+    } else if (stand === "offen") {
+      zustand = `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Miete für ${esc(monat)} ist offen</div>
+          <div class="eq-zustand-d">Fällig seit dem ${tag}. · ${eur(inc.gesamt)}</div></div>
+        <button type="button" class="eq-btn" data-miete="1">Eingegangen</button></div>`;
+    } else if (stand === "keine") {
+      zustand = `<div class="eq-zustand"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Für diese Einheit ist keine Miete hinterlegt</div>
+          <div class="eq-zustand-d">Trag die Miete über „Bearbeiten“ ein – dann fragt ESTRIQ jeden Monat nach dem Eingang.</div></div></div>`;
+    } else {
+      zustand = `<div class="eq-zustand"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Miete für ${esc(monat)} wird am ${tag}. fällig</div>
+          <div class="eq-zustand-d">${eur(inc.gesamt)}</div></div>
+        <button type="button" class="eq-btn zweit" data-miete="1">Schon eingegangen</button></div>`;
+    }
+
     const body = `
+      ${zustand}
       <div class="stat-strip" style="margin-bottom:18px">
         <div class="s"><span>Warmmiete</span><b>${eur(inc.gesamt)}</b></div>
-        <div class="s"><span>Ertrag${s.nkAlsPuffer ? " (o. NK)" : ""}</span><b style="color:var(--mint-2)">${eur(s.nkAlsPuffer ? inc.gesamt - inc.nk : inc.gesamt)}</b></div>
+        <div class="s"><span>Ertrag${s.nkAlsPuffer ? " ohne Nebenkosten" : ""}</span><b style="color:var(--mint-2)">${eur(ertrag)}</b></div>
         <div class="s"><span>€ / m²</span><b>${proM2.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
         <div class="s"><span>Anteil Objekt</span><b>${anteil} %</b></div>
       </div>
@@ -5247,9 +5744,11 @@
       ${kv("Name", on ? esc(u.mieter || "—") : '<span style="color:var(--gold)">frei</span>')}
       ${kv("Einzug", u.einzug ? dateDE(u.einzug) : "—")}
       ${kv("Mietdauer", dauer)}
+      ${u.personen ? kv("Personen im Haushalt", esc(u.personen)) : ""}
       ${v.telefon ? kv("Telefon", esc(v.telefon)) : ""}
       ${v.email ? kv("E-Mail", esc(v.email)) : ""}
       <div class="card-t" style="font-size:14px;margin:20px 0 6px">Vertrag</div>
+      ${kv("Miete fällig am", Math.min(31, Math.max(1, Math.round(Number(u.zahltag) || 1))) + ". des Monats")}
       ${kv("Kaution", v.kaution != null ? eur(v.kaution) : "—", v.kaution == null)}
       ${kv("Vertragsdatum", v.vertragsdatum ? dateDE(v.vertragsdatum) : "—", !v.vertragsdatum)}
       ${kv("Laufzeit", v.laufzeit ? esc(v.laufzeit) : "—", !v.laufzeit)}
@@ -5257,8 +5756,21 @@
       ${v.notiz ? `<div class="note" style="margin-top:14px">${esc(v.notiz)}</div>` : ""}
       <div class="note" style="margin-top:16px">Vergleich: ${proM2 >= schnitt ? "über" : "unter"} dem Objektschnitt von ${schnitt.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/m².</div>
       <button class="ef-open" id="efEdit">Bearbeiten</button>`;
-    const sh = openSheet(u.wohnung + " · " + u.flaeche + " m²", s.name, body);
+    const sh = openSheet((u.wohnung || "Einheit") + (u.flaeche ? " · " + qm(u.flaeche) : ""), s.name, body);
     sh.querySelector("#efEdit").onclick = () => openUnitEdit(s, u, false);
+    // Mieteingang in einem Schritt bestätigen oder zurücknehmen; danach zeigt das Fenster den neuen Stand
+    const mb = sh.querySelector("[data-miete]");
+    if (mb && opt.geradeGeaendert) {
+      mb.disabled = true;
+      setTimeout(() => { if (mb.isConnected) mb.disabled = false; }, 1200);
+    }
+    if (mb) mb.onclick = async () => {
+      const ok = await mieteSetzen(u, mb.dataset.miete === "1", mb);
+      if (ok !== true) return;
+      const s2 = (D.streams || []).find(x => x._id === s._id);
+      const u2 = s2 && (s2.einheiten || []).find(x => x._id === u._id);
+      if (u2 && sh.isConnected) openUnitSheet(s2, u2, { geradeGeaendert: true });
+    };
   }
 
   function openCreditSheet(kr) {
@@ -5307,16 +5819,21 @@
     const kredite = FE.creditsOf(s);
     const body = `
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
-      ${kv("Ertrag" + (s.nkAlsPuffer ? " (ohne NK)" : ""), eur(m.gesamt))}
+      ${kv("Ertrag" + (s.nkAlsPuffer ? " ohne Nebenkosten" : ""), eur(m.gesamt))}
       ${kredite.map(kr => kv("− " + (kr.name || "Kredit"), "−" + eur(kr.abtragMonat))).join("")}
-      ${kv("Netto-Cashflow", eur(m.netto))}
+      ${kv("Netto-Cashflow im Monat", eur(m.netto))}
+      <div class="eq-zustand" style="margin:14px 0 0"><div class="eq-zustand-tx">
+        <div class="eq-zustand-t">Laufende Kosten sind hier nicht abgezogen</div>
+        <div class="eq-zustand-d">Instandhaltung, Verwaltung, nicht umlagefähige Nebenkosten und Steuern fehlen in dieser Zahl. Mit dem Cashflow-Rechner rechnest du sie dazu.</div></div>
+        <button type="button" class="eq-btn zweit" id="cfRechner">Zum Rechner</button></div>
       ${s.nkAlsPuffer ? `<div class="note" style="margin-top:12px">Zusätzlich ${eur(m.nkPuffer)}/Monat Nebenkosten als Rücklage (nicht im Ertrag).</div>` : ""}
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Wenn alles vermietet wäre</div>
-      ${kv("Potenzial-Ertrag", eur(m.gesamtPotenzial))}
-      ${kv("Netto-Cashflow", eur(m.gesamtPotenzial - m.kreditAbtrag))}
-      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - m.kreditAbtrag) * 12 / s.invest * 100).toFixed(2) + " %" : "—")}
+      ${kv("Ertrag bei Vollvermietung", eur(m.gesamtPotenzial))}
+      ${kv("Netto-Cashflow im Monat", eur(m.gesamtPotenzial - m.kreditAbtrag))}
+      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - m.kreditAbtrag) * 12 / s.invest * 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %" : "—")}
       <div class="note" style="margin-top:14px">Differenz zu heute: ${eur(m.gesamtPotenzial - m.gesamt)}/Monat aus leerstehenden Einheiten.</div>`;
-    openSheet("Netto-Cashflow", s.name, body);
+    const sh = openSheet("Netto-Cashflow", s.name, body);
+    sh.querySelector("#cfRechner").onclick = () => openRechner("cashflow");
   }
 
   function openNkSheet(s, m) {
@@ -5540,36 +6057,36 @@
     const body = `
       ${efTitel("Grunddaten")}
       ${ef("Bezeichnung", "bezeichnung", u ? u.wohnung : "", "text", { pflicht: true, platzhalter: "z. B. WE 6" })}
-      ${ef("Fläche in m²", "flaeche", u ? u.flaeche : "", "number", { step: "0.01" })}
+      ${ef("Fläche", "flaeche", u ? u.flaeche : "", "number", { step: "0.01", einheit: "m²", min: 0 })}
       ${efSel("Status", "status", u ? u.status : "frei",
         [{ v: "vermietet", t: "vermietet" }, { v: "frei", t: "frei" }])}
-      ${efTitel("Miete")}
+      ${efTitel("Miete im Monat")}
       ${fix
-        ? ef("Kaltmiete fix", "kalt_fix", u ? (u.kaltFix ?? "") : "", "number", { hinweis: "Fester Betrag statt €/m²" }) +
-          ef("Nebenkosten fix", "nk_fix", u ? (u.nkFix ?? "") : "", "number")
-        : ef("Kalt je m²", "kalt_pro_m2", u ? (u.kaltProM2 ?? "") : "", "number") +
-          ef("Nebenkosten je m²", "nk_pro_m2", u ? (u.nkProM2 ?? "") : "", "number")}
-      ${ef("Küche", "kueche", u ? (u.kueche ?? "") : "", "number")}
-      ${ef("Strom", "strom", u ? (u.strom ?? "") : "", "number")}
-      ${ef("Stellplatz", "stellplatz", u ? (u.stellplatz ?? "") : "", "number")}
+        ? ef("Kaltmiete", "kalt_fix", u ? (u.kaltFix ?? "") : "", "number", { einheit: "€", min: 0, hinweis: "Fester Betrag statt €/m²" }) +
+          ef("Nebenkosten", "nk_fix", u ? (u.nkFix ?? "") : "", "number", { einheit: "€", min: 0 })
+        : ef("Kaltmiete je m²", "kalt_pro_m2", u ? (u.kaltProM2 ?? "") : "", "number", { einheit: "€", min: 0 }) +
+          ef("Nebenkosten je m²", "nk_pro_m2", u ? (u.nkProM2 ?? "") : "", "number", { einheit: "€", min: 0 })}
+      ${ef("Küche", "kueche", u ? (u.kueche ?? "") : "", "number", { einheit: "€", min: 0 })}
+      ${ef("Strom", "strom", u ? (u.strom ?? "") : "", "number", { einheit: "€", min: 0 })}
+      ${ef("Stellplatz", "stellplatz", u ? (u.stellplatz ?? "") : "", "number", { einheit: "€", min: 0 })}
+      ${ef("Miete fällig am", "zahltag", (u && u.zahltag) || 1, "number",
+        { step: "1", min: 1, max: 31, einheit: "des Monats", hinweis: "Ab diesem Tag gilt die Miete als offen, bis du sie als eingegangen vermerkst. In kürzeren Monaten zählt der letzte Tag.", platzhalter: "1" })}
       ${efTitel("Mieter")}
       ${ef("Name", "mieter", u ? (u.mieter || "") : "")}
       ${ef("Einzug", "einzug", u ? (u.einzug || "") : "", "date")}
-      ${ef("Telefon", "v_telefon", v.telefon || "")}
+      ${ef("Personen im Haushalt", "personen", (u && u.personen) || "", "number",
+        { step: "1", min: 1, hinweis: "Für Nebenkosten, die nach Personen verteilt werden (z. B. Wasser, Müll)" })}
+      ${ef("Telefon", "v_telefon", v.telefon || "", "tel")}
       ${ef("E-Mail", "v_email", v.email || "", "email")}
       ${efTitel("Vertrag")}
-      ${ef("Personen im Haushalt", "personen", (u && u.personen) || "", "number",
-        { step: "1", hinweis: "Für Nebenkosten nach Personenschlüssel (Wasser, Müll)" })}
-      ${ef("Miete fällig am", "zahltag", (u && u.zahltag) || 1, "number",
-        { hinweis: "Tag im Monat – danach fragt ESTRIQ beim Login nach dem Zahlungseingang", platzhalter: "1" })}
-      ${ef("Kaution", "v_kaution", v.kaution ?? "", "number")}
+      ${ef("Kaution", "v_kaution", v.kaution ?? "", "number", { einheit: "€", min: 0 })}
       ${ef("Vertragsdatum", "v_vertragsdatum", v.vertragsdatum || "", "date")}
       ${ef("Laufzeit", "v_laufzeit", v.laufzeit || "", "text", { platzhalter: "z. B. unbefristet" })}
       ${ef("Kündigungsfrist", "v_kuendigungsfrist", v.kuendigungsfrist || "", "text", { platzhalter: "z. B. 3 Monate" })}
       ${efArea("Notiz", "v_notiz", v.notiz || "")}
       ${efAktionen({ loeschen: neu ? null : "Löschen" })}`;
 
-    const sheet = openSheet(neu ? "Neue Einheit" : "Bearbeiten",
+    const sheet = openSheet(neu ? "Neue Einheit" : "Einheit bearbeiten",
       (neu ? "" : u.wohnung + " · ") + s.name, body);
 
     const bauen = (w) => {
@@ -5579,8 +6096,8 @@
         status: w.status,
         kueche: zahl(w.kueche), strom: zahl(w.strom), stellplatz: zahl(w.stellplatz),
         mieter: text(w.mieter), einzug: text(w.einzug),
-        zahltag: Math.min(31, Math.max(1, Number(w.zahltag) || 1)),
-        personen: w.personen ? Math.max(1, Number(w.personen)) : null,
+        zahltag: Math.min(31, Math.max(1, Math.round(Number(w.zahltag)) || 1)),
+        personen: w.personen ? Math.max(1, Math.round(Number(w.personen))) : null,
         vertrag: {
           kaution: zahl(w.v_kaution),
           vertragsdatum: text(w.v_vertragsdatum),
@@ -5658,13 +6175,13 @@
       ${neu && !opt.nachOnboarding ? `<div class="anlegen-kopf">${svg("home")}<span>Mietobjekt</span></div>` : ""}
       ${efTitel("Grunddaten")}
       ${ef("Name", "name", s ? s.name : "", "text", { pflicht: true, platzhalter: "z. B. Haus Bergstraße 12" })}
-      ${ef("Kurzname (intern)", "slug", s ? s.id : "", "text",
-        { pflicht: true, hinweis: "Ohne Leerzeichen, z. B. haus-nord" })}
       ${ef("Ort", "ort", s ? (s.ort || "") : "")}
       ${efArea("Notiz", "notiz", s ? (s.note || "") : "")}
+      ${ef("Kurzname (intern)", "slug", s ? s.id : "", "text",
+        { pflicht: true, hinweis: "Nur für die App, ohne Leerzeichen, z. B. haus-nord. Im Zweifel so lassen." })}
       ${efTitel("Wirtschaftlich")}
       ${ef("Investitionssumme", "invest", s ? (s.invest ?? "") : "", "number",
-        { hinweis: "Kaufpreis inkl. Kaufnebenkosten – Basis für die Rendite", platzhalter: "z. B. 250000" })}
+        { einheit: "€", min: 0, hinweis: "Kaufpreis inkl. Kaufnebenkosten – Basis für die Rendite", platzhalter: "z. B. 250000" })}
       ${efSel("Nebenkosten", "nk_als_puffer", s && s.nkAlsPuffer ? "1" : "0",
         [{ v: "1", t: "als Rücklage behandeln" }, { v: "0", t: "als Ertrag zählen" }],
         { hinweis: "Rücklage: NK werden für Ausgaben zurückgelegt. Ertrag: NK zählen zu den Einnahmen." })}
@@ -5696,7 +6213,11 @@
     efBind(sheet,
       async (w) => {
         if (neu) { await neuesObjekt(bauen(w)); }
-        else { await speichereObjekt(s._id, bauen(w)); }
+        else {
+          const d = bauen(w);
+          await speichereObjekt(s._id, d);
+          if (d.slug !== s.id && currentView === s.id) { currentView = d.slug; gezeigteAnsicht = d.slug; }
+        }
       },
       neu ? null : async () => { await loescheObjekt(s._id); currentView = "overview"; },
       "Objekt mit allen Daten löschen?",
