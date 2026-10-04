@@ -918,8 +918,7 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .tapme{position:absolute;right:16px;bottom:14px;font-size:20px;line-height:1;color:var(--softer);pointer-events:none;
   transition:color var(--eq-kurz) var(--eq-kurve),transform var(--eq-kurz) var(--eq-kurve)}
 .clickable:hover .tapme{color:var(--mint);transform:translateX(2px)}
-.drow.clickable,.unit-bar{border-radius:12px}
-.drow.clickable:hover,.unit-bar:hover{background:var(--surface-2);box-shadow:0 0 0 8px var(--surface-2)}
+.drow.clickable:hover{background:var(--surface-2);box-shadow:0 0 0 8px var(--surface-2)}
 .leg.clickable:hover .lt{color:var(--text)}
 .w-day.clickable:hover{border-color:var(--mint)}
 
@@ -927,8 +926,10 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .kpi{position:relative;display:flex;flex-direction:column;gap:6px;padding:20px var(--eq-a5) 22px;min-width:0;container-type:inline-size}
 .kpi .lab{font-size:var(--eq-t-2);font-weight:600;color:var(--soft);line-height:1.3;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:anywhere}
 .kpi .kpi-i~.lab{padding-right:32px}
-/* Die Zahl richtet sich nach der Breite der Karte, damit auch siebenstellige Beträge hineinpassen */
-.kpi .num{font-family:var(--fdisp);font-weight:600;font-size:clamp(22px,2.4vw,32px);font-size:clamp(22px,14.5cqi,36px);line-height:1.1;letter-spacing:-.02em;
+/* Die Zahl richtet sich nach der Breite der Karte. Sehr lange Beträge (--eq-z = Zahl der Zeichen)
+   werden kleiner gesetzt, statt abgeschnitten zu werden – nie kleiner als 15 px. */
+.kpi .num{font-family:var(--fdisp);font-weight:600;font-size:clamp(22px,2.4vw,32px);
+  font-size:max(15px,min(clamp(22px,14.5cqi,36px),calc(165cqi / var(--eq-z,1))));line-height:1.1;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
 .kpi .desc{font-size:var(--eq-t-1);color:var(--softer);line-height:1.4}
 .kpi.accent{border-color:color-mix(in srgb,var(--mint) 50%,transparent)}
@@ -999,6 +1000,9 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .ef-h{font-size:var(--eq-t-1);color:var(--softer);margin-top:6px;line-height:1.45}
 .ef-msg{min-height:20px;margin-top:var(--eq-a3);font-size:var(--eq-t-2);color:var(--soft);line-height:1.45}
 .ef-msg.bad{color:var(--danger)}
+/* Fehler steht direkt am Feld */
+.ef-i.eq-fehlt{border-color:var(--danger)}
+.ef-fehler{font-size:var(--eq-t-1);font-weight:600;color:var(--danger);margin-top:6px}
 .ef-actions{display:flex;gap:var(--eq-a3);margin-top:20px}
 /* Aktionsleiste bleibt am unteren Rand des Fensters erreichbar */
 .ef-actions.eq-fest{position:sticky;bottom:0;z-index:2;flex-direction:column;gap:0;
@@ -1008,11 +1012,14 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .ef-actions.eq-fest .ef-msg:empty{display:none}
 .ef-knoepfe{display:flex;flex-wrap:wrap;gap:var(--eq-a3)}
 
-/* Abschnittskopf */
+/* Abschnittskopf: im Formular klein, zwischen Kartengruppen als Überschrift */
+.eq-abschnitt{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--eq-a3);margin-top:var(--eq-a4)}
+.eq-abschnitt>div{min-width:0}
+.eq-abschnitt-t{font-family:var(--eq-f-titel);font-size:var(--eq-t-6);font-weight:600;line-height:1.15;letter-spacing:-.02em}
+.eq-abschnitt-s{font-size:var(--eq-t-2);color:var(--soft);margin-top:4px;line-height:1.4}
 .ef-sec{font-family:var(--fbody);font-size:var(--eq-t-1);font-weight:600;color:var(--softer);
   text-transform:uppercase;letter-spacing:.12em;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--stroke)}
 .ef-sec:first-child{margin-top:0}
-.obj-bar{display:flex;justify-content:flex-end;margin-bottom:-4px}
 
 /* Schalter */
 .opt-row{display:flex;align-items:center;gap:var(--eq-a4);padding:10px 0;min-height:56px}
@@ -1059,7 +1066,8 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 
 /* Leerzustand: ein Satz und eine Aktion */
 .eq-leer,.sub-empty{padding:28px 16px;text-align:center;font-size:var(--eq-t-2);color:var(--soft);line-height:1.5}
-.eq-leer .eq-btn{margin-top:var(--eq-a4)}
+.eq-leer>div:first-child{max-width:52ch;margin:0 auto}
+.eq-leer .eq-btn,.eq-leer .add-btn{margin-top:var(--eq-a4)}
 
 /* Fenster: am Handy von unten, sonst mittig */
 .sheet-bd{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:24px;
@@ -1069,7 +1077,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   border:1px solid var(--stroke-2);border-radius:24px;box-shadow:var(--eq-schatten-3);overflow:hidden;
   font-family:var(--fbody);font-size:var(--eq-t-3);line-height:1.5;animation:eq-hoch var(--eq-lang) var(--eq-kurve)}
 .sheet:focus{outline:none}
-.sheet-h{flex:0 0 auto;display:flex;align-items:flex-start;gap:var(--eq-a3);padding:22px 24px 0}
+.sheet-h{flex:0 0 auto;display:flex;align-items:flex-start;gap:var(--eq-a3);padding:22px 24px 14px;border-bottom:1px solid var(--stroke)}
 .sheet-h .eq-kopf{flex:1;min-width:0}
 .sheet-t{font-family:var(--eq-f-titel);font-size:var(--eq-t-6);font-weight:600;line-height:1.15;letter-spacing:-.02em}
 .sheet-s{font-size:var(--eq-t-2);color:var(--soft);margin-top:4px;line-height:1.4;overflow-wrap:anywhere}
@@ -1103,9 +1111,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sub-item:hover .sub-ic,.sub-item.on .sub-ic{background:var(--panel-solid)}
 .sub-ic svg{width:18px;height:18px}
 .sub-tx{flex:1;min-width:0}
-.sub-n{font-size:var(--eq-t-3);font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub-n{font-size:var(--eq-t-3);font-weight:600;line-height:1.25;overflow-wrap:anywhere}
 .sub-m{font-size:var(--eq-t-1);color:var(--softer);margin-top:1px}
-.sub-v{font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.sub-v{font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;flex:0 0 auto;font-variant-numeric:tabular-nums;text-align:right}
+.sub-v span{display:block;font-family:var(--fbody);font-size:var(--eq-t-1);font-weight:400;color:var(--softer)}
 .anlegen-item .sub-v{color:var(--softer);display:grid;place-items:center}
 .anlegen-item .sub-v svg{width:18px;height:18px}
 .anlegen-item:hover .sub-v{color:var(--mint)}
@@ -1349,16 +1358,8 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .leg{display:flex;align-items:center;gap:11px;font-size:var(--eq-t-2)}
 .leg.clickable{min-height:44px;margin:-5px 0}
 .leg .sw{width:11px;height:11px;border-radius:4px;flex:0 0 auto}
-.leg .lt{flex:1;color:var(--soft);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.leg .lt{flex:1;color:var(--soft);min-width:0;overflow-wrap:anywhere;line-height:1.3}
 .leg .lv{font-family:var(--fdisp);font-weight:600;font-variant-numeric:tabular-nums}
-.hbars{display:flex;flex-direction:column;gap:14px}
-.hbar-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px;gap:10px}
-.hbar-name{font-size:var(--eq-t-2);font-weight:600;min-width:0}
-.hbar-name .loc{font-size:var(--eq-t-1);color:var(--softer);font-weight:400;margin-left:6px}
-.hbar-val{font-family:var(--fdisp);font-weight:600;font-size:var(--eq-t-3);font-variant-numeric:tabular-nums;white-space:nowrap}
-.track{height:10px;border-radius:99px;background:var(--surface-2);overflow:hidden;position:relative}
-.track>span{display:block;height:100%;border-radius:99px;background:var(--mint);position:relative}
-.track.ghost>span{background:var(--eq-reihe-4)}
 
 /* Kacheln der Übersicht */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
@@ -1534,23 +1535,111 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .as-einheit{position:absolute;right:18px;font-size:var(--eq-t-2);color:var(--softer);pointer-events:none;font-weight:500}
 .as-nav{margin-top:20px}
 
-/* Mietkontrolle */
+/* Hauptaussage einer Ansicht: eine große Zahl, darunter die Begründung, daneben bis zu drei Zustände */
+.eq-haupt{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--eq-a6);align-items:center;padding:var(--eq-a6)}
+.eq-haupt-l{min-width:0;container-type:inline-size}
+.eq-haupt-zeile{display:flex;align-items:center;gap:2px;font-size:var(--eq-t-1);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);line-height:1.3}
+.eq-haupt-zahl{font-family:var(--fdisp);font-weight:600;font-size:clamp(40px,5vw,60px);font-size:clamp(36px,15.5cqi,64px);line-height:1.02;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:var(--eq-a3)}
+.eq-haupt-unter{font-size:var(--eq-t-3);color:var(--soft);line-height:1.4;margin-top:var(--eq-a3)}
+.eq-fort{height:8px;max-width:440px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:var(--eq-a4)}
+.eq-fort i{display:block;height:100%;border-radius:99px;background:var(--mint)}
+.eq-haupt-fuss{grid-column:1 / -1;margin-top:calc(-1 * var(--eq-a3))}
+/* Die Zustände stehen als Zeilen untereinander: links Titel und Erläuterung, rechts der Wert.
+   Nur zwischen 900 und 1199 ist Platz für drei Kacheln nebeneinander (siehe Umbruch). */
+.eq-fakten{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--eq-a2);min-width:0}
+.eq-fakt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px var(--eq-a3);align-items:center;min-width:0;padding:12px 14px;
+  border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke);color:var(--text);font-family:var(--fbody);text-align:left}
+/* Ein Zustand als Knopf: Antippen führt zu den Einzelheiten */
+.eq-fakt-knopf{width:100%;cursor:pointer;transition:border-color var(--eq-kurz) ease,background var(--eq-kurz) ease}
+.eq-fakt-knopf:active{transform:scale(.99)}
+.eq-fakt-pfeil{margin-left:6px;font-size:var(--eq-t-3);line-height:1;color:var(--soft)}
+@media(hover:hover){.eq-fakt-knopf:hover{border-color:var(--mint);background:var(--surface-2)}}
+.eq-fakt-t{grid-column:1;grid-row:1;display:flex;align-items:center;gap:var(--eq-a2);font-size:var(--eq-t-1);font-weight:600;color:var(--soft);line-height:1.3}
+.eq-fakt-t::before{content:"";flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--eq-reihe-4)}
+.eq-fakt.gut .eq-fakt-t::before{background:var(--ok)}
+.eq-fakt.achtung .eq-fakt-t::before{background:var(--warn)}
+.eq-fakt.kritisch .eq-fakt-t::before{background:var(--danger)}
+.eq-fakt-w{grid-column:2;grid-row:1 / span 2;font-family:var(--eq-f-titel);font-size:var(--eq-t-4);font-weight:600;line-height:1.2;letter-spacing:-.01em;text-align:right}
+.eq-fakt-d{grid-column:1;grid-row:2;font-size:var(--eq-t-1);color:var(--softer);line-height:1.4}
+
+/* Erklär-Knopf in einer Zeile: sichtbar ein kleiner Kreis, die Trefferfläche ist 44 px groß */
+.eq-kv-k{display:inline-flex;align-items:center}
+.eq-info{position:relative;flex:0 0 auto;width:44px;height:44px;margin:-13px 0 -13px -4px;padding:0;border:none;background:transparent;cursor:pointer;
+  color:var(--softer);font-family:var(--fdisp);font-size:var(--eq-t-1);font-weight:700;font-style:normal;letter-spacing:0;text-transform:none;display:inline-grid;place-items:center}
+.eq-info::before{content:"";position:absolute;inset:11px;border-radius:50%;border:1px solid var(--stroke-2)}
+@media(hover:hover){.eq-info:hover{color:var(--text)}.eq-info:hover::before{border-color:var(--mint);background:var(--surface-2)}}
+
+/* Karte „Nebenkosten als Puffer" */
+.eq-puffer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--eq-a3) 14px;align-items:center}
+.eq-puffer-tx{min-width:0}
+.eq-puffer-z{text-align:right}
+
+/* Zustand in einem Satz, auf Wunsch mit einer Aktion (Fenster zur Einheit, Cashflow) */
+.eq-zustand{display:flex;flex-wrap:wrap;align-items:center;gap:var(--eq-a3) var(--eq-a4);padding:14px var(--eq-a4);margin-bottom:18px;
+  border-radius:var(--r-sm);background:var(--surface-2);border-left:3px solid var(--eq-reihe-4)}
+.eq-zustand.gut{border-left-color:var(--ok)}
+.eq-zustand.achtung{border-left-color:var(--warn)}
+.eq-zustand.kritisch{border-left-color:var(--danger)}
+.eq-zustand-tx{flex:1 1 200px;min-width:0}
+.eq-zustand-t{font-size:var(--eq-t-3);font-weight:600;line-height:1.3}
+.eq-zustand-d{font-size:var(--eq-t-1);color:var(--soft);line-height:1.45;margin-top:2px}
+.eq-zustand .eq-btn{flex:0 0 auto;min-height:44px;padding:10px 16px;font-size:var(--eq-t-2)}
+
+/* Objektkarte in der Sammelübersicht */
+.eq-obj{display:flex;flex-direction:column;gap:var(--eq-a4);padding:var(--eq-a5)}
+.eq-obj-kopf{display:flex;align-items:flex-start;gap:14px}
+.eq-obj-n{flex:1;min-width:0;overflow-wrap:anywhere}
+.eq-obj-z{flex:0 0 auto;text-align:right}
+.eq-obj-z b{display:block;font-family:var(--fdisp);font-size:var(--eq-t-6);font-weight:600;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-obj-z span{font-size:var(--eq-t-1);color:var(--softer)}
+.eq-marken{display:flex;flex-wrap:wrap;gap:var(--eq-a2)}
+.eq-obj-fuss{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--eq-a3);padding-top:14px;border-top:1px solid var(--stroke)}
+.eq-obj-fuss span{display:block;font-size:var(--eq-t-1);color:var(--softer);line-height:1.3}
+.eq-obj-fuss b{display:block;font-family:var(--fdisp);font-size:var(--eq-t-3);font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Einheiten: Tabelle auf breiten Bildschirmen, Liste auf schmalen */
+.eq-tab-kopf,.eq-tab-z{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,.7fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,1.15fr);gap:var(--eq-a3);align-items:center}
+.eq-tab-kopf{padding:0 12px 10px;border-bottom:1px solid var(--stroke-2);font-size:var(--eq-t-1);font-weight:600;color:var(--softer)}
+.eq-tab-z{min-height:60px;padding:8px 12px;border-bottom:1px solid var(--stroke);cursor:pointer;transition:background var(--eq-kurz) ease}
+.eq-tab-z:last-child{border-bottom:none}
+.eq-c-n{font-size:var(--eq-t-3);font-weight:600;min-width:0;overflow-wrap:anywhere}
+.eq-c-m{font-size:var(--eq-t-2);color:var(--soft);min-width:0;overflow-wrap:anywhere}
+.eq-c-f,.eq-c-b{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-c-f{font-size:var(--eq-t-2);color:var(--soft)}
+.eq-tab-z .eq-c-b{font-family:var(--fdisp);font-size:var(--eq-t-4);font-weight:600}
+.eq-tab-kopf .eq-c-f{font-size:inherit;color:inherit}
+/* Freie Einheit: Der Betrag ist nur möglich, nicht eingenommen – deshalb zurückgenommen */
+.eq-tab-z .eq-c-b.eq-moeglich{color:var(--soft);font-weight:500}
+.eq-c-zus{display:block;font-family:var(--fbody);font-size:var(--eq-t-1);font-weight:400;color:var(--softer);line-height:1.2}
+.eq-c-e{display:flex;align-items:center;gap:10px;min-width:0}
+.eq-leise{font-size:var(--eq-t-1);color:var(--softer)}
+.eq-nur-schmal{display:none}
+@media(hover:hover){.eq-tab-z:hover{background:var(--surface-2)}}
+
+/* Mieteingang: Zeile einer offenen Miete mit Bestätigung in einem Schritt */
 .mk-obj{margin-bottom:var(--eq-a4)}
 .mk-obj-h{display:flex;align-items:center;gap:9px;font-size:var(--eq-t-2);font-weight:600;color:var(--soft);margin-bottom:9px}
-.mk-obj-h svg{width:17px;height:17px;color:var(--mint)}
-.mk-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;margin-bottom:8px;background:var(--eq-mulde);
-  border:1px solid var(--stroke);transition:opacity var(--eq-kurz) ease}
-.mk-row.erledigt{opacity:.55;border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
-.mk-tx{flex:1;min-width:0}
-.mk-n{font-size:var(--eq-t-3);font-weight:600}
-.mk-m{font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
-.mk-soll{font-family:var(--fdisp);font-size:var(--eq-t-3);font-weight:600;color:var(--text);flex:0 0 auto;font-variant-numeric:tabular-nums}
-.mk-ok{flex:0 0 auto;min-height:44px;cursor:pointer;border:1px solid var(--stroke-2);border-radius:11px;background:var(--surface-2);color:var(--text);
-  padding:0 14px;font-size:var(--eq-t-2);font-weight:600;font-family:var(--fbody);transition:border-color var(--eq-kurz) ease}
-.mk-ok:hover:not(:disabled){border-color:var(--mint)}
-.mk-ok:disabled{cursor:default}
-.mk-actions{margin-top:18px}
-.mk-actions .wc-cta+.wc-cta{margin-top:10px}
+.mk-obj-h svg{flex:0 0 auto;width:17px;height:17px;color:var(--mint)}
+.mk-obj-h span{min-width:0;overflow-wrap:anywhere}
+.mk-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:4px 14px;padding:10px 12px 10px 14px;border-radius:14px;margin-bottom:8px;
+  background:var(--eq-mulde);border:1px solid var(--stroke)}
+.mk-row:last-child{margin-bottom:0}
+.mk-row.erledigt,.eq-tab-z.erledigt{border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.mk-tx{min-width:0}
+.mk-n{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+.mk-o{display:inline-block;font-size:var(--eq-t-1);font-weight:400;color:var(--softer);margin-left:2px}
+/* Gerade vermerkter Eingang: steht an der Stelle des Knopfs und ist genauso hoch, damit nichts verrutscht */
+.mk-da{display:flex;align-items:center;justify-content:flex-end;min-height:44px}
+.mk-m{font-size:var(--eq-t-1);color:var(--softer);margin-top:2px;overflow-wrap:anywhere}
+.mk-soll{font-family:var(--fdisp);font-size:var(--eq-t-3);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mk-ok{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;cursor:pointer;white-space:nowrap;
+  border:1px solid color-mix(in srgb,var(--mint) 60%,transparent);border-radius:12px;background:transparent;color:var(--mint-2);
+  font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:600;transition:background var(--eq-kurz) ease,border-color var(--eq-kurz) ease}
+.mk-ok:hover:not(:disabled){border-color:var(--mint);background:var(--surface-2)}
+.erledigt .mk-ok,.erledigt .mk-ok:disabled{opacity:1;cursor:default;color:var(--ok);border-color:transparent}
+.erledigt .mk-ok::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:7px}
+.mk-actions .ef-knoepfe .eq-btn{flex:1 1 160px}
 
 /* Handwerker: Zahlung gegen Fortschritt */
 .gwt{margin-bottom:22px}
@@ -1700,10 +1789,34 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 
 @media(max-width:1199px){
   .g-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .eq-haupt{grid-template-columns:minmax(0,1fr);gap:var(--eq-a5)}
+}
+/* Zwischen 900 und 1199 ist die Hauptkarte einspaltig und breit genug für drei Kacheln nebeneinander */
+@media(min-width:900px) and (max-width:1199px){
+  .eq-fakten{grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--eq-a3)}
+  .eq-fakt{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:var(--eq-a4)}
+  .eq-fakt-w{font-size:var(--eq-t-5);margin-top:2px;text-align:left}
 }
 @media(max-width:899px){
   .g-2,.tiles{grid-template-columns:minmax(0,1fr)}
   .gw-kacheln{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* Einheiten als Liste: oben Bezeichnung und Miete, darunter Mieter und Status, bei offener Miete eine Zeile zum Bestätigen */
+  .eq-tab-kopf{display:none}
+  .eq-tab-z{grid-template-columns:minmax(0,1fr) auto;gap:4px var(--eq-a3);padding:12px 0}
+  .eq-c-n{grid-column:1;grid-row:1}
+  .eq-tab-z .eq-c-b{grid-column:2;grid-row:1}
+  .eq-c-m{grid-column:1;grid-row:2}
+  .eq-tab-z .eq-c-f{display:none}
+  /* Rechts in der zweiten Zeile steht der Mieteingang (eingegangen, fällig am …); bei einer freien Einheit „frei" */
+  .eq-c-s{display:none}
+  .eq-c-e{grid-column:2;grid-row:2;justify-self:end}
+  .eq-frei .eq-c-s{display:block;grid-column:2;grid-row:2;justify-self:end}
+  .eq-frei .eq-c-e{display:none}
+  .eq-faellig .eq-c-e{grid-column:1 / -1;grid-row:3;justify-self:stretch;justify-content:space-between;min-height:44px;margin-top:6px}
+  .eq-nur-schmal{display:inline}
+  .eq-c-e .eq-nur-schmal{font-size:var(--eq-t-1);font-weight:600;color:var(--soft)}
+  .eq-c-e .eq-warnt{color:var(--warn)}
+  .eq-c-zus{display:inline;margin-left:6px}
   /* Zahlung gegen Fortschritt: fünf Spalten brauchen Platz. Darunter Zeilen mit Beschriftung. */
   .gwt-kopf{display:none}
   .gwt-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:13px 12px}
@@ -1782,7 +1895,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .sheet{width:100%;max-height:calc(90vh - var(--eq-tastatur,0px));max-height:calc(92dvh - var(--eq-tastatur,0px));
     border-radius:24px 24px 0 0;border-bottom:none;padding-bottom:env(safe-area-inset-bottom);animation-name:eq-rauf}
   .sheet-grip{display:block;flex:0 0 auto;width:40px;height:4px;border-radius:99px;background:var(--stroke-2);margin:10px auto 0}
-  .sheet-h{padding:12px 20px 0}
+  .sheet-h{padding:12px 20px 12px}
   .sheet-b{--eq-fr:20px;padding-top:14px}
   .eq-frage{padding:14px 20px}
   .ef-actions.eq-fest{padding-bottom:14px}
@@ -1798,6 +1911,19 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .eq-start-raster{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .eq-start-raster .eq-platz{height:104px}
 
+  .eq-haupt{padding:20px var(--eq-a4);gap:20px}
+  .eq-puffer{grid-template-columns:auto minmax(0,1fr)}
+  .eq-puffer-z{grid-column:2;text-align:left;display:flex;align-items:baseline;gap:var(--eq-a2)}
+  .eq-obj{padding:var(--eq-a4)}
+  .eq-obj-fuss{grid-template-columns:minmax(0,1fr);gap:var(--eq-a2)}
+  .eq-obj-fuss>div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--eq-a3)}
+  .eq-obj-fuss b{margin:0}
+  .eq-abschnitt-t{font-size:var(--eq-t-5)}
+  .mk-row{grid-template-columns:minmax(0,1fr) auto;padding:12px}
+  .mk-row .mk-ok,.mk-row .mk-da{grid-column:1 / -1;margin-top:8px}
+  .mk-row .mk-da{justify-content:flex-start}
+  .mk-o{display:block;margin:2px 0 0}
+  .eq-haupt-zeile .eq-info{margin-right:-13px}
   .hello.has-ava{gap:14px}
   .hello-ava{width:56px;height:56px}
   .hello-t{font-size:20px}
@@ -2681,10 +2807,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=51"></script>
-<script src="./data-save.js?v=51"></script>
-<script src="./finance-engine.js?v=51"></script>
-<script src="./app.js?v=51"></script>
+<script src="./data-loader.js?v=52"></script>
+<script src="./data-save.js?v=52"></script>
+<script src="./finance-engine.js?v=52"></script>
+<script src="./app.js?v=52"></script>
 
 <script>
 /* =====================================================================
