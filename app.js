@@ -1382,12 +1382,14 @@
   // Brücken für data-save.js
   window.setD = (neu) => { D = neu; };
   window.refreshView = () => {
-    // Falls das aktuelle Objekt gelöscht wurde: zurück zur Übersicht
-    const bekannt = currentView === "overview" || currentView === "vermietung"
-      || (D.streams || []).some(x => x.id === currentView);
+    // Falls das aktuelle Objekt gelöscht wurde: zurück zur Übersicht. Ein gelöschtes Projekt führt zu den Tools.
+    const projektseite = String(currentView).indexOf("projekt:") === 0;
+    const bekannt = currentView === "overview" || currentView === "vermietung" || currentView === "tools"
+      || (D.streams || []).some(x => x.id === currentView)
+      || (projektseite && projekte().some(p => projektAnsicht(p) === currentView));
     const weg = fokusWeg(document.activeElement);
     buildRail();
-    route(bekannt ? currentView : "overview");
+    route(bekannt ? currentView : projektseite ? "tools" : "overview");
     fokusAufWeg(weg);
   };
 
@@ -1487,42 +1489,60 @@
 
   // Zeigt eine Frage pro Schritt. schritte = [{ id, frage, hinweis, typ, platzhalter,
   // einheit, pflicht, optionen:[{t,v}], vorgabe, ueberspringbar }]
+  // Für Fragen mit zwei Angaben: felder:[{ id, label, typ, einheit, platzhalter, vorgabe, auswahl:[{t,v}] }].
+  // hinweis darf eine Funktion der bisherigen Antworten sein. alternative:{ text, werte } ist ein zweiter Knopf,
+  // der feste Antworten setzt. wenn(antworten) === false überspringt den Schritt.
   // aufFertig(antworten) wird am Ende aufgerufen.
   function openAssistent(titel, schritte, aufFertig) {
     const antworten = {};
     let idx = 0;
     const sheet = openSheet(titel, "", `<div id="asBody"></div>`);
     const bodyEl = sheet.querySelector("#asBody");
+    const gilt = (i) => !schritte[i].wenn || schritte[i].wenn(antworten) !== false;
+    const naechster = (i) => { for (let k = i + 1; k < schritte.length; k++) if (gilt(k)) return k; return -1; };
+    const voriger = (i) => { for (let k = i - 1; k >= 0; k--) if (gilt(k)) return k; return -1; };
 
     function punkte() {
       return `<div class="wc-steps">${schritte.map((_, i) =>
         `<span class="${i < idx ? "done" : i === idx ? "on" : ""}"></span>`).join("")}</div>`;
     }
+    function feldHtml(x, i, mitLabel) {
+      const wert = antworten[x.id] != null ? antworten[x.id] : (x.vorgabe != null ? x.vorgabe : "");
+      const kennung = i === 0 ? "asInput" : "asInput" + (i + 1);
+      const eingabe = x.auswahl
+        ? `<select class="ef-i as-i" id="${kennung}" data-as="${esc(x.id)}">${x.auswahl.map(o =>
+            `<option value="${esc(o.v)}"${String(o.v) === String(wert) ? " selected" : ""}>${esc(o.t)}</option>`).join("")}</select>`
+        : `<input class="ef-i as-i" id="${kennung}" data-as="${esc(x.id)}" type="${x.typ || "text"}"
+             placeholder="${esc(x.platzhalter || "")}" value="${esc(wert)}"
+             ${x.typ === "number" ? 'inputmode="decimal" step="any"' : ""}>
+           ${x.einheit ? `<span class="as-einheit">${esc(x.einheit)}</span>` : ""}`;
+      return `${mitLabel && x.label ? `<label class="ef-l eq-as-l" for="${kennung}">${esc(x.label)}</label>` : ""}
+        <div class="as-feld">${eingabe}</div>`;
+    }
 
     function zeige() {
       const f = schritte[idx];
       const istWahl = !!f.optionen;
+      const felder = f.felder || [f];
+      const hinweis = typeof f.hinweis === "function" ? f.hinweis(antworten) : f.hinweis;
+      const letzter = naechster(idx) < 0;
+      const zurueck = voriger(idx);
       bodyEl.innerHTML = `
         <div class="wc-hero" style="padding-bottom:16px">
           ${punkte()}
           <div class="wc-badge">Schritt ${idx + 1} von ${schritte.length}</div>
           <div class="wc-t" style="font-size:19px">${esc(f.frage)}</div>
-          ${f.hinweis ? `<div class="wc-d">${esc(f.hinweis)}</div>` : ""}
+          ${hinweis ? `<div class="wc-d">${esc(hinweis)}</div>` : ""}
         </div>
         ${istWahl
           ? `<div class="frage-opts">${f.optionen.map(o =>
               `<button class="frage-opt" data-v="${esc(o.v)}">${esc(o.t)}</button>`).join("")}</div>`
-          : `<div class="as-feld">
-               <input class="ef-i as-i" id="asInput" type="${f.typ || "text"}"
-                 placeholder="${esc(f.platzhalter || "")}"
-                 value="${esc(antworten[f.id] != null ? antworten[f.id] : (f.vorgabe != null ? f.vorgabe : ""))}"
-                 ${f.typ === "number" ? 'inputmode="decimal" step="any"' : ""}>
-               ${f.einheit ? `<span class="as-einheit">${esc(f.einheit)}</span>` : ""}
-             </div>
+          : `${felder.map((x, i) => feldHtml(x, i, !!f.felder)).join("")}
              <div class="ef-msg" id="asMsg"></div>`}
         <div class="as-nav">
-          ${istWahl ? "" : `<button class="wc-cta prem" id="asWeiter">${idx === schritte.length - 1 ? "Fertig" : "Weiter"}</button>`}
-          ${idx > 0 ? `<button class="wc-cta" id="asZurueck" style="margin-top:10px">Zurück</button>` : ""}
+          ${istWahl ? "" : `<button class="wc-cta prem" id="asWeiter">${esc(f.weiterText || (letzter ? "Fertig" : "Weiter"))}</button>`}
+          ${f.alternative && !istWahl ? `<button class="wc-cta" id="asAlternative" style="margin-top:10px">${esc(f.alternative.text)}</button>` : ""}
+          ${zurueck >= 0 ? `<button class="wc-cta" id="asZurueck" style="margin-top:10px">Zurück</button>` : ""}
           ${f.ueberspringbar && !istWahl ? `<div class="wc-skip"><a href="#" id="asSkip">Überspringen</a></div>` : ""}
         </div>`;
 
@@ -1531,43 +1551,144 @@
           antworten[f.id] = b.dataset.v; weiter();
         });
       } else {
-        const inp = bodyEl.querySelector("#asInput");
-        setTimeout(() => { try { inp.focus(); } catch (_) {} }, 120);
+        const eingaben = Array.from(bodyEl.querySelectorAll("[data-as]"));
+        setTimeout(() => { try { eingaben[0].focus(); } catch (_) {} }, 120);
         const abschicken = () => {
-          const wert = (inp.value || "").trim();
-          if (f.pflicht && !wert) {
+          const werte = eingaben.map(n => (n.value || "").trim());
+          if (f.pflicht && !werte[0]) {
             const m = bodyEl.querySelector("#asMsg");
             m.textContent = "Bitte ausfüllen, um fortzufahren."; m.className = "ef-msg bad";
             return;
           }
-          antworten[f.id] = wert; weiter();
+          eingaben.forEach((n, i) => { antworten[n.dataset.as] = werte[i]; });
+          weiter();
         };
         bodyEl.querySelector("#asWeiter").onclick = abschicken;
-        inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); abschicken(); } };
+        eingaben.forEach((n, i) => {
+          if (n.tagName !== "SELECT") n.onkeydown = (e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            // Eingabetaste: zum nächsten Feld, im letzten Feld weiter
+            if (eingaben[i + 1]) { try { eingaben[i + 1].focus(); } catch (_) {} } else abschicken();
+          };
+        });
         const sk = bodyEl.querySelector("#asSkip");
-        if (sk) sk.onclick = (e) => { e.preventDefault(); antworten[f.id] = ""; weiter(); };
+        if (sk) sk.onclick = (e) => { e.preventDefault(); eingaben.forEach(n => { antworten[n.dataset.as] = ""; }); weiter(); };
+        const alt = bodyEl.querySelector("#asAlternative");
+        if (alt) alt.onclick = () => { Object.assign(antworten, f.alternative.werte); weiter(); };
       }
       const zb = bodyEl.querySelector("#asZurueck");
-      if (zb) zb.onclick = () => { idx--; zeige(); };
+      if (zb) zb.onclick = () => { idx = zurueck; zeige(); };
     }
 
     async function weiter() {
       sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
-      if (idx < schritte.length - 1) { idx++; zeige(); return; }
+      const n = naechster(idx);
+      if (n >= 0) { idx = n; zeige(); return; }
       // Letzter Schritt: speichern
+      const zuletzt = idx;
       bodyEl.innerHTML = `<div class="wc-hero"><div class="wc-t" style="font-size:18px">Wird gespeichert…</div></div>`;
       try {
         await aufFertig(antworten);
       } catch (e) {
         bodyEl.innerHTML = `<div class="wc-hero">
           <div class="wc-t" style="font-size:18px">Das hat nicht geklappt</div>
-          <div class="wc-d">${esc(window.fehlerText(e))}</div></div>
+          <div class="wc-d">${esc((e && e.eqText) || window.fehlerText(e))}</div></div>
           <button class="wc-cta prem" id="asNochmal">Nochmal versuchen</button>`;
-        bodyEl.querySelector("#asNochmal").onclick = () => { idx = schritte.length - 1; zeige(); };
+        bodyEl.querySelector("#asNochmal").onclick = () => { idx = zuletzt; zeige(); };
       }
     }
     zeige();
     return sheet;
+  }
+
+  // Zahl aus einer Antwort des Assistenten: leer bleibt leer, Komma zählt wie Punkt
+  const asZahl = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v === "" || v == null || !isFinite(n) ? null : n; };
+
+  // Geführtes Anlegen eines Projekts (Abschnitt 12.8): eine Frage pro Schritt, alles außer dem Namen lässt sich überspringen.
+  function assistentProjekt() {
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    // Planungsdaten aus den bisherigen Antworten – daraus ergibt sich die Gesamtinvestition
+    const planAus = (a) => {
+      const plan = { v: 1, status: "pruefung" };
+      const kp = asZahl(a.kaufpreis), makler = asZahl(a.makler_pct);
+      if (kp != null && kp >= 0) plan.kaufpreis = kp;
+      if (a.bundesland) { plan.bundesland = a.bundesland; plan.grest_pct = grestVon(a.bundesland); }
+      if (makler != null && makler >= 0) plan.makler_pct = makler;
+      return plan;
+    };
+    const investAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] }).INV;
+    const hatPreis = (a) => (asZahl(a.kaufpreis) || 0) > 0;
+    const schritte = [
+      { id: "name", frage: "Wie soll das Projekt heißen?",
+        hinweis: "Zum Beispiel die Adresse aus dem Inserat.",
+        typ: "text", pflicht: true, platzhalter: "z. B. Bergstraße 12" },
+      { frage: "Wo liegt das Objekt?",
+        hinweis: "Das Bundesland bestimmt die Grunderwerbsteuer.",
+        felder: [
+          { id: "ort", label: "Ort", typ: "text", platzhalter: "z. B. Bremen" },
+          { id: "bundesland", label: "Bundesland", auswahl: [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] }))) }
+        ], ueberspringbar: true },
+      { id: "kaufpreis", frage: "Was soll es kosten?",
+        hinweis: "Der Kaufpreis ohne Nebenkosten. Die rechnet ESTRIQ dazu.",
+        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000" },
+      { frage: "Kaufst du über einen Makler?",
+        hinweis: "Mit Makler: Trag die Courtage ein. 3,57 % ist eine Annahme – der genaue Satz steht im Inserat.",
+        felder: [{ id: "makler_pct", label: "Courtage", typ: "number", einheit: "%", vorgabe: 3.57, platzhalter: "3,57" }],
+        weiterText: "Ja, mit Courtage",
+        alternative: { text: "Nein, ohne Makler", werte: { makler_pct: "0" } }, ueberspringbar: true },
+      { frage: "Wie groß ist es, und was bringt es an Kaltmiete?",
+        hinweis: "Weitere Einheiten trägst du gleich auf der Projektseite ein.",
+        felder: [
+          { id: "flaeche", label: "Fläche", typ: "number", einheit: "m²", platzhalter: "z. B. 72" },
+          { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650" }
+        ], ueberspringbar: true },
+      { id: "eigenkapital", frage: "Wie viel Eigenkapital bringst du mit?",
+        hinweis: (a) => "Du brauchst insgesamt " + eur(investAus(a)) + ".",
+        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 60000",
+        wenn: hatPreis },
+      { frage: "Zu welchen Bedingungen finanzierst du den Rest?",
+        hinweis: (a) => "Du finanzierst " + eur(Math.max(0, investAus(a) - (asZahl(a.eigenkapital) || 0))) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank.",
+        felder: [
+          { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: 3.5 },
+          { id: "tilgung", label: "Anfangstilgung im Jahr", typ: "number", einheit: "%", vorgabe: 2 }
+        ], ueberspringbar: true,
+        wenn: (a) => hatPreis(a) && a.eigenkapital !== "" && investAus(a) - (asZahl(a.eigenkapital) || 0) > 0 }
+    ];
+    openAssistent("Projekt anlegen", schritte, async (a) => {
+      const name = (a.name || "").trim() || "Projekt";
+      const heute = new Date().toISOString();
+      const plan = { ...planAus(a), angelegt_am: heute, geaendert_am: heute };
+      const INV = investAus(a);
+      // Reihenfolge: Objekt, dann Einheit, dann Kredit. Scheitert ein späterer Schritt, bleibt das Projekt bestehen.
+      const neu = await projektAnlegen({
+        name, slug: projektSlug(name), ort: (a.ort || "").trim(), icon: "home", notiz: "",
+        invest: rund2(INV) || null, nk_als_puffer: true, projekt: plan
+      });
+      const fehlt = [];
+      const flaeche = asZahl(a.flaeche), kalt = asZahl(a.kalt);
+      if (flaeche != null || kalt != null) {
+        try {
+          await neueEinheit(neu.id, { bezeichnung: "Einheit 1", flaeche, status: "vermietet", kalt_fix: kalt, nk_fix: null,
+            zahltag: 1, mieter: "", einzug: null, vertrag: {} });
+        } catch (_) { fehlt.push("die Einheit"); }
+      }
+      const zins = asZahl(a.zins), tilgung = asZahl(a.tilgung);
+      const summe = rund2(Math.max(0, INV - (asZahl(a.eigenkapital) || 0)));
+      if (hatPreis(a) && a.eigenkapital != null && a.eigenkapital !== "" && zins != null && tilgung != null && summe > 0) {
+        try {
+          await neuerKredit(neu.id, { name: "Darlehen", summe, zins_pa: zins, rate_monat: rund2(summe * (zins + tilgung) / 100 / 12),
+            start: null, rest_stand_betrag: null, rest_stand_datum: null, sondertilgung: null });
+        } catch (_) { fehlt.push("das Darlehen"); }
+      }
+      closeSheet();
+      try { await window.nachSpeichern(); }
+      catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      geheZu("projekt:" + neu.slug);
+      showToast(fehlt.length
+        ? "Projekt angelegt. Nicht gespeichert: " + fehlt.join(" und ") + ". Trag das bitte auf der Projektseite nach."
+        : "Projekt angelegt.");
+    });
   }
 
   // Geführtes Anlegen eines Mietobjekts
@@ -2489,9 +2610,10 @@
   // Zeigt in der Navigation, wo man gerade ist
   function railMarkieren(id) {
     const isMiete = mietStreams().some(s => s.id === id) || id === "vermietung";
+    const isProjekt = String(id).indexOf("projekt:") === 0;   // Projektseiten gehören zu den Tools
     $$("#rail .rail-btn").forEach(b => {
       const d = b.dataset.id;
-      const an = !!d && (d === id || (d === "vermietung" && isMiete));
+      const an = !!d && (d === id || (d === "vermietung" && isMiete) || (d === "tools" && isProjekt));
       b.classList.toggle("on", an);
       if (an) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
@@ -2618,6 +2740,7 @@
     if (id === "overview") renderOverview(host);
     else if (id === "vermietung") renderVermietung(host);
     else if (id === "tools") renderTools(host);
+    else if (String(id).indexOf("projekt:") === 0) renderProjekt(host, String(id).slice(8));
     else renderStream(host, id);
     if (wechsel) $(".scroll").scrollTop = 0;
   }
@@ -2766,11 +2889,12 @@
   // Karte in der Objektansicht
   function nebenkostenKarte(s) {
     if (!hatModul()) return nebenkostenGesperrt(s);
-    const jahr = new Date().getFullYear() - 1;   // Abrechnung betrifft das Vorjahr
+    // Abrechnung betrifft das Vorjahr. Im Projekt geht es um die erwarteten Kosten des laufenden Jahres.
+    const jahr = new Date().getFullYear() - (s.istProjekt ? 0 : 1);
     const karte = el(`<div class="card nk-card clickable" role="button" tabindex="0">
       <div class="card-h">
-        <div><div class="card-t">Nebenkostenabrechnung ${jahr}</div>
-          <div class="card-s">Was zahlt jeder Mieter nach, was bekommt er zurück?</div></div>
+        <div><div class="card-t">${s.istProjekt ? "Erwartete Nebenkosten" : "Nebenkostenabrechnung"} ${jahr}</div>
+          <div class="card-s">${s.istProjekt ? "Was ist umlagefähig, und was bleibt an dir hängen?" : "Was zahlt jeder Mieter nach, was bekommt er zurück?"}</div></div>
         <button type="button" class="add-btn" id="nkOeffnen">Öffnen</button>
       </div>
       <div class="card-b" id="nkVorschau"><div class="note">Wird geladen…</div></div></div>`);
@@ -2783,8 +2907,8 @@
       const v = karte.querySelector("#nkVorschau");
       if (!v) return;
       if (!posten.length) {
-        v.innerHTML = `<div class="eq-leer" style="padding:8px 0 4px">Für ${jahr} sind noch keine Kosten erfasst. In drei Schritten zur Abrechnung: Kosten erfassen, Verteilung prüfen, Ergebnis je Einheit.</div>`;
-        karte.querySelector("#nkOeffnen").textContent = "Abrechnung starten";
+        v.innerHTML = `<div class="eq-leer" style="padding:8px 0 4px">Für ${jahr} sind noch keine Kosten erfasst. ${s.istProjekt ? "Trag ein, mit welchen Nebenkosten du rechnest – am besten aus der letzten Abrechnung des Verkäufers." : "In drei Schritten zur Abrechnung: Kosten erfassen, Verteilung prüfen, Ergebnis je Einheit."}</div>`;
+        karte.querySelector("#nkOeffnen").textContent = s.istProjekt ? "Kosten erfassen" : "Abrechnung starten";
         return;
       }
       const r = nkVerteilung(s, posten), b = nkBilanz(r), k = nkKontrolle(r);
@@ -2982,7 +3106,7 @@
     });
     const zurueck = (meldung) => () => {
       showToast(meldung);
-      const s2 = (D.streams || []).find(x => x._id === s._id) || s;
+      const s2 = objektMitId(s._id) || s;
       openNkAbrechnung(s2, jahr, 1);
     };
     efBind(sheet,
@@ -3130,9 +3254,11 @@
     if (!gw.length) {
       if (!frei) return modulVorschau("gewerke");
       const leer = el(`<div class="card">
-        <div class="card-h"><div><div class="card-t">Handwerker</div>
-          <div class="card-s">Zahlung gegen Baufortschritt</div></div></div>
-        <div class="card-b"><div class="eq-leer">Noch kein Handwerker erfasst. Leg den ersten an – ESTRIQ zeigt dann, ob du mehr bezahlt hast, als gebaut wurde.
+        <div class="card-h"><div><div class="card-t">${s.istProjekt ? "Sanierung und Handwerker" : "Handwerker"}</div>
+          <div class="card-s">${s.istProjekt ? "Angebote für die Sanierung" : "Zahlung gegen Baufortschritt"}</div></div></div>
+        <div class="card-b"><div class="eq-leer">${s.istProjekt
+          ? "Noch kein Angebot erfasst. Trag die Angebote der Handwerker ein – so kennst du die Kosten der Sanierung, bevor du kaufst."
+          : "Noch kein Handwerker erfasst. Leg den ersten an – ESTRIQ zeigt dann, ob du mehr bezahlt hast, als gebaut wurde."}
           <div><button type="button" class="add-btn" id="addGewerk">+ Handwerker</button></div></div></div></div>`);
       leer.querySelector("#addGewerk").onclick = () => openGewerkEdit(s, null, true);
       return leer;
@@ -3144,7 +3270,12 @@
     // Ø Fortschritt nach Auftragswert gewichtet – große Aufträge zählen stärker
     const fortschritt = soll ? gw.reduce((a, g) => a + g.soll * g.fortschritt, 0) / soll : 0;
     const quote = soll ? gezahlt / soll * 100 : 0;
-    const z = hwGesamtZustand(gw);
+    // Im Projekt liegen meist nur Angebote vor: dann sagt der Zustand, was sie zusammen kosten
+    const z = s.istProjekt && !gezahlt
+      ? { klasse: "", titel: "Angebote über " + eur(soll), text: planVon(s).sanierung_auto
+          ? "Diese Summe ist dein Sanierungsbudget."
+          : "Dein Sanierungsbudget liegt bei " + eur(planVon(s).sanierung) + ". Mit dem Schalter oben übernimmst du stattdessen die Summe der Angebote." }
+      : hwGesamtZustand(gw);
 
     const zeilen = gw.map(g => {
       const kl = hwStufe(g), a = HW_AMPEL[kl];
@@ -3163,8 +3294,8 @@
 
     const karte = el(`<div class="card">
       <div class="card-h">
-        <div><div class="card-t">Handwerker${frei ? "" : ' <span class="lock-badge">Premium</span>'}</div>
-          <div class="card-s">${mehrzahl(gw.length, "Handwerker", "Handwerker")} · Zahlung gegen Baufortschritt</div></div>
+        <div><div class="card-t">${s.istProjekt ? "Sanierung und Handwerker" : "Handwerker"}${frei ? "" : ' <span class="lock-badge">Premium</span>'}</div>
+          <div class="card-s">${mehrzahl(gw.length, "Handwerker", "Handwerker")} · ${s.istProjekt ? "Angebote für die Sanierung" : "Zahlung gegen Baufortschritt"}</div></div>
         <button type="button" class="add-btn" id="addGewerk">${frei ? "+ Handwerker" : "Freischalten"}</button>
       </div>
       <div class="card-b">
@@ -3277,7 +3408,7 @@
   }
   // Nach dem Speichern zurück ins Fenster des Handwerkers, mit dem neuen Stand
   function hwZurueck(s, gewerkId) {
-    const s2 = (D.streams || []).find(x => x._id === s._id);
+    const s2 = objektMitId(s._id);
     if (s2 && gewerkeVon(s2).some(x => x.id === gewerkId)) openGewerkDetail(s2, gewerkId);
   }
 
@@ -3951,9 +4082,14 @@
   let toolFilter = "alle";
 
   function renderTools(host) {
-    $("#eyebrow").textContent = "Lernecke";
-    $("#pageTitle").textContent = "Rechner & Wissen";
-    $("#pageSub").textContent = RECHNER.length + " Rechner · " + WISSEN.length + " Themen";
+    const anzahl = projekte().filter(p => !istVerworfen(p)).length;
+    $("#eyebrow").textContent = "Planen und rechnen";
+    $("#pageTitle").textContent = "Tools";
+    $("#pageSub").textContent = mehrzahl(anzahl, "Projekt", "Projekte") + " · " + RECHNER.length + " Rechner · " + WISSEN.length + " Themen";
+
+    // Projekte stehen ganz oben, über Rechnern und Wissen
+    projekteBereich().forEach(k => host.appendChild(k));
+    host.appendChild(abschnittKopf("Rechner und Wissen", "Schnelle Einzelfragen – gespeichert wird hier nichts"));
 
     // Filterleiste
     const filter = el(`<div class="tl-filter">
@@ -4189,6 +4325,54 @@
   // Jede Kennzahl bekommt ein kleines "i". Aufbau: Was ist das, wie rechnet ESTRIQ,
   // was ist ein guter Wert, und eine kleine Grafik zur Veranschaulichung.
   const KPI_INFO = {
+    eigenkapital: {
+      titel: "Eigenkapitalbedarf",
+      kurz: "So viel Geld musst du selbst mitbringen.",
+      text: "Die Bank finanziert meist nur einen Teil. Den Rest zahlst du aus eigener Tasche – oft die Kaufnebenkosten und einen Teil des Kaufpreises.",
+      formel: "Gesamtinvestition − Darlehen",
+      gut: "Viele Banken erwarten, dass du mindestens die Kaufnebenkosten selbst zahlst.",
+      merke: "Plane zusätzlich eine Reserve ein. Das Eigenkapital sollte nicht dein letztes Geld sein."
+    },
+    nettomietrendite: {
+      titel: "Nettomietrendite",
+      kurz: "Was von der Miete nach den laufenden Kosten bleibt, gemessen an der Gesamtinvestition.",
+      text: "Von der Kaltmiete geht ab, was du nicht auf die Mieter umlegen kannst: Instandhaltung, Verwaltung, weitere Kosten und Mietausfall. Die Finanzierung bleibt außen vor.",
+      formel: "(Kaltmiete − laufende Kosten) × 12 ÷ Gesamtinvestition × 100",
+      gut: "Sie liegt immer unter der Bruttomietrendite. Der Abstand zeigt, wie viel die laufenden Kosten wegnehmen.",
+      merke: "Die laufenden Kosten sind Annahmen. Ändere sie, sobald du genauere Zahlen kennst."
+    },
+    cashflowplan: {
+      titel: "Cashflow nach Plan",
+      kurz: "Was im Monat übrig bleibt, wenn alles so kommt wie geplant.",
+      text: "Von der geplanten Kaltmiete gehen die laufenden Kosten und die Kreditraten ab. Ist die Zahl negativ, legst du jeden Monat Geld drauf.",
+      formel: "Kaltmiete − laufende Kosten − Kreditraten",
+      gut: "Null oder mehr heißt: Das Objekt trägt sich selbst.",
+      merke: "Steuern sind nicht eingerechnet. Die Nebenkosten der Mieter zählen nicht mit, sie laufen nur durch."
+    },
+    ekrendite: {
+      titel: "Eigenkapitalrendite",
+      kurz: "Was dein eingesetztes Geld im Jahr an Überschuss bringt.",
+      text: "Sie setzt den Cashflow eines Jahres ins Verhältnis zu deinem Eigenkapital. Die Tilgung zählt hier nicht mit, obwohl sie dein Vermögen erhöht.",
+      formel: "Cashflow nach Plan × 12 ÷ Eigenkapitalbedarf × 100",
+      gut: "Ist sie negativ, legst du drauf. Brauchst du kein Eigenkapital, gibt es keine Zahl.",
+      merke: "Mit wenig Eigenkapital schwankt diese Zahl stark. Sieh sie immer zusammen mit dem Cashflow an."
+    },
+    kaufpreisfaktor: {
+      titel: "Kaufpreisfaktor",
+      kurz: "Wie viele Jahreskaltmieten das Objekt kostet.",
+      text: "Ein schneller Vergleich: Je niedriger der Faktor, desto günstiger ist das Objekt im Verhältnis zur Miete.",
+      formel: "Kaufpreis ÷ Jahreskaltmiete",
+      gut: "Einen festen Zielwert gibt es nicht. Vergleiche mit ähnlichen Objekten in derselben Gegend – in gefragten Lagen sind höhere Faktoren üblich.",
+      merke: "Der Faktor kennt weder Zustand noch Kosten. Er taugt für den ersten Blick, nicht für die Entscheidung."
+    },
+    preism2: {
+      titel: "Preis je m²",
+      kurz: "Kaufpreis und Kaltmiete, jeweils auf einen Quadratmeter gerechnet.",
+      text: "So vergleichst du Objekte verschiedener Größe und siehst, ob Preis und Miete zur Lage passen.",
+      formel: "Kaufpreis ÷ Fläche und Kaltmiete ÷ Fläche",
+      gut: "Vergleiche mit ähnlichen Objekten in derselben Gegend und mit dem Mietspiegel.",
+      merke: "Stimmt die Fläche nicht, stimmen beide Zahlen nicht. Prüf die Wohnfläche in den Unterlagen."
+    },
     einnahmen: {
       titel: "Einnahmen pro Monat",
       kurz: "Was tatsächlich jeden Monat auf dein Konto kommt.",
@@ -5003,9 +5187,11 @@
     }).join("");
     const karte = el(`<div class="card eq-haupt">
       <div class="eq-haupt-l">
+        ${o.marke ? `<div class="eq-haupt-marke"><span class="eq-marke ${o.marke.stufe}">${esc(o.marke.wort)}</span></div>` : ""}
         <div class="eq-haupt-zeile"><span>${esc(o.zeile)}</span>${o.info ? infoKnopf(o.info) : ""}</div>
         <div class="eq-haupt-zahl${o.minus ? " minus" : ""}">${esc(o.zahl)}</div>
         <div class="eq-haupt-unter">${esc(o.unter || "")}</div>
+        ${(o.zweite || []).map(z => `<div class="eq-haupt-zweite">${esc(z)}</div>`).join("")}
         ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${esc(o.anteilText || o.anteil + " Prozent des möglichen Ertrags")}"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
       </div>
       ${fakten ? `<div class="eq-fakten">${fakten}</div>` : ""}
@@ -5031,11 +5217,11 @@
   // Zeile „Bezeichnung – Wert" mit Erklär-Knopf
   const kvInfo = (k, v, schluessel) => `<div class="kv"><span class="eq-kv-k">${esc(k)}${infoKnopf(schluessel)}</span><b>${v}</b></div>`;
 
-  // Überschrift eines Abschnitts, auf Wunsch mit einem zurückhaltenden Knopf rechts
+  // Überschrift eines Abschnitts, auf Wunsch mit einem zurückhaltenden Knopf rechts (knopf.haupt: als Hauptknopf)
   function abschnittKopf(titel, unter, knopf) {
     const kopf = el(`<div class="eq-abschnitt">
       <div><div class="eq-abschnitt-t">${esc(titel)}</div>${unter ? `<div class="eq-abschnitt-s">${esc(unter)}</div>` : ""}</div>
-      ${knopf ? `<button type="button" class="add-btn" id="${knopf.id}">${esc(knopf.text)}</button>` : ""}</div>`);
+      ${knopf ? `<button type="button" class="${knopf.haupt ? "eq-btn" : "add-btn"}" id="${knopf.id}">${esc(knopf.text)}</button>` : ""}</div>`);
     if (knopf) kopf.querySelector("button").onclick = knopf.tun;
     return kopf;
   }
@@ -5633,20 +5819,38 @@
 
   // Einheiten: am Handy eine Liste, auf breiten Bildschirmen eine Tabelle.
   // Spalten: Bezeichnung, Mieter, Fläche, Miete, Status, Mieteingang im laufenden Monat.
+  // Im Projekt (istProjekt): geplante Miete statt Mieteingang, dazu eine Summenzeile. Keine Mietkontrolle, keine Tarifgrenze.
   function einheitenKarte(s) {
     const einheiten = s.einheiten || [];
-    const anlegen = () => { if (pruefeEinheit()) assistentEinheit(s); };
+    const plan = !!s.istProjekt;
+    const anlegen = plan
+      ? () => { if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; } openUnitEdit(s, null, true); }
+      : () => { if (pruefeEinheit()) assistentEinheit(s); };
+    const oeffnen = (u) => plan ? openUnitEdit(s, u, false) : openUnitSheet(s, u);
     if (!einheiten.length) {
       const leer = el(`<div class="card">
-        <div class="card-h"><div><div class="card-t">Einheiten</div></div></div>
-        <div class="card-b"><div class="eq-leer">Noch keine Einheit angelegt. Mit der ersten Wohnung beginnen die Zahlen zu laufen.
-          <div><button type="button" class="eq-btn" id="addUnit">Einheit anlegen</button></div></div></div></div>`);
+        <div class="card-h"><div><div class="card-t">${plan ? "Einheiten und Mieten" : "Einheiten"}</div></div></div>
+        <div class="card-b"><div class="eq-leer">${plan
+          ? "Noch keine Einheit geplant. Trag Fläche und geplante Miete ein – daraus rechnet ESTRIQ Rendite und Cashflow."
+          : "Noch keine Einheit angelegt. Mit der ersten Wohnung beginnen die Zahlen zu laufen."}
+          <div><button type="button" class="eq-btn" id="addUnit">${plan ? "Einheit hinzufügen" : "Einheit anlegen"}</button></div></div></div></div>`);
       leer.querySelector("#addUnit").onclick = anlegen;
       return leer;
     }
     const monat = monatsName();
     const zeilen = einheiten.map((u, i) => {
       const inc = FE.unitIncome(u);
+      if (plan) {
+        const leer = u.status !== "vermietet";
+        const jeM2 = u.flaeche && inc.kalt ? eur2(inc.kalt / u.flaeche) : "";
+        return `<div class="eq-tab-z${leer ? " eq-frei" : ""}" data-i="${i}" role="row" tabindex="0" title="Antippen öffnet die Einheit">
+          <div class="eq-c-n" role="cell">${esc(u.wohnung || "Einheit")}</div>
+          <div class="eq-c-m" role="presentation">${esc([u.flaeche ? qm(u.flaeche) : "ohne Fläche", jeM2 ? jeM2 + " je m²" : ""].filter(Boolean).join(" · "))}</div>
+          <div class="eq-c-f" role="cell">${u.flaeche ? qm(u.flaeche) : "—"}</div>
+          <div class="eq-c-b" role="cell">${eur(inc.kalt)}</div>
+          <div class="eq-c-f eq-c-q" role="cell">${jeM2 || "—"}</div>
+          <div class="eq-c-s" role="cell">${leer ? `<span class="eq-marke achtung">leer</span>` : `<span class="eq-marke">vermietet übernommen</span>`}</div></div>`;
+      }
       const stand = mietStand(u);
       const frei = stand === "frei";
       // gerade als eingegangen vermerkt: Die Zeile behält ihre Höhe, damit nichts unter den Finger rutscht
@@ -5661,27 +5865,42 @@
       const klassen = "eq-tab-z" + (frei ? " eq-frei" : "") + (stand === "offen" || frisch ? " eq-faellig" : "");
       return `<div class="${klassen}" data-i="${i}" role="row" tabindex="0" title="Antippen öffnet die Einheit">
         <div class="eq-c-n" role="cell">${esc(u.wohnung || "Einheit")}</div>
-        <div class="eq-c-m" role="cell">${frei ? `<span class="eq-leise">kein Mieter</span>` : u.mieter ? esc(u.mieter) : `<span class="eq-leise">ohne Namen</span>`}<span class="eq-nur-schmal">${u.flaeche ? "\u00A0· " + qm(u.flaeche) : ""}</span></div>
+        <div class="eq-c-m" role="cell">${frei ? `<span class="eq-leise">kein Mieter</span>` : u.mieter ? esc(u.mieter) : `<span class="eq-leise">ohne Namen</span>`}<span class="eq-nur-schmal">${u.flaeche ? " · " + qm(u.flaeche) : ""}</span></div>
         <div class="eq-c-f" role="cell">${u.flaeche ? qm(u.flaeche) : "—"}</div>
         <div class="eq-c-b${frei ? " eq-moeglich" : ""}" role="cell">${eur(inc.gesamt)}${frei ? `<span class="eq-c-zus">möglich</span>` : ""}</div>
         <div class="eq-c-s" role="cell">${status}</div>
         <div class="eq-c-e" role="cell">${eingang}</div></div>`;
     }).join("");
-    const karte = el(`<div class="card eq-einheiten">
-      <div class="card-h"><div><div class="card-t">Einheiten</div>
-        <div class="card-s">Zeile antippen für Mieter, Vertrag und Mieteingang</div></div>
+    let summe = "";
+    if (plan) {
+      const km = einheiten.reduce((a, u) => a + (FE.unitIncome(u).kalt || 0), 0);
+      const f = einheiten.reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+      summe = `<div class="eq-werte eq-tab-summe">
+        ${wert("Fläche", f ? qm(f) : "—", mehrzahl(einheiten.length, "Einheit", "Einheiten"))}
+        ${wert("Kaltmiete", eur(km), "im Monat, alle Einheiten")}
+        ${wert("Kaltmiete je m²", f ? eur2(km / f) : "—", "im Schnitt")}
+      </div>`;
+    }
+    const karte = el(`<div class="card eq-einheiten${plan ? " eq-geplant" : ""}">
+      <div class="card-h"><div><div class="card-t">${plan ? "Einheiten und Mieten" : "Einheiten"}</div>
+        <div class="card-s">${plan ? "Geplante Miete je Einheit, kalt im Monat. Zeile antippen zum Bearbeiten" : "Zeile antippen für Mieter, Vertrag und Mieteingang"}</div></div>
         <button type="button" class="add-btn" id="addUnit">+ Einheit</button></div>
       <div class="card-b"><div class="eq-tab" role="table" aria-label="Einheiten">
-        <div class="eq-tab-kopf" role="row">
+        ${plan
+          ? `<div class="eq-tab-kopf" role="row">
+          <div role="columnheader">Bezeichnung</div><div role="columnheader" class="eq-c-f">Fläche</div>
+          <div role="columnheader" class="eq-c-b">geplante Miete</div><div role="columnheader" class="eq-c-f">je m²</div>
+          <div role="columnheader">Status</div></div>`
+          : `<div class="eq-tab-kopf" role="row">
           <div role="columnheader">Bezeichnung</div><div role="columnheader">Mieter</div>
           <div role="columnheader" class="eq-c-f">Fläche</div><div role="columnheader" class="eq-c-b">Miete</div>
-          <div role="columnheader">Status</div><div role="columnheader">Miete ${esc(monat)}</div></div>
-        ${zeilen}</div></div></div>`);
+          <div role="columnheader">Status</div><div role="columnheader">Miete ${esc(monat)}</div></div>`}
+        ${zeilen}</div>${summe}</div></div>`);
     karte.querySelectorAll(".eq-tab-z").forEach(z => {
       const u = einheiten[Number(z.dataset.i)];
-      z.onclick = (e) => { if (e.target.closest("button")) return; openUnitSheet(s, u); };
+      z.onclick = (e) => { if (e.target.closest("button")) return; oeffnen(u); };
       // e.repeat: Wer die Eingabetaste auf „Eingegangen" gedrückt hält, öffnet nicht danach noch das Fenster
-      z.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === z && !e.repeat) { e.preventDefault(); openUnitSheet(s, u); } };
+      z.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === z && !e.repeat) { e.preventDefault(); oeffnen(u); } };
     });
     karte.querySelectorAll("[data-miete]").forEach(b =>
       b.onclick = () => mieteSetzen(einheiten[Number(b.dataset.miete)], true, b));
@@ -5878,20 +6097,23 @@
   }
 
   // Karte eines Kredits: Restschuld, Fortschritt, Rate mit Zins und Tilgung, Ende, Verlauf
-  function creditCard(kr) {
+  // geplant: Darlehen eines Projekts. Solange der Beginn offen ist, gibt es noch keine Restschuld von heute.
+  function creditCard(kr, geplant) {
     const k = kreditStand(kr);
     const st = kr.sondertilgung || null;
-    const kopf = [eur(k.summe) + " Darlehen", kr.zinsPa ? prozent(kr.zinsPa, null) + " Zins" : "", k.plan && k.plan.startKey ? (k.beginntNoch ? "ab " : "seit ") + monatLang(k.plan.startKey) : ""].filter(Boolean).join(" · ");
+    const offen = !!geplant && !kr.start;
+    const kopf = [eur(k.summe) + " Darlehen", kr.zinsPa ? prozent(kr.zinsPa, null) + " Zins" : "", offen ? "Beginn noch offen" : k.plan && k.plan.startKey ? (k.beginntNoch ? "ab " : "seit ") + monatLang(k.plan.startKey) : ""].filter(Boolean).join(" · ");
     return el(`<div class="card eq-kredit">
       <div class="eq-kredit-kopf">
         <div><div class="card-t">${esc(kr.name || "Kredit")}</div><div class="card-s">${esc(kopf)}</div></div>
-        ${kreditMarke(k)}
+        ${offen && !k.tilgtNie ? `<span class="eq-marke">geplant</span>` : kreditMarke(k)}
       </div>
       <div class="eq-kredit-haupt">
-        <div class="eq-kredit-zeile">Restschuld heute</div>
-        <div class="eq-kredit-zahl">${eur2(k.rest)}</div>
-        <div class="eq-fort" role="img" aria-label="${Math.round(k.anteil)} Prozent getilgt"><i style="width:${k.anteil.toFixed(1)}%"></i></div>
-        <div class="eq-kredit-unter">${k.beginntNoch ? "Noch nichts getilgt – die erste Rate ist im " + esc(monatLang(k.plan.startKey)) + " fällig." : prozent(k.anteil, 0) + " getilgt · " + eur(k.getilgt) + " von " + eur(k.summe)}</div>
+        <div class="eq-kredit-zeile">${offen ? "Darlehenssumme" : "Restschuld heute"}</div>
+        <div class="eq-kredit-zahl">${eur2(offen ? k.summe : k.rest)}</div>
+        <div class="eq-fort" role="img" aria-label="${offen ? 0 : Math.round(k.anteil)} Prozent getilgt"><i style="width:${offen ? 0 : k.anteil.toFixed(1)}%"></i></div>
+        <div class="eq-kredit-unter">${offen ? "Noch nichts getilgt. Der Plan rechnet so, als wäre die erste Rate in diesem Monat fällig."
+          : k.beginntNoch ? "Noch nichts getilgt – die erste Rate ist im " + esc(monatLang(k.plan.startKey)) + " fällig." : prozent(k.anteil, 0) + " getilgt · " + eur(k.getilgt) + " von " + eur(k.summe)}</div>
       </div>
       <div class="eq-werte">
         ${wert("Rate im Monat", eur2(k.rate), k.beginntNoch || k.fertig ? "" : "davon " + eur(k.zins) + " Zins, " + eur(k.tilgung) + " Tilgung")}
@@ -5929,17 +6151,27 @@
     if (!kredite.length) {
       const leer = el(`<div class="card">
         <div class="card-h"><div><div class="card-t">Finanzierung</div></div></div>
-        <div class="card-b"><div class="eq-leer">Noch kein Kredit erfasst. Mit einem Kredit zeigt ESTRIQ Restschuld, Rate und das Ende der Laufzeit.
+        <div class="card-b"><div class="eq-leer">${s.istProjekt
+          ? "Noch keine Finanzierung eingetragen. Ohne Darlehen rechnet ESTRIQ so, als würdest du alles aus Eigenkapital bezahlen."
+          : "Noch kein Kredit erfasst. Mit einem Kredit zeigt ESTRIQ Restschuld, Rate und das Ende der Laufzeit."}
           <div><button type="button" class="add-btn" id="addCredit">+ Kredit hinzufügen</button></div></div></div></div>`);
       leer.querySelector("#addCredit").onclick = anlegen;
       return leer;
     }
     const teile = [abschnittKopf("Finanzierung", mehrzahl(kredite.length, "Kredit", "Kredite") + " · Karte antippen für den Tilgungsplan",
       { id: "addCredit", text: "+ Kredit", tun: anlegen })];
-    if (kredite.length > 1) teile.push(finanzKarte(kredite));
+    if (s.istProjekt) {
+      const z = projektZahlen(s);
+      teile.push(el(`<div class="card pad eq-fin-zeile"><div class="eq-werte">
+        ${wert("Darlehen", eur(z.DAR), mehrzahl(z.kredite, "Kredit", "Kredite"))}
+        ${wert("Rate im Monat", eur2(z.RATE), "Zins und Tilgung")}
+        ${wert("Eigenkapital", eur(z.EK), z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : "Gesamtinvestition − Darlehen")}
+        ${wert("Tilgung im 1. Jahr", eur2(z.tilgung1), "so viel Schuld baust du ab")}
+      </div></div>`));
+    } else if (kredite.length > 1) teile.push(finanzKarte(kredite));
     const raster = el(`<div class="grid${kredite.length > 1 ? " eq-kredite" : ""}"></div>`);
     kredite.forEach(kr => {
-      const c = creditCard(kr);
+      const c = creditCard(kr, s.istProjekt);
       c.classList.add("clickable");
       c.setAttribute("role", "button"); c.setAttribute("tabindex", "0");
       c.onclick = () => openCreditSheet(kr);
@@ -5990,6 +6222,681 @@
     $("#pageSub").textContent = [s.ort, "Mietobjekt", mehrzahl(m.einheiten, "Einheit", "Einheiten"), flaeche ? qm(flaeche) : ""]
       .filter(Boolean).join(" · ");
     objektSeite(host, s);
+  }
+
+  /* ================= PROJEKTE ================= */
+  // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
+  // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
+
+  // Grunderwerbsteuer je Bundesland in Prozent. Stand Juli 2026 – bei einer Änderung nur hier anpassen.
+  const GREST = [
+    ["BW", "Baden-Württemberg", 5.0], ["BY", "Bayern", 3.5], ["BE", "Berlin", 6.0], ["BB", "Brandenburg", 6.5],
+    ["HB", "Bremen", 5.5], ["HH", "Hamburg", 5.5], ["HE", "Hessen", 6.0], ["MV", "Mecklenburg-Vorpommern", 6.0],
+    ["NI", "Niedersachsen", 5.0], ["NW", "Nordrhein-Westfalen", 6.5], ["RP", "Rheinland-Pfalz", 5.0], ["SL", "Saarland", 6.5],
+    ["SN", "Sachsen", 5.5], ["ST", "Sachsen-Anhalt", 5.0], ["SH", "Schleswig-Holstein", 6.5], ["TH", "Thüringen", 5.0]
+  ];
+  const GREST_STAND = "Stand Juli 2026, bitte prüfen.";
+  const grestVon = (kuerzel) => { const z = GREST.find(x => x[0] === kuerzel); return z ? z[2] : null; };
+  const bundeslandName = (kuerzel) => { const z = GREST.find(x => x[0] === kuerzel); return z ? z[1] : ""; };
+
+  const PROJEKT_STATUS = {
+    pruefung: "In Prüfung", besichtigt: "Besichtigt", angebot: "Angebot abgegeben",
+    finanzierung: "Finanzierung läuft", verworfen: "Verworfen"
+  };
+
+  const projekte = () => (D.projekte || []);
+  const projektAnsicht = (p) => "projekt:" + p.id;
+  // Objekt oder Projekt zu einer Datenbank-Kennung – für Fenster, die nach dem Speichern den frischen Stand brauchen
+  const objektMitId = (id) => (D.streams || []).concat(projekte()).find(x => x._id === id) || null;
+  // Wohin ein Objekt oder Projekt gehört: eigene Ansicht
+  const ansichtVon = (s) => s && s.istProjekt ? projektAnsicht(s) : s.id;
+
+  const zahlOder = (v, vorgabe) => { const n = Number(v); return v === null || v === undefined || v === "" || !isFinite(n) ? vorgabe : n; };
+  const rund2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const prozent2 = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %";
+  const zahl2 = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Planungsdaten mit allen Vorgaben. Die Grunderwerbsteuer kommt aus dem Bundesland, solange sie nicht eigens gesetzt ist.
+  function planVon(p) {
+    const roh = (p && p.plan) || {};
+    const plan = { ...roh };
+    plan.kaufpreis = zahlOder(roh.kaufpreis, null);
+    plan.grest_pct = zahlOder(roh.grest_pct, zahlOder(grestVon(roh.bundesland), 0));
+    plan.notar_pct = zahlOder(roh.notar_pct, 2);
+    plan.makler_pct = zahlOder(roh.makler_pct, 3.57);
+    plan.kaufkosten_sonst = zahlOder(roh.kaufkosten_sonst, 0);
+    plan.sanierung = zahlOder(roh.sanierung, 0);
+    plan.sanierung_auto = !!roh.sanierung_auto;
+    plan.instand_m2 = zahlOder(roh.instand_m2, 1);
+    plan.verwaltung_einheit = zahlOder(roh.verwaltung_einheit, 25);
+    plan.kosten_sonst = zahlOder(roh.kosten_sonst, 0);
+    plan.ausfall_pct = zahlOder(roh.ausfall_pct, 3);
+    plan.status = PROJEKT_STATUS[roh.status] ? roh.status : "pruefung";
+    return plan;
+  }
+
+  // Alle Kennzahlen eines Projekts (Abschnitt 12.6 des Auftrags). finance-engine.js bleibt unberührt:
+  // Kaltmiete und Tilgungsplan kommen von dort, die Projekt-Formeln stehen hier.
+  // fall: { mieteFaktor, rateZusatz, sanierungFaktor } für den Stresstest – nichts davon wird gespeichert.
+  function projektZahlen(p, fall) {
+    fall = fall || {};
+    const plan = planVon(p);
+    const einheiten = p.einheiten || [];
+    const kredite = FE.creditsOf(p);
+    const KP = plan.kaufpreis || 0;
+    const grest = KP * plan.grest_pct / 100, notar = KP * plan.notar_pct / 100, makler = KP * plan.makler_pct / 100;
+    const KNK = grest + notar + makler + plan.kaufkosten_sonst;
+    const angebote = gewerkeVon(p).reduce((a, g) => a + g.soll, 0);
+    const SAN = (plan.sanierung_auto ? angebote : plan.sanierung) * (fall.sanierungFaktor || 1);
+    const INV = KP + KNK + SAN;
+    const kmVoll = einheiten.reduce((a, u) => a + (FE.unitIncome(u).kalt || 0), 0);
+    const KM = kmVoll * (fall.mieteFaktor == null ? 1 : fall.mieteFaktor);
+    const F = einheiten.reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+    const N = einheiten.length;
+    const DAR = kredite.reduce((a, k) => a + (Number(k.summe) || 0), 0);
+    const RATE = kredite.reduce((a, k) => a + (Number(k.abtragMonat) || 0), 0) + (fall.rateZusatz || 0);
+    const EK = Math.max(0, INV - DAR);
+    const instand = plan.instand_m2 * F, verwaltung = plan.verwaltung_einheit * N, ausfall = KM * plan.ausfall_pct / 100;
+    const BK = instand + verwaltung + plan.kosten_sonst + ausfall;
+    const cashflow = KM - BK - RATE;
+    const tilgung1 = kredite.reduce((a, k) => {
+      const pl = FE.creditPlan(k);
+      return a + (pl ? pl.rows.slice(0, 12).reduce((x, r) => x + r.tilgung, 0) : 0);
+    }, 0);
+    return {
+      plan, KP, grest, notar, makler, KNK, SAN, angebote, INV, KM, kmVoll, F, N, DAR, RATE, EK,
+      instand, verwaltung, ausfall, BK, cashflow, tilgung1,
+      zuVielFinanziert: DAR > INV + 0.005,
+      hoechsterZins: kredite.reduce((a, k) => Math.max(a, Number(k.zinsPa) || 0), 0),
+      kredite: kredite.length,
+      brutto: INV > 0 ? KM * 12 / INV * 100 : null,
+      netto: INV > 0 ? (KM - BK) * 12 / INV * 100 : null,
+      faktor: KM > 0 && KP > 0 ? KP / (KM * 12) : null,
+      ekRendite: EK > 0 ? cashflow * 12 / EK * 100 : null,
+      kpM2: F > 0 && KP > 0 ? KP / F : null,
+      kmM2: F > 0 ? KM / F : null
+    };
+  }
+
+  // Das Urteil: trägt sich das Objekt? Stufe, Wort, Satz und – wenn sie zutrifft – eine zweite Zeile.
+  function projektUrteil(z) {
+    const zweite = [];
+    if (z.kredite && z.brutto != null && z.brutto < z.hoechsterZins) zweite.push("Die Miete bringt weniger, als der Kredit kostet.");
+    if (z.zuVielFinanziert) zweite.push("Die Finanzierung ist höher als die Investition.");
+    if (!z.kredite) zweite.push("Noch ohne Finanzierung gerechnet.");
+    if (!(z.KP > 0) || !(z.kmVoll > 0))
+      return { stufe: "", wort: "Noch kein Urteil", kurz: "noch kein Urteil", satz: "Trag Kaufpreis und Mieten ein, dann siehst du hier, ob sich das Objekt trägt.", zweite: [], offen: true };
+    const betrag = eur2(Math.abs(z.cashflow));
+    if (z.cashflow >= 0) return { stufe: "gut", wort: "Gut", kurz: "trägt sich", satz: "Trägt sich. Bleiben " + betrag + " im Monat.", zweite };
+    if (z.cashflow >= -0.1 * z.KM) return { stufe: "achtung", wort: "Achtung", kurz: "trägt sich knapp nicht", satz: "Trägt sich knapp nicht. Du legst " + betrag + " im Monat drauf.", zweite };
+    return { stufe: "kritisch", wort: "Kritisch", kurz: "trägt sich nicht", satz: "Trägt sich nicht. Du legst " + betrag + " im Monat drauf.", zweite };
+  }
+
+  // Kurzname eines Projekts: aus dem Namen, nur Kleinbuchstaben, Ziffern und Bindestrich, mit der Vorsilbe p-.
+  // Gibt es ihn schon (bei Objekten oder Projekten), wird -2, -3 … angehängt.
+  function projektSlug(name) {
+    const basis = "p-" + (String(name || "").toLowerCase()
+      .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "projekt");
+    const vergeben = new Set((D.streams || []).concat(projekte()).map(x => x.id));
+    if (!vergeben.has(basis)) return basis;
+    let n = 2;
+    while (vergeben.has(basis + "-" + n)) n++;
+    return basis + "-" + n;
+  }
+
+  // Projekte sind noch nicht eingerichtet, wenn die Datenbank die Art „projekt" ablehnt oder die Funktion fehlt
+  const PROJEKT_FEHLT = "Projekte sind noch nicht eingerichtet. Bitte versuch es später noch einmal.";
+  function projektNichtEingerichtet(e) {
+    const s = String((e && (e.message || e.details || e.hint)) || "").toLowerCase();
+    return s.includes("objekte_art_check") || funktionFehlt(e) || (s.includes("projekt") && s.includes("column"));
+  }
+  const doppelterName = (e) => { const s = String((e && (e.message || e.code)) || "").toLowerCase(); return s.includes("duplicate key") || s.includes("23505"); };
+
+  // Legt ein Projekt an. Meldet die Datenbank trotz Prüfung einen doppelten Kurznamen, folgt ein Versuch mit Zufallszahl.
+  async function projektAnlegen(werte) {
+    try { return { id: await window.neuesProjekt(werte), slug: werte.slug }; }
+    catch (e) {
+      if (projektNichtEingerichtet(e)) { const f = new Error(PROJEKT_FEHLT); f.eqText = PROJEKT_FEHLT; throw f; }
+      if (!doppelterName(e)) throw e;
+      const slug = werte.slug + "-" + Math.floor(1000 + Math.random() * 9000);
+      return { id: await window.neuesProjekt({ ...werte, slug }), slug };
+    }
+  }
+
+  // Speichert Planungsdaten. Unbekannte Felder bleiben stehen; die Gesamtinvestition wird neu berechnet.
+  async function planSpeichern(p, aenderung) {
+    const plan = { v: 1, ...(p.planRoh || {}), ...aenderung, geaendert_am: new Date().toISOString() };
+    const z = projektZahlen({ ...p, plan: { ...p.plan, ...aenderung } });
+    await window.speichereProjektPlan(p._id, plan, rund2(z.INV) || null);
+  }
+  // Die gespeicherte Gesamtinvestition (objekte.invest) folgt der Rechnung – etwa nach einem neuen Handwerker-Angebot
+  function investAbgleichen(p) {
+    if (istGesperrt()) return;
+    const inv = rund2(projektZahlen(p).INV) || null;
+    if (Math.abs((Number(p.invest) || 0) - (inv || 0)) < 0.005) return;
+    p.invest = inv || undefined;
+    window.speichereProjektPlan(p._id, { v: 1, ...(p.planRoh || {}) }, inv).catch(() => {});
+  }
+
+  /* ---------- Bereich Projekte auf der Tools-Seite ---------- */
+  let zeigeVerworfene = false;   // Umschalter „Verworfene anzeigen" – gilt, solange die App offen ist
+
+  // Zuletzt geändert zuerst. Eine eigene Zeitspalte gibt es nicht, der Zeitpunkt steht in den Planungsdaten.
+  const projektZeit = (p) => String((p.planRoh && (p.planRoh.geaendert_am || p.planRoh.angelegt_am)) || "");
+  const projekteSortiert = (liste) => liste.slice().sort((a, b) =>
+    projektZeit(b).localeCompare(projektZeit(a)) || String(a.name || "").localeCompare(String(b.name || ""), "de"));
+  const istVerworfen = (p) => planVon(p).status === "verworfen";
+
+  // Karte eines Projekts: Name, Ort, Status, das Urteil in Wort und Farbe, darunter drei Zahlen
+  function projektKarte(p) {
+    const z = projektZahlen(p), u = projektUrteil(z);
+    const verworfen = z.plan.status === "verworfen";
+    const karte = el(`<div class="card clickable eq-obj eq-pkarte" data-id="${esc(p.id)}" role="button" tabindex="0">
+      <div class="eq-obj-kopf">
+        <div class="tile-ic">${svg("home")}</div>
+        <div class="eq-obj-n"><div class="tile-name">${esc(p.name)}</div><div class="tile-loc">${esc(p.ort || "Projekt")}</div></div>
+      </div>
+      <div class="eq-purteil">${u.offen
+        ? `<span class="eq-leise">Noch kein Urteil – es fehlen Kaufpreis oder Mieten</span>`
+        : `<span class="eq-marke ${u.stufe}">${esc(u.wort)}</span><span>${esc(u.kurz)}</span>`}
+        <span class="eq-marke eq-pstat${verworfen ? " eq-aus" : ""}">${esc(PROJEKT_STATUS[z.plan.status])}</span></div>
+      <div class="eq-obj-fuss">
+        <div><span>Gesamtinvestition</span><b>${z.INV > 0 ? eur(z.INV) : "—"}</b></div>
+        <div><span>Bruttomietrendite</span><b>${z.brutto != null && z.KM > 0 ? prozent2(z.brutto) : "—"}</b></div>
+        <div><span>Cashflow nach Plan</span><b${!u.offen && z.cashflow < 0 ? ' class="eq-minus"' : ""}>${u.offen ? "—" : eur2(z.cashflow)}</b></div>
+      </div>
+      ${verworfen ? `<button type="button" class="add-btn eq-pkarte-knopf" data-wieder="1">Wieder aufnehmen</button>` : ""}</div>`);
+    karte.onclick = (e) => { if (e.target.closest("button")) return; geheZu(projektAnsicht(p)); };
+    karte.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === karte && !e.repeat) { e.preventDefault(); geheZu(projektAnsicht(p)); } };
+    const w = karte.querySelector("[data-wieder]");
+    if (w) w.onclick = () => projektStatusSetzen(p, "pruefung", w);
+    return karte;
+  }
+
+  // Der Bereich: Überschrift mit Hauptknopf, Karten, darunter der Umschalter für Verworfene
+  function projekteBereich() {
+    const alle = projekte();
+    const aktiv = projekteSortiert(alle.filter(p => !istVerworfen(p)));
+    const verworfen = projekteSortiert(alle.filter(istVerworfen));
+    const teile = [abschnittKopf("Projekte",
+      aktiv.length ? "Objekte, die du prüfst, bevor du sie kaufst" : "",
+      aktiv.length ? { id: "addProjekt", text: "Projekt anlegen", tun: assistentProjekt, haupt: true } : null)];
+    if (!aktiv.length) {
+      const leer = el(`<div class="card"><div class="eq-leer"><div>Du überlegst, ein Objekt zu kaufen? Leg es als Projekt an und sieh, ob es sich trägt.</div>
+        <div><button type="button" class="eq-btn" id="addProjekt">Projekt anlegen</button></div></div></div>`);
+      leer.querySelector("#addProjekt").onclick = assistentProjekt;
+      teile.push(leer);
+    } else {
+      const raster = el(`<div class="grid eq-projekte"></div>`);
+      aktiv.forEach(p => raster.appendChild(projektKarte(p)));
+      teile.push(raster);
+    }
+    if (verworfen.length) {
+      const um = el(`<div class="eq-verworfen">
+        <button type="button" class="eq-umschalter" id="verworfeneZeigen" aria-expanded="${zeigeVerworfene}">${zeigeVerworfene ? "Verworfene ausblenden" : "Verworfene anzeigen"} (${verworfen.length})</button></div>`);
+      um.querySelector("button").onclick = () => { zeigeVerworfene = !zeigeVerworfene; route("tools"); };
+      teile.push(um);
+      if (zeigeVerworfene) {
+        const raster = el(`<div class="grid eq-projekte"></div>`);
+        verworfen.forEach(p => raster.appendChild(projektKarte(p)));
+        teile.push(raster);
+      }
+    }
+    return teile;
+  }
+
+  // Setzt den Status eines Projekts. Verwerfen und Wieder aufnehmen brauchen keine Rückfrage – es geht nichts verloren.
+  async function projektStatusSetzen(p, status, knopf) {
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return false; }
+    if (knopf) knopf.disabled = true;
+    try { await planSpeichern(p, { status }); }
+    catch (e) { if (knopf) knopf.disabled = false; showToast(window.fehlerText(e)); return false; }
+    const aufSeite = currentView === projektAnsicht(p);
+    if (status === "verworfen" && aufSeite) { currentView = "tools"; }
+    try { await window.nachSpeichern(); }
+    catch (_) { showToast(NEULADEN_HINWEIS); return false; }
+    showToast(status === "verworfen" ? p.name + " ist verworfen. Du findest es bei den Tools unter „Verworfene anzeigen“."
+      : status === "pruefung" && planVon(p).status === "verworfen" ? p.name + " ist wieder aufgenommen."
+      : "Status: " + PROJEKT_STATUS[status] + ".");
+    return true;
+  }
+
+  /* ---------- Die Projektseite ---------- */
+  // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
+  // Einheiten, Finanzierung, Handwerker und Nebenkosten sind die Bausteine der Objektseite – sie bekommen das
+  // Projekt mit und entscheiden über das Kennzeichen istProjekt, was anders heißt.
+
+  const zahlKurz = (n) => (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+
+  // Kopf: Rückweg zu den Tools, Status zum Antippen, Hauptknopf und Menü
+  function projektKopf(p, z) {
+    const verworfen = z.plan.status === "verworfen";
+    const kopf = el(`<div class="eq-pkopf">
+      <button type="button" class="eq-zurueck" id="pZurueck"><span aria-hidden="true">‹</span> Tools</button>
+      <button type="button" class="eq-pstatus${verworfen ? " eq-aus" : ""}" id="pStatus" aria-haspopup="menu" title="Status ändern">
+        <span class="eq-pstatus-l">Status:</span> ${esc(PROJEKT_STATUS[z.plan.status])} <span class="eq-pstatus-p" aria-hidden="true">▾</span></button>
+      <div class="eq-pkopf-r">
+        ${verworfen
+          ? `<button type="button" class="eq-btn" id="pWieder">Wieder aufnehmen</button>`
+          : `<button type="button" class="eq-btn" id="pUebernehmen">In den Bestand übernehmen</button>`}
+        <button type="button" class="add-btn" id="pMenu" aria-haspopup="menu">Mehr</button>
+      </div></div>`);
+    kopf.querySelector("#pZurueck").onclick = () => geheZu("tools");
+    kopf.querySelector("#pStatus").onclick = (e) => openProjektStatusMenu(e.currentTarget, p);
+    kopf.querySelector("#pMenu").onclick = (e) => openProjektMenu(e.currentTarget, p);
+    const ue = kopf.querySelector("#pUebernehmen");
+    if (ue) ue.onclick = () => openUebernehmen(p);
+    const w = kopf.querySelector("#pWieder");
+    if (w) w.onclick = () => projektStatusSetzen(p, "pruefung", w);
+    return kopf;
+  }
+
+  function projektMenuZeigen(anchor, titel, eintraege) {
+    closeSubmenu();
+    const bd = el(`<div class="sub-bd"></div>`);
+    const menu = el(`<div class="submenu eq-pmenu">
+      <div class="submenu-t">${esc(titel)}</div>
+      ${eintraege.map((x, i) => `<div class="sub-item${x.an ? " on" : ""}" data-i="${i}">
+        <div class="sub-tx"><div class="sub-n">${esc(x.text)}</div>${x.unter ? `<div class="sub-m">${esc(x.unter)}</div>` : ""}</div></div>`).join("")}
+    </div>`);
+    document.body.appendChild(bd); document.body.appendChild(menu);
+    positioniereSubmenu(anchor, menu);
+    menu.querySelectorAll(".sub-item").forEach(it => it.onclick = () => { closeSubmenu(); eintraege[Number(it.dataset.i)].tun(); });
+    bd.onclick = closeSubmenu;
+  }
+  function openProjektStatusMenu(anchor, p) {
+    const jetzt = planVon(p).status;
+    projektMenuZeigen(anchor, "Status", Object.keys(PROJEKT_STATUS).map(k => ({
+      text: PROJEKT_STATUS[k], unter: k === jetzt ? "aktuell" : "", an: k === jetzt,
+      tun: () => { if (k !== jetzt) projektStatusSetzen(p, k); }
+    })));
+  }
+  function openProjektMenu(anchor, p) {
+    const verworfen = planVon(p).status === "verworfen";
+    projektMenuZeigen(anchor, "Projekt", [
+      { text: "Bearbeiten", unter: "Name, Ort, Baujahr, Inserat, Notiz", tun: () => openProjektEdit(p) },
+      verworfen
+        ? { text: "Wieder aufnehmen", unter: "Zurück in die Liste der Projekte", tun: () => projektStatusSetzen(p, "pruefung") }
+        : { text: "Verwerfen", unter: "Aus der Liste nehmen, nichts geht verloren", tun: () => projektStatusSetzen(p, "verworfen") },
+      { text: "Löschen", unter: "Mit allen Einheiten und Krediten entfernen", tun: () => openProjektLoeschen(p) }
+    ]);
+  }
+
+  // Urteil: die Hauptaussage der Seite. Ein Satz, die Zahl groß, Statusfarbe und Wort.
+  function projektUrteilKarte(p, z) {
+    const u = projektUrteil(z);
+    return hauptKarte({
+      zeile: "Cashflow nach Plan", info: "cashflowplan",
+      marke: u.offen ? null : { wort: u.wort, stufe: u.stufe },
+      zahl: u.offen ? "—" : eur2(z.cashflow), minus: !u.offen && z.cashflow < 0,
+      unter: u.satz, zweite: u.zweite,
+      fakten: [
+        { titel: "Eigenkapitalbedarf", wert: z.INV > 0 ? eur(z.EK) : "—",
+          text: z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : z.INV > 0 ? "von " + eur(z.INV) + " Gesamtinvestition" : "Trag zuerst den Kaufpreis ein",
+          zustand: z.zuVielFinanziert ? "achtung" : "" },
+        { titel: "Kaltmiete im Monat", wert: eur(z.KM),
+          text: z.N ? mehrzahl(z.N, "Einheit", "Einheiten") + (z.F ? ", " + qm(z.F) : "") : "Noch keine Einheit geplant" },
+        { titel: "Kosten und Raten im Monat", wert: eur(z.BK + z.RATE),
+          text: eur(z.BK) + " laufende Kosten, " + (z.kredite ? eur(z.RATE) + " Kreditraten" : "noch keine Kreditrate") }
+      ]
+    });
+  }
+
+  // Neun Kennzahlen in fester Reihenfolge. Jede hat ihr Erklärfenster.
+  function projektKennzahlen(p, z) {
+    const u = projektUrteil(z);
+    const oder = (ok, text) => ok ? text : "—";
+    const karten = [
+      kpiCard("coins", oder(z.INV > 0, eur(z.INV)), "Gesamt­investition", "Kaufpreis, Nebenkosten, Sanierung", false, null, "invest"),
+      kpiCard("wallet", oder(z.INV > 0, eur(z.EK)), "Eigen­kapital­bedarf", "Gesamtinvestition − Darlehen", false, null, "eigenkapital"),
+      kpiCard("trend", oder(z.brutto != null && z.KM > 0, prozent2(z.brutto)), "Brutto­miet­rendite", "Jahreskaltmiete ÷ Gesamtinvestition", false, null, "rendite"),
+      kpiCard("trend", oder(z.netto != null && z.KM > 0, prozent2(z.netto)), "Netto­miet­rendite", "nach laufenden Kosten", false, null, "nettomietrendite"),
+      kpiCard("wallet", oder(!u.offen, eur2(z.cashflow)), "Cashflow nach Plan", "im Monat, nach Kosten und Raten", !u.offen && z.cashflow >= 0, null, "cashflowplan"),
+      kpiCard("chart", oder(!u.offen && z.ekRendite != null, prozent2(z.ekRendite)), "Eigen­kapital­rendite", z.EK > 0 ? "Cashflow im Jahr ÷ Eigenkapital" : "ohne Eigenkapital keine Zahl", false, null, "ekrendite"),
+      kpiCard("chart", oder(z.faktor != null, zahl2(z.faktor)), "Kaufpreis­faktor", "Kaufpreis ÷ Jahreskaltmiete", false, null, "kaufpreisfaktor"),
+      kpiCard("home", oder(z.kpM2 != null, eur2(z.kpM2)), "Kaufpreis je m²", z.F ? "bei " + qm(z.F) : "noch ohne Fläche", false, null, "preism2"),
+      kpiCard("home", oder(z.kmM2 != null && z.KM > 0, eur2(z.kmM2)), "Kaltmiete je m²", "im Monat", false, null, "preism2")
+    ];
+    return el(`<div class="grid g-kpi eq-kpi-plan">${karten.join("")}</div>`);
+  }
+
+  // Balken aus Anteilen. teile = [{ name, wert, farbe }]
+  function anteilBalken(teile, beschreibung) {
+    const summe = teile.reduce((a, t) => a + Math.max(0, t.wert), 0);
+    if (!(summe > 0)) return "";
+    return `<div class="eq-anteile" role="img" aria-label="${esc(beschreibung)}">${teile.filter(t => t.wert > 0).map(t =>
+      `<i style="width:${(t.wert / summe * 100).toFixed(2)}%;background:${t.farbe}"></i>`).join("")}</div>`;
+  }
+
+  // Kauf: woraus sich die Gesamtinvestition zusammensetzt und wie sie bezahlt wird
+  function kaufKarte(p, z) {
+    const plan = z.plan, roh = p.planRoh || {};
+    if (!(z.KP > 0)) {
+      const leer = el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Kauf</div></div></div>
+        <div class="card-b"><div class="eq-leer"><div>Noch kein Kaufpreis eingetragen. Aus dem Kaufpreis rechnet ESTRIQ die Nebenkosten, die Gesamtinvestition und deinen Eigenkapitalbedarf.</div>
+          <div><button type="button" class="eq-btn" id="pKauf">Kaufdaten eintragen</button></div></div></div></div>`);
+      leer.querySelector("#pKauf").onclick = () => openKaufdaten(p);
+      return leer;
+    }
+    const land = bundeslandName(plan.bundesland);
+    const zeilen = [
+      { name: "Kaufpreis", wert: z.KP, farbe: "var(--eq-reihe-1)" },
+      { name: "Grunderwerbsteuer", wert: z.grest, farbe: "var(--eq-reihe-2)", zusatz: prozent(plan.grest_pct, null) + (land ? " · " + land : "") },
+      { name: "Notar und Grundbuch", wert: z.notar, farbe: "var(--eq-reihe-3)", zusatz: prozent(plan.notar_pct, null) + (roh.notar_pct == null ? " · Annahme" : "") },
+      { name: "Makler", wert: z.makler, farbe: "var(--eq-reihe-4)", zusatz: prozent(plan.makler_pct, null) + (roh.makler_pct == null ? " · Annahme" : "") },
+      { name: "Weitere Kaufkosten", wert: plan.kaufkosten_sonst, farbe: "var(--eq-reihe-5)" },
+      { name: "Sanierung", wert: z.SAN, farbe: "var(--eq-reihe-6)", zusatz: plan.sanierung_auto ? "Summe der Angebote" : "Budget" }
+    ];
+    const finanz = [
+      { name: "Darlehen", wert: Math.min(z.DAR, z.INV), farbe: "var(--eq-reihe-2)" },
+      { name: "Eigenkapital", wert: z.EK, farbe: "var(--eq-reihe-1)" }
+    ];
+    const anteil = (w) => z.INV > 0 ? Math.round(w / z.INV * 100) : 0;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Kauf</div>
+        <div class="card-s">Was der Kauf kostet und woher das Geld kommt</div></div>
+        <button type="button" class="add-btn" id="pKauf">Bearbeiten</button></div>
+      <div class="card-b">
+        ${anteilBalken(zeilen, "Kaufpreis " + anteil(z.KP) + " Prozent, Kaufnebenkosten " + anteil(z.KNK) + " Prozent, Sanierung " + anteil(z.SAN) + " Prozent der Gesamtinvestition")}
+        <div class="eq-kauf">
+          ${zeilen.map(t => `<div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:${t.farbe}"></i>${esc(t.name)}${t.zusatz ? `<small>${esc(t.zusatz)}</small>` : ""}</span><b>${eur2(t.wert)}</b></div>`).join("")}
+          <div class="kv eq-summe"><span>Gesamtinvestition</span><b>${eur2(z.INV)}</b></div>
+        </div>
+        <div class="card-t eq-zwischen">So wird sie bezahlt</div>
+        ${anteilBalken(finanz, "Darlehen " + anteil(Math.min(z.DAR, z.INV)) + " Prozent, Eigenkapital " + anteil(z.EK) + " Prozent")}
+        <div class="eq-kauf">
+          <div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:var(--eq-reihe-2)"></i>Darlehen${z.kredite ? `<small>${mehrzahl(z.kredite, "Kredit", "Kredite")}</small>` : `<small>noch keins eingetragen</small>`}</span><b>${eur2(z.DAR)}</b></div>
+          <div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:var(--eq-reihe-1)"></i>Eigenkapital<small>bringst du selbst mit</small></span><b>${eur2(z.EK)}</b></div>
+        </div>
+        ${z.zuVielFinanziert ? `<div class="note" style="margin-top:12px">Die Finanzierung ist höher als die Investition. Prüf die Darlehenssummen.</div>` : ""}
+      </div></div>`);
+    karte.querySelector("#pKauf").onclick = () => openKaufdaten(p);
+    return karte;
+  }
+
+  // Laufende Kosten: was nicht auf die Mieter umgelegt werden kann. Alles Annahmen, jede änderbar.
+  function kostenKarte(p, z) {
+    const plan = z.plan;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Laufende Kosten</div>
+        <div class="card-s">Im Monat, nicht auf die Mieter umlegbar</div></div>
+        <button type="button" class="add-btn" id="pKosten">Bearbeiten</button></div>
+      <div class="card-b">
+        <div class="eq-kauf">
+          <div class="kv"><span class="eq-kauf-n">Instandhaltung<small>Annahme: ${zahlKurz(plan.instand_m2)} € je m²</small></span><b>${eur2(z.instand)}</b></div>
+          <div class="kv"><span class="eq-kauf-n">Verwaltung<small>Annahme: ${zahlKurz(plan.verwaltung_einheit)} € je Einheit</small></span><b>${eur2(z.verwaltung)}</b></div>
+          <div class="kv"><span class="eq-kauf-n">Weitere Kosten<small>fester Betrag</small></span><b>${eur2(plan.kosten_sonst)}</b></div>
+          <div class="kv"><span class="eq-kauf-n">Mietausfall<small>Annahme: ${prozent(plan.ausfall_pct, null)} der Kaltmiete</small></span><b>${eur2(z.ausfall)}</b></div>
+          <div class="kv eq-summe"><span>Laufende Kosten im Monat</span><b>${eur2(z.BK)}</b></div>
+        </div>
+        <div class="note" style="margin-top:12px">Das sind Annahmen. Ändere sie, sobald du genauere Zahlen kennst.</div>
+      </div></div>`);
+    karte.querySelector("#pKosten").onclick = () => openKostenEdit(p);
+    return karte;
+  }
+
+  // Schalter über der Handwerker-Karte: Sanierungsbudget = Summe der Angebote
+  function sanierungSchalter(p, z) {
+    const an = z.plan.sanierung_auto;
+    const karte = el(`<div class="card eq-schalter-karte"><div class="opt-row">
+      <div class="opt-tx"><div class="opt-n">Sanierungsbudget aus den Angeboten übernehmen</div>
+        <div class="opt-m">${an ? "An: Dein Sanierungsbudget ist die Summe der Angebote, zurzeit " + eur(z.angebote) + "."
+          : "Aus: Es gilt dein eingetragenes Budget von " + eur(z.plan.sanierung) + ". Die Angebote zusammen: " + eur(z.angebote) + "."}</div></div>
+      <button type="button" class="opt-schalter${an ? " an" : ""}" id="pSanAuto" role="switch" aria-checked="${an}" aria-label="Sanierungsbudget aus den Angeboten übernehmen"><span></span></button>
+    </div></div>`);
+    const b = karte.querySelector("#pSanAuto");
+    b.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true;
+      try { await planSpeichern(p, { sanierung_auto: !an }); await window.nachSpeichern(); }
+      catch (e) { b.disabled = false; showToast(window.fehlerText(e)); return; }
+      showToast(!an ? "Das Budget folgt jetzt den Angeboten." : "Es gilt wieder dein eingetragenes Budget.");
+    };
+    return karte;
+  }
+
+  // Link zum Inserat: nur http und https, ohne Angabe wird https ergänzt
+  function inseratLink(v) {
+    const t = String(v || "").trim();
+    if (!t) return null;
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(t) ? t : "https://" + t);
+      return /^https?:$/.test(u.protocol) ? u : null;
+    } catch (_) { return null; }
+  }
+
+  function notizKarte(p, z) {
+    const link = inseratLink(z.plan.inserat);
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Notizen und Inserat</div></div>
+        <button type="button" class="add-btn" id="pEdit">Bearbeiten</button></div>
+      <div class="card-b">
+        ${p.note ? `<div class="eq-notiz">${esc(p.note)}</div>` : `<div class="eq-leise" style="margin-bottom:8px">Noch keine Notiz.</div>`}
+        <div class="kv${link ? "" : " muted"}"><span>Inserat</span><b>${link
+          ? `<a class="eq-link" href="${esc(link.href)}" target="_blank" rel="noopener noreferrer">${esc(link.hostname.replace(/^www\./, ""))} öffnen</a>`
+          : z.plan.inserat ? "Link ungültig" : "—"}</b></div>
+        <div class="kv${z.plan.baujahr ? "" : " muted"}"><span>Baujahr</span><b>${z.plan.baujahr ? esc(z.plan.baujahr) : "—"}</b></div>
+      </div></div>`);
+    karte.querySelector("#pEdit").onclick = () => openProjektEdit(p);
+    return karte;
+  }
+
+  function renderProjekt(host, slug) {
+    const p = projekte().find(x => x.id === slug);
+    $("#eyebrow").textContent = "Projekt";
+    if (!p) {
+      $("#pageTitle").textContent = "Projekt"; $("#pageSub").textContent = "";
+      const fehlt = el(`<div class="card eq-leer"><div>Dieses Projekt gibt es nicht mehr.</div>
+        <button type="button" class="eq-btn">Zu den Tools</button></div>`);
+      fehlt.querySelector("button").onclick = () => geheZu("tools");
+      host.appendChild(fehlt);
+      return;
+    }
+    const z = projektZahlen(p);
+    $("#pageTitle").textContent = p.name;
+    $("#pageSub").textContent = p.ort || bundeslandName(z.plan.bundesland) || "";
+    const teile = [
+      projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), kaufKarte(p, z),
+      einheitenKarte(p), finanzierungBereich(p), kostenKarte(p, z),
+      (hatModul() || z.plan.sanierung_auto) ? sanierungSchalter(p, z) : null, gewerkeKarte(p),
+      nebenkostenKarte(p), notizKarte(p, z)
+    ];
+    teile.forEach(t => (Array.isArray(t) ? t : [t]).forEach(k => { if (k) host.appendChild(k); }));
+    // Die gespeicherte Gesamtinvestition folgt der Rechnung (etwa nach einem neuen Angebot)
+    investAbgleichen(p);
+  }
+
+  /* ---------- Fenster der Projektseite ---------- */
+
+  // Kaufdaten: unter den Feldern steht live die Gesamtinvestition
+  function openKaufdaten(p) {
+    const z = projektZahlen(p), plan = z.plan;
+    const auto = plan.sanierung_auto;
+    const body = `
+      ${ef("Kaufpreis", "kaufpreis", plan.kaufpreis != null ? plan.kaufpreis : "", "number", { einheit: "€", min: 0, platzhalter: "z. B. 250000" })}
+      ${efTitel("Kaufnebenkosten")}
+      ${efSel("Bundesland", "bundesland", plan.bundesland || "",
+        [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] + " · " + prozent(x[2], 1) }))),
+        { hinweis: "Das Bundesland belegt die Grunderwerbsteuer vor. " + GREST_STAND })}
+      ${ef("Grunderwerbsteuer", "grest_pct", plan.grest_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Bleibt änderbar." })}
+      ${ef("Notar und Grundbuch", "notar_pct", plan.notar_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Annahme: 2 %. Die genaue Rechnung kommt vom Notar." })}
+      ${ef("Makler", "makler_pct", plan.makler_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Annahme: 3,57 %. Ohne Makler trägst du 0 ein." })}
+      ${ef("Weitere Kaufkosten", "kaufkosten_sonst", plan.kaufkosten_sonst || "", "number", { einheit: "€", min: 0, hinweis: "Zum Beispiel Gutachter oder Finanzierungskosten" })}
+      ${efTitel("Sanierung")}
+      ${auto
+        ? `<div class="note" style="margin-bottom:8px">Dein Sanierungsbudget ist die Summe der Angebote deiner Handwerker: ${eur2(z.angebote)}. Den Schalter dafür findest du auf der Projektseite über den Handwerkern.</div>`
+        : ef("Sanierungsbudget", "sanierung", plan.sanierung || "", "number", { einheit: "€", min: 0, hinweis: "Was du nach dem Kauf in das Objekt steckst" })}
+      <div class="eq-live" id="kdLive" role="status"></div>
+      ${efAktionen()}`;
+    const sheet = openSheet("Kaufdaten", p.name, body);
+    const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
+    const lesen = () => {
+      const w = efWerte(sheet);
+      const o = { kaufpreis: zahl(w.kaufpreis), bundesland: text(w.bundesland), grest_pct: zahl(w.grest_pct), notar_pct: zahl(w.notar_pct),
+        makler_pct: zahl(w.makler_pct), kaufkosten_sonst: zahl(w.kaufkosten_sonst) || 0 };
+      if (!auto) o.sanierung = zahl(w.sanierung) || 0;
+      return o;
+    };
+    const live = () => {
+      const n = projektZahlen({ ...p, plan: { ...p.plan, ...lesen() } });
+      sheet.querySelector("#kdLive").innerHTML = `<span>Gesamtinvestition</span><b>${eur2(n.INV)}</b>
+        <small>Kaufpreis ${eur2(n.KP)} + Kaufnebenkosten ${eur2(n.KNK)} + Sanierung ${eur2(n.SAN)}</small>`;
+    };
+    feld("bundesland").onchange = () => { const g = grestVon(feld("bundesland").value); if (g != null) feld("grest_pct").value = g; live(); };
+    sheet.querySelectorAll("input[data-f]").forEach(n => n.addEventListener("input", live));
+    live();
+    efBind(sheet, async () => await planSpeichern(p, lesen()));
+  }
+
+  // Laufende Kosten: vier Annahmen
+  function openKostenEdit(p) {
+    const plan = planVon(p);
+    const body = `
+      <div class="note" style="margin-bottom:14px">Das sind Annahmen für Kosten, die du nicht auf die Mieter umlegen kannst. Ändere sie, sobald du genauere Zahlen kennst.</div>
+      ${ef("Instandhaltung", "instand_m2", plan.instand_m2, "number", { einheit: "€ je m²", min: 0, hinweis: "Im Monat. Annahme: 1 € je m²" })}
+      ${ef("Verwaltung", "verwaltung_einheit", plan.verwaltung_einheit, "number", { einheit: "€ je Einheit", min: 0, hinweis: "Im Monat. Annahme: 25 € je Einheit" })}
+      ${ef("Weitere Kosten", "kosten_sonst", plan.kosten_sonst || "", "number", { einheit: "€", min: 0, hinweis: "Im Monat, zum Beispiel Kontoführung" })}
+      ${ef("Mietausfall", "ausfall_pct", plan.ausfall_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Anteil der Kaltmiete, der im Schnitt ausfällt. Annahme: 3 %" })}
+      ${efAktionen()}`;
+    const sheet = openSheet("Laufende Kosten", p.name, body);
+    efBind(sheet, async (w) => await planSpeichern(p, {
+      instand_m2: zahl(w.instand_m2), verwaltung_einheit: zahl(w.verwaltung_einheit),
+      kosten_sonst: zahl(w.kosten_sonst) || 0, ausfall_pct: zahl(w.ausfall_pct)
+    }));
+  }
+
+  // Projekt bearbeiten: Name, Ort, Baujahr, Inserat, Notiz. Die Art wird nie mitgeschickt.
+  function openProjektEdit(p) {
+    const plan = planVon(p);
+    const body = `
+      ${ef("Name", "name", p.name, "text", { pflicht: true, platzhalter: "z. B. Bergstraße 12" })}
+      ${ef("Ort", "ort", p.ort || "")}
+      ${ef("Baujahr", "baujahr", plan.baujahr || "", "number", { step: "1", min: 1000, max: 2200, platzhalter: "z. B. 1978" })}
+      ${ef("Link zum Inserat", "inserat", plan.inserat || "", "url", { platzhalter: "https://…" })}
+      ${efArea("Notiz", "notiz", p.note || "")}
+      ${efAktionen()}`;
+    const sheet = openSheet("Projekt bearbeiten", p.name, body);
+    efBind(sheet, async (w) => await window.speichereProjekt(p._id, {
+      name: text(w.name) || "Projekt", ort: text(w.ort), notiz: text(w.notiz),
+      projekt: { v: 1, ...(p.planRoh || {}), baujahr: w.baujahr ? Math.round(Number(w.baujahr)) : null, inserat: text(w.inserat), geaendert_am: new Date().toISOString() }
+    }));
+  }
+
+  // Löschen in zwei Schritten: Menü, dann diese Rückfrage
+  function openProjektLoeschen(p) {
+    const n = (p.einheiten || []).length, k = FE.creditsOf(p).length, g = gewerkeVon(p).length;
+    const dabei = [n ? mehrzahl(n, "Einheit", "Einheiten") : "", k ? mehrzahl(k, "Kredit", "Kredite") : "", g ? mehrzahl(g, "Handwerker", "Handwerker") : ""].filter(Boolean);
+    const sheet = openSheet("Projekt löschen?", p.name, `
+      <div class="eq-zustand kritisch"><div class="eq-zustand-tx">
+        <div class="eq-zustand-t">${esc(p.name)} wird endgültig gelöscht</div>
+        <div class="eq-zustand-d">Mit allen Einheiten, Krediten, Handwerkern und Nebenkosten${dabei.length ? " – das sind " + esc(dabei.join(", ")) : ""}. Das lässt sich nicht rückgängig machen.</div></div></div>
+      <div class="note">Willst du das Projekt nur aus der Liste nehmen? Dann wähl im Menü „Verwerfen“. Dabei geht nichts verloren.</div>
+      <div class="ef-actions eq-fest">
+        <div class="ef-msg" id="efMsg" role="status"></div>
+        <div class="ef-knoepfe">
+          <button type="button" class="ef-del armed" id="pLoeschenJa">Endgültig löschen</button>
+          <button type="button" class="eq-btn zweit" id="pLoeschenNein">Abbrechen</button>
+        </div></div>`);
+    sheet.querySelector("#pLoeschenNein").onclick = closeSheet;
+    const b = sheet.querySelector("#pLoeschenJa"), msg = sheet.querySelector("#efMsg");
+    b.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true; msg.textContent = "Lösche…"; msg.className = "ef-msg";
+      try { await loescheObjekt(p._id); }
+      catch (e) { msg.textContent = window.fehlerText(e); msg.className = "ef-msg bad"; b.disabled = false; return; }
+      closeSheet();
+      if (currentView === projektAnsicht(p)) currentView = "tools";
+      try { await window.nachSpeichern(); }
+      catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      showToast("Projekt gelöscht.");
+    };
+  }
+
+  /* ---------- In den Bestand übernehmen (Abschnitt 12.14) ---------- */
+  const UEBERNAHME_TEXT = {
+    kein_zugriff: "Du hast keinen Zugriff auf dieses Projekt.",
+    nicht_gefunden: "Dieses Projekt gibt es nicht mehr. Lade die Seite neu.",
+    kein_projekt: "Dieses Projekt ist schon im Bestand. Lade die Seite neu."
+  };
+  function openUebernehmen(p) {
+    const einheiten = p.einheiten || [];
+    const body = `
+      <p class="eq-absatz">Aus dem Projekt wird ein Objekt in deiner Vermietung. Alle Einheiten, Finanzierungen, Handwerker und Nebenkosten kommen mit. Deine Planung bleibt gespeichert.</p>
+      ${einheiten.length ? efTitel("Einheiten") + einheiten.map((u, i) => {
+        const an = u.status === "vermietet";
+        return `<div class="opt-row"><div class="opt-tx"><div class="opt-n">${esc(u.wohnung || "Einheit")}</div>
+          <div class="opt-m" data-ut="${i}">${an ? "schon vermietet" : "noch leer"}</div></div>
+          <button type="button" class="opt-schalter${an ? " an" : ""}" data-u="${i}" role="switch" aria-checked="${an}" aria-label="${esc(u.wohnung || "Einheit")} ist schon vermietet"><span></span></button></div>`;
+      }).join("") + `<div class="note" style="margin-top:10px">Für vermietete Einheiten fragt ESTRIQ ab jetzt jeden Monat nach dem Mieteingang.</div>`
+      : `<div class="note">Dieses Projekt hat noch keine Einheit. Du kannst sie nach der Übernahme anlegen.</div>`}
+      <div class="ef-actions eq-fest">
+        <div class="ef-msg" id="efMsg" role="status"></div>
+        <div class="ef-knoepfe"><button type="button" class="ef-save" id="efSave">In den Bestand übernehmen</button></div>
+      </div>`;
+    const sheet = openSheet("Gekauft? Dann ab in den Bestand.", p.name, body);
+    const status = einheiten.map(u => u.status === "vermietet");
+    sheet.querySelectorAll("[data-u]").forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.u);
+      status[i] = !status[i];
+      b.classList.toggle("an", status[i]); b.setAttribute("aria-checked", String(status[i]));
+      sheet.querySelector(`[data-ut="${i}"]`).textContent = status[i] ? "schon vermietet" : "noch leer";
+      sheet._geaendert = true;
+    });
+    const btn = sheet.querySelector("#efSave"), msg = sheet.querySelector("#efMsg");
+    const meldung = (t) => { msg.textContent = t; msg.className = "ef-msg bad"; btn.disabled = false; };
+    btn.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      btn.disabled = true; msg.textContent = "Übernehme…"; msg.className = "ef-msg";
+      let geaendert = false, antwort;
+      const inv = rund2(projektZahlen(p).INV) || null;
+      try {
+        // 1. Status der Einheiten. Das schadet nicht, falls die Übernahme danach scheitert.
+        for (let i = 0; i < einheiten.length; i++) {
+          if (status[i] === (einheiten[i].status === "vermietet")) continue;
+          await speichereEinheit(einheiten[i]._id, { status: status[i] ? "vermietet" : "frei" });
+          einheiten[i].status = status[i] ? "vermietet" : "frei";
+          geaendert = true;
+        }
+        // Die Gesamtinvestition ist die Basis der Renditen im Bestand – sie wird vorher sicher gespeichert
+        await window.speichereProjektPlan(p._id, { v: 1, ...(p.planRoh || {}) }, inv);
+        // 2. Die Datenbank macht aus dem Projekt ein Mietobjekt und prüft die Tarifgrenzen
+        antwort = await window.projektUebernehmen(p._id);
+      } catch (e) {
+        meldung(projektNichtEingerichtet(e) ? PROJEKT_FEHLT : window.fehlerText(e));
+        return;
+      }
+      if (antwort === "ok") {
+        try { await window.speichereProjektPlan(p._id, { v: 1, ...(p.planRoh || {}), uebernommen_am: new Date().toISOString() }, inv); } catch (_) {}
+        closeSheet();
+        currentView = p.id;   // derselbe Kurzname, jetzt als Objekt im Bestand
+        try { await window.nachSpeichern(); }
+        catch (_) { showToast(NEULADEN_HINWEIS); return; }
+        const sc = $(".scroll"); if (sc) sc.scrollTop = 0;
+        showToast(p.name + " ist jetzt in deinem Bestand.");
+        openUebernommen(p);
+        return;
+      }
+      if (antwort === "objekte" || antwort === "einheiten" || antwort === "gesperrt") {
+        closeSheet();
+        if (geaendert) { try { await window.nachSpeichern(); } catch (_) {} }
+        openUpgradeSheet(antwort);
+        return;
+      }
+      meldung(UEBERNAHME_TEXT[antwort] || "Das hat nicht geklappt. Das Projekt bleibt, wie es ist. Bitte versuch es noch einmal.");
+    };
+  }
+  // Einmaliger Hinweis direkt nach der Übernahme
+  function openUebernommen(p) {
+    const sheet = openSheet(p.name + " ist jetzt in deinem Bestand", "Drei Dinge stehen jetzt an", `
+      <ul class="eq-punkte">
+        <li>Trag die Mieter ein.</li>
+        <li>Prüf den Beginn der Kredite.</li>
+        <li>Die Objektseite zeigt den Cashflow ohne Rücklagen für Instandhaltung und Verwaltung.</li>
+      </ul>
+      <button type="button" class="ef-open" id="pVerstanden">Verstanden</button>`);
+    sheet.querySelector("#pVerstanden").onclick = closeSheet;
   }
 
   function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
@@ -6109,7 +7016,7 @@
     const p = k.plan;
     if (!p) return;
     const st = kr.sondertilgung || null;
-    const kstream = (D.streams || []).find(x => FE.creditsOf(x).some(c => c._id === kr._id));
+    const kstream = (D.streams || []).concat(projekte()).find(x => FE.creditsOf(x).some(c => c._id === kr._id));
 
     // Zustand in einem Satz
     let zustand;
@@ -6425,8 +7332,18 @@
   // --- Wohneinheit ---
   function openUnitEdit(s, u, neu) {
     const v = (u && u.vertrag) || {};
-    const fix = s.einheiten && s.einheiten.some(x => x.kaltFix != null);
-    const body = `
+    const plan = !!s.istProjekt;   // im Projekt: nur, was für die Planung zählt
+    const fix = plan || (s.einheiten && s.einheiten.some(x => x.kaltFix != null));
+    const body = plan ? `
+      ${ef("Bezeichnung", "bezeichnung", u ? u.wohnung : "Einheit " + ((s.einheiten || []).length + 1), "text", { pflicht: true, platzhalter: "z. B. Erdgeschoss links" })}
+      ${ef("Fläche", "flaeche", u ? (u.flaeche || "") : "", "number", { step: "0.01", einheit: "m²", min: 0 })}
+      ${efTitel("Geplante Miete im Monat")}
+      ${ef("Kaltmiete", "kalt_fix", u ? (u.kaltFix ?? "") : "", "number", { einheit: "€", min: 0, hinweis: "Die Miete ohne Nebenkosten. Aus ihr rechnet ESTRIQ Rendite und Cashflow." })}
+      ${ef("Nebenkosten-Vorauszahlung", "nk_fix", u ? (u.nkFix ?? "") : "", "number", { einheit: "€", min: 0, hinweis: "Läuft nur durch und zählt nicht als Ertrag" })}
+      ${efSel("Status", "status", u ? u.status : "vermietet",
+        [{ v: "vermietet", t: "wird vermietet übernommen" }, { v: "frei", t: "steht leer oder wird neu vermietet" }])}
+      ${ef("Mieter", "mieter", u ? (u.mieter || "") : "", "text", { hinweis: "Kannst du leer lassen" })}
+      ${efAktionen({ loeschen: neu ? null : "Löschen" })}` : `
       ${efTitel("Grunddaten")}
       ${ef("Bezeichnung", "bezeichnung", u ? u.wohnung : "", "text", { pflicht: true, platzhalter: "z. B. WE 6" })}
       ${ef("Fläche", "flaeche", u ? u.flaeche : "", "number", { step: "0.01", einheit: "m²", min: 0 })}
@@ -6462,6 +7379,13 @@
       (neu ? "" : u.wohnung + " · ") + s.name, body);
 
     const bauen = (w) => {
+      // Im Projekt werden nur die gezeigten Felder geschrieben, alles andere bleibt, wie es ist
+      if (plan) {
+        const o = { bezeichnung: text(w.bezeichnung) || "Einheit", flaeche: zahl(w.flaeche), status: w.status,
+          kalt_fix: zahl(w.kalt_fix), nk_fix: zahl(w.nk_fix), mieter: text(w.mieter) };
+        if (neu) { o.zahltag = 1; o.einzug = null; o.vertrag = {}; }
+        return o;
+      }
       const o = {
         bezeichnung: text(w.bezeichnung) || "Einheit",
         flaeche: zahl(w.flaeche),
@@ -6489,21 +7413,26 @@
   }
 
   // --- Kredit ---
+  // Im Projekt gibt es zusätzlich den Weg über Zins und Tilgung: Aus Summe, Sollzins und Anfangstilgung
+  // schlägt ESTRIQ die Rate vor. Gespeichert werden wie immer Summe, Zins und Rate.
   function openCreditEdit(s, kr, neu) {
     const st = (kr && kr.sondertilgung) || null;
+    const plan = !!s.istProjekt;
     const body = `
       ${efTitel("Grunddaten")}
-      ${ef("Bezeichnung", "name", kr ? kr.name : "", "text", { pflicht: true, platzhalter: "z. B. KfW-Darlehen" })}
+      ${ef("Bezeichnung", "name", kr ? kr.name : (plan ? "Darlehen" : ""), "text", { pflicht: true, platzhalter: "z. B. KfW-Darlehen" })}
       ${ef("Darlehenssumme", "summe", kr ? kr.summe : "", "number", { pflicht: true, einheit: "€", min: 0 })}
-      ${ef("Zinssatz", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true, einheit: "% im Jahr", min: 0, max: 100 })}
+      ${ef("Zinssatz", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true, einheit: "% im Jahr", min: 0, max: 100, platzhalter: plan ? "z. B. 3,5" : "" })}
+      ${plan ? ef("Anfangstilgung", "tilgung_pa", "", "number", { step: "0.001", einheit: "% im Jahr", min: 0, max: 100, platzhalter: "z. B. 2",
+        hinweis: "Nur eine Rechenhilfe: Aus Summe, Zins und Tilgung schlägt ESTRIQ die Rate vor. Gespeichert wird die Rate." }) : ""}
       ${ef("Rate im Monat", "rate_monat", kr ? kr.abtragMonat : "", "number",
         { pflicht: true, einheit: "€", min: 0, hinweis: "Zins und Tilgung zusammen – so, wie die Bank die Rate abbucht" })}
       ${ef("Erste Rate am", "start", kr ? (kr.start || "") : "", "date",
-        { hinweis: "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
-      ${efTitel("Kontostand der Bank")}
+        { hinweis: plan ? "Kannst du leer lassen, solange der Beginn offen ist" : "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
+      ${plan ? "" : `${efTitel("Kontostand der Bank")}
       ${ef("Restschuld laut Bank", "rest_stand_betrag", kr && kr.restStand ? kr.restStand.betrag : "", "number",
         { einheit: "€", min: 0, hinweis: "Trägst du sie ein, zeigt ESTRIQ diesen Stand und rechnet von dort weiter. Leer lassen, wenn ESTRIQ selbst rechnen soll." })}
-      ${ef("Stand vom", "rest_stand_datum", kr && kr.restStand ? kr.restStand.datum : "", "date")}
+      ${ef("Stand vom", "rest_stand_datum", kr && kr.restStand ? kr.restStand.datum : "", "date")}`}
       ${efTitel("Sondertilgung")}
       ${ef("Betrag je Zahlung", "st_betrag", st ? st.betrag : "", "number",
         { einheit: "€", min: 0, hinweis: "Leer lassen, wenn keine Sondertilgung vereinbart ist" })}
@@ -6514,20 +7443,32 @@
     const sheet = openSheet(neu ? "Neuer Kredit" : "Kredit bearbeiten",
       (neu ? "" : (kr.name + " · ")) + s.name, body);
 
+    if (plan) {
+      // Rate = Summe × (Zins + Tilgung) ÷ 100 ÷ 12 – nur, solange eine Anfangstilgung im Feld steht
+      const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
+      const vorschlag = () => {
+        const summe = zahl(feld("summe").value), zins = zahl(feld("zins_pa").value), tilgung = zahl(feld("tilgung_pa").value);
+        if (tilgung == null || !(summe > 0) || zins == null) return;
+        feld("rate_monat").value = rund2(summe * (zins + tilgung) / 100 / 12);
+      };
+      ["summe", "zins_pa", "tilgung_pa"].forEach(n => feld(n).addEventListener("input", vorschlag));
+    }
+
     const bauen = (w) => {
       const monate = String(w.st_monate || "").split(",")
         .map(x => parseInt(x.trim(), 10)).filter(x => x >= 1 && x <= 12);
       const betrag = zahl(w.st_betrag);
-      return {
+      const o = {
         name: text(w.name) || "Kredit",
         summe: zahl(w.summe) || 0,
         zins_pa: zahl(w.zins_pa) || 0,
         rate_monat: zahl(w.rate_monat) || 0,
         start: text(w.start),
-        rest_stand_betrag: zahl(w.rest_stand_betrag),
-        rest_stand_datum: text(w.rest_stand_datum),
         sondertilgung: (betrag && monate.length) ? { betrag, monate } : null
       };
+      // Der Kontostand der Bank steht im Projekt nicht im Fenster und bleibt deshalb unberührt
+      if (!plan) { o.rest_stand_betrag = zahl(w.rest_stand_betrag); o.rest_stand_datum = text(w.rest_stand_datum); }
+      return o;
     };
     efBind(sheet,
       async (w) => neu ? await neuerKredit(s._id, bauen(w)) : await speichereKredit(kr._id, bauen(w)),
