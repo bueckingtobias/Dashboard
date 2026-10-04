@@ -2737,103 +2737,207 @@
     return karte;
   }
 
+  // Ergebnis einer Einheit in Worten: „Nachzahlung 131 €" / „Guthaben 155 €" – nie nur Vorzeichen und Farbe
+  const nkErgebnis = (saldo) => Math.abs(saldo) < 0.005 ? "ausgeglichen" : (saldo >= 0 ? "Guthaben " : "Nachzahlung ") + eur(Math.abs(saldo));
+  const NK_SCH_TEXT = { flaeche: "nach Wohnfläche", einheiten: "gleich je Einheit", personen: "nach Personen", verbrauch: "nach Verbrauch" };
+  const nkSchText = (k) => NK_SCH_TEXT[k] || NK_SCH_TEXT.flaeche;
+
+  // Was die Abrechnung für die Mieter bedeutet: wer nachzahlt, wer Geld zurückbekommt. Zählt nur vermietete Einheiten.
+  function nkBilanz(r) {
+    const b = { nach: 0, nachSumme: 0, zurueck: 0, zurueckSumme: 0, frei: 0, anteilLeer: 0, vorausMieter: 0, saldoMieter: 0 };
+    r.zeilen.forEach(z => {
+      // Für eine freie Einheit zahlt niemand voraus: Ihr Anteil bleibt beim Vermieter
+      if (z.u.status !== "vermietet") { b.frei++; b.anteilLeer += z.anteil; return; }
+      b.vorausMieter += z.voraus; b.saldoMieter += z.saldo;
+      if (z.saldo < -0.005) { b.nach++; b.nachSumme += -z.saldo; }
+      else if (z.saldo > 0.005) { b.zurueck++; b.zurueckSumme += z.saldo; }
+    });
+    b.satz = !b.nach && !b.zurueck ? "Vorauszahlungen und Kosten gleichen sich aus."
+      : [b.nach ? mehrzahl(b.nach, "Mieter zahlt", "Mieter zahlen") + " nach (zusammen " + eur(b.nachSumme) + ")" : "",
+         b.zurueck ? mehrzahl(b.zurueck, "Mieter bekommt", "Mieter bekommen") + " Geld zurück (zusammen " + eur(b.zurueckSumme) + ")" : ""].filter(Boolean).join(", ") + ".";
+    return b;
+  }
+  // Kontrolle: Die Summe der Anteile muss der umlagefähigen Summe entsprechen
+  function nkKontrolle(r) {
+    const verteilt = r.zeilen.reduce((a, z) => a + z.anteil, 0);
+    return { verteilt, fehlt: r.summeUml - verteilt, stimmt: Math.abs(r.summeUml - verteilt) < 0.01 };
+  }
+
   // Karte in der Objektansicht
   function nebenkostenKarte(s) {
     if (!hatModul()) return nebenkostenGesperrt(s);
     const jahr = new Date().getFullYear() - 1;   // Abrechnung betrifft das Vorjahr
-    const karte = el(`<div class="card nk-card">
+    const karte = el(`<div class="card nk-card clickable" role="button" tabindex="0">
       <div class="card-h">
-        <div><div class="card-t">Nebenkostenabrechnung</div>
-          <div class="card-s">Kostenarten erfassen und auf die Mieter verteilen</div></div>
-        <button class="add-btn" id="nkOeffnen">Öffnen</button>
+        <div><div class="card-t">Nebenkostenabrechnung ${jahr}</div>
+          <div class="card-s">Was zahlt jeder Mieter nach, was bekommt er zurück?</div></div>
+        <button type="button" class="add-btn" id="nkOeffnen">Öffnen</button>
       </div>
-      <div class="card-b"><div class="note" id="nkVorschau">Wird geladen…</div></div></div>`);
-    karte.querySelector("#nkOeffnen").onclick = () => openNkAbrechnung(s, jahr);
-    karte.onclick = (e) => { if (!e.target.closest("button")) openNkAbrechnung(s, jahr); };
-    karte.classList.add("clickable");
+      <div class="card-b" id="nkVorschau"><div class="note">Wird geladen…</div></div></div>`);
+    const oeffnen = () => openNkAbrechnung(s, jahr);
+    karte.querySelector("#nkOeffnen").onclick = (e) => { e.stopPropagation(); oeffnen(); };
+    karte.onclick = (e) => { if (!e.target.closest("button")) oeffnen(); };
+    karte.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === karte && !e.repeat) { e.preventDefault(); oeffnen(); } };
 
     ladeNebenkosten(s._id, jahr).then(posten => {
       const v = karte.querySelector("#nkVorschau");
       if (!v) return;
       if (!posten.length) {
-        v.innerHTML = `Für ${jahr} sind noch keine Kostenarten erfasst. Öffne die Abrechnung und übernimm die Vorlage nach Betriebskostenverordnung.`;
+        v.innerHTML = `<div class="eq-leer" style="padding:8px 0 4px">Für ${jahr} sind noch keine Kosten erfasst. In drei Schritten zur Abrechnung: Kosten erfassen, Verteilung prüfen, Ergebnis je Einheit.</div>`;
+        karte.querySelector("#nkOeffnen").textContent = "Abrechnung starten";
         return;
       }
-      const r = nkVerteilung(s, posten);
-      v.outerHTML = `
-        <div class="gw-kacheln drei">
-          <div class="gw-kachel"><span>Umlagefähig ${jahr}</span><b>${eur(r.summeUml)}</b></div>
-          <div class="gw-kachel"><span>Vorauszahlungen</span><b>${eur(r.vorausGes)}</b></div>
-          <div class="gw-kachel"><span>${r.saldoGes >= 0 ? "Guthaben Mieter" : "Nachzahlung"}</span>
-            <b class="${r.saldoGes >= 0 ? "gut" : "warn"}">${eur(Math.abs(r.saldoGes))}</b></div>
-        </div>
-        <div class="note">${posten.length} Kostenarten erfasst${r.summeNicht > 0 ? ` · ${eur(r.summeNicht)} davon nicht umlagefähig` : ""}.</div>`;
+      const r = nkVerteilung(s, posten), b = nkBilanz(r), k = nkKontrolle(r);
+      const ohne = posten.filter(p => !(Number(p.betrag) || 0)).length;
+      v.innerHTML = `
+        <div class="eq-zustand${ohne || !k.stimmt ? " achtung" : ""}"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${ohne ? mehrzahl(ohne, "Kostenart hat", "Kostenarten haben") + " noch keinen Betrag" : !k.stimmt ? "Die Verteilung geht nicht auf" : esc(b.satz)}</div>
+          <div class="eq-zustand-d">${ohne ? "Trag die Beträge ein, dann stimmt das Ergebnis je Einheit." : !k.stimmt ? eur(Math.abs(k.fehlt)) + " sind nicht verteilt. Öffne die Abrechnung und prüfe Schritt 2." : mehrzahl(posten.length, "Kostenart", "Kostenarten") + " erfasst" + (r.summeNicht > 0 ? ", davon " + eur(r.summeNicht) + " nicht umlagefähig" : "") + "."}</div></div></div>
+        <div class="eq-werte">
+          ${wert("Umlagefähig", eur(r.summeUml), "wird auf die Einheiten verteilt")}
+          ${wert("Vorauszahlungen", eur(b.vorausMieter), "der Mieter im Jahr")}
+          ${wert(b.saldoMieter >= 0 ? "Guthaben gesamt" : "Nachzahlung gesamt", eur(Math.abs(b.saldoMieter)), b.saldoMieter >= 0 ? "bekommen die Mieter zurück" : "zahlen die Mieter nach")}
+          ${b.anteilLeer > 0 ? wert("Leerstand", eur(b.anteilLeer), "trägst du selbst") : ""}
+        </div>`;
     });
     return karte;
   }
 
-  // Die eigentliche Abrechnung
-  function openNkAbrechnung(s, jahr) {
+  // Die Abrechnung als geführter Ablauf: 1 Kosten erfassen · 2 Verteilung prüfen · 3 Ergebnis je Einheit.
+  // Die Kontrollzeile bleibt in jedem Schritt sichtbar: Summe der Anteile = umlagefähige Summe.
+  function openNkAbrechnung(s, jahr, startSchritt) {
     const sheet = openSheet("Nebenkostenabrechnung", s.name, `<div id="nkBody"><div class="note">Wird geladen…</div></div>`);
     const body = sheet.querySelector("#nkBody");
+    let schritt = startSchritt || 0;   // 0 = beim ersten Zeichnen selbst wählen
+    const SCHRITTE = ["Kosten erfassen", "Verteilung prüfen", "Ergebnis je Einheit"];
 
     async function zeichne() {
       const posten = await ladeNebenkosten(s._id, jahr);
-      const r = nkVerteilung(s, posten);
+      if (!body.isConnected) return;
+      const r = nkVerteilung(s, posten), k = nkKontrolle(r), b = nkBilanz(r);
+      const ohne = posten.filter(p => !(Number(p.betrag) || 0));
+      // Alles erfasst → gleich zum Ergebnis; sonst beginnt der Ablauf vorn
+      if (!schritt) schritt = posten.length && !ohne.length ? 3 : 1;
 
+      // --- Schritt 1: Kosten ---
       const liste = posten.length ? posten.map(p => {
-        const sch = NK_SCHLUESSEL[p.schluessel] || NK_SCHLUESSEL.flaeche;
-        return `<div class="nk-p${p.umlagefaehig === false ? " nicht" : ""}" data-p="${p.id}">
+        const leer = !(Number(p.betrag) || 0);
+        return `<div class="nk-p${p.umlagefaehig === false ? " nicht" : ""}" data-p="${p.id}" role="button" tabindex="0">
           <div class="nk-p-tx"><div class="nk-p-n">${esc(p.art)}</div>
-            <div class="nk-p-m">${esc(sch.name)}${p.umlagefaehig === false ? " · nicht umlagefähig" : ""}</div></div>
-          <b>${eur(Number(p.betrag) || 0)}</b></div>`;
-      }).join("") : `<div class="note">Noch keine Kostenart erfasst.</div>`;
-
-      const tabelle = r.zeilen.length ? `
-        <div class="nk-tab">
-          <div class="nk-t-kopf"><div>Einheit</div><div class="nk-c">Anteil</div>
-            <div class="nk-c">Vorauszahlung</div><div class="nk-c">Saldo</div></div>
-          ${r.zeilen.map((z, i) => `
-            <div class="nk-t-row" data-einheit="${i}">
-              <div class="nk-t-n">${esc(z.u.wohnung || "Einheit")}<small>${(Number(z.u.flaeche) || 0)} m²${z.u.mieter ? " · " + esc(z.u.mieter) : ""}</small></div>
-              <div class="nk-c">${eur(z.anteil)}</div>
-              <div class="nk-c dim">${eur(z.voraus)}</div>
-              <div class="nk-c stark ${z.saldo >= 0 ? "gut" : "warn"}">${z.saldo >= 0 ? "+" : "−"}${eur(Math.abs(z.saldo))}</div>
-            </div>`).join("")}
+            <div class="nk-p-m">${esc(nkSchText(p.schluessel))}${p.umlagefaehig === false ? " · nicht umlagefähig, trägst du selbst" : ""}</div></div>
+          ${leer ? `<span class="eq-marke achtung">Betrag fehlt</span>` : `<b>${eur(Number(p.betrag) || 0)}</b>`}</div>`;
+      }).join("") : `<div class="eq-leer" style="padding:16px">Noch keine Kostenart für ${jahr} erfasst. Die Vorlage legt die üblichen Kostenarten an – du trägst nur noch die Beträge ein.</div>`;
+      const s1 = `
+        <div class="nk-liste">${liste}</div>
+        <div class="nk-btns">
+          <button type="button" class="add-btn" id="nkAdd">+ Kostenart</button>
+          ${posten.length ? "" : `<button type="button" class="add-btn" id="nkVorlage">Vorlage übernehmen</button>`}
         </div>
-        <div class="note" style="margin-top:10px">Plus bedeutet Guthaben für den Mieter, Minus eine Nachzahlung an dich.</div>`
-        : `<div class="note">Dieses Objekt hat noch keine Wohneinheiten.</div>`;
+        ${posten.length ? `<div class="eq-werte" style="margin-top:20px">
+          ${wert("Umlagefähig", eur(r.summeUml), "wird verteilt")}
+          ${wert("Nicht umlagefähig", eur(r.summeNicht), "trägst du selbst")}
+        </div>` : ""}`;
+
+      // --- Schritt 2: Verteilung ---
+      const einheiten = s.einheiten || [];
+      const uml = posten.filter(p => p.umlagefaehig !== false);
+      const jeSch = {}; uml.forEach(p => { const key = NK_SCH_TEXT[p.schluessel] ? p.schluessel : "flaeche"; jeSch[key] = (jeSch[key] || 0) + (Number(p.betrag) || 0); });
+      const basis = { flaeche: qm(r.flaecheGes) + " gesamt", einheiten: mehrzahl(einheiten.length, "Einheit", "Einheiten"), personen: mehrzahl(r.personenGes, "Person", "Personen") + " gesamt", verbrauch: "hier ersatzweise nach Wohnfläche" };
+      const ohneFlaeche = einheiten.filter(u => !(Number(u.flaeche) > 0));
+      const ohnePersonen = einheiten.filter(u => !(Number(u.personen) > 0));
+      const warn = [];
+      if (!einheiten.length) warn.push("Dieses Objekt hat noch keine Einheit. Ohne Einheiten lässt sich nichts verteilen.");
+      else if (!k.stimmt && uml.length) warn.push(eur(Math.abs(k.fehlt)) + " sind nicht verteilt. " + (r.flaecheGes ? "Prüfe die Angaben der Einheiten." : "Keine Einheit hat eine Fläche – Kosten nach Wohnfläche lassen sich so nicht verteilen."));
+      if (einheiten.length && ohneFlaeche.length && r.flaecheGes && (jeSch.flaeche || jeSch.verbrauch)) warn.push("Bei " + (ohneFlaeche.length === 1 ? "einer Einheit" : ohneFlaeche.length + " Einheiten") + " fehlt die Fläche (" + ohneFlaeche.map(u => u.wohnung || "Einheit").join(", ") + "). Sie bekommen von Kosten nach Wohnfläche keinen Anteil.");
+      if (einheiten.length && ohnePersonen.length && jeSch.personen) warn.push("Bei " + (ohnePersonen.length === 1 ? "einer Einheit" : ohnePersonen.length + " Einheiten") + " ist keine Personenzahl eingetragen. ESTRIQ rechnet dort mit einer Person. Du trägst sie bei der Einheit unter „Personen im Haushalt“ ein.");
+      const s2 = `
+        ${warn.map(w => `<div class="eq-zustand achtung"><div class="eq-zustand-tx"><div class="eq-zustand-d" style="margin:0;font-size:var(--eq-t-2);color:var(--text)">${esc(w)}</div></div></div>`).join("")}
+        ${efTitel("So werden die Kosten verteilt")}
+        ${Object.keys(jeSch).length ? Object.keys(NK_SCH_TEXT).filter(key => jeSch[key] != null).map(key => `<div class="kv"><span>${NK_SCH_TEXT[key]}<small class="eq-kv-u">${esc(basis[key])}</small></span><b>${eur(jeSch[key])}</b></div>`).join("")
+          : `<div class="note">Noch keine umlagefähigen Kosten erfasst.</div>`}
+        ${r.hatVerbrauch ? `<div class="gw-hinweis" style="margin-top:12px">Heizung und Warmwasser verteilt ESTRIQ ersatzweise nach Wohnfläche. Die Heizkostenverordnung verlangt eine Abrechnung nach Verbrauch – nimm dafür die Werte deines Ablesedienstes.</div>` : ""}
+        ${efTitel("Grundlage je Einheit")}
+        ${einheiten.length ? `<div class="eq-nk-tab">
+          <div class="eq-nk-kopf eq-nk-drei"><div>Einheit</div><div>Fläche</div><div>Personen</div></div>
+          ${einheiten.map(u => `<div class="eq-nk-z eq-nk-drei">
+            <div class="eq-nk-n">${esc(u.wohnung || "Einheit")}<small>${u.status === "vermietet" ? esc(u.mieter || "ohne Namen") : "frei"}</small></div>
+            <div class="eq-nk-c">${Number(u.flaeche) > 0 ? qm(u.flaeche) : `<span class="eq-marke achtung">fehlt</span>`}</div>
+            <div class="eq-nk-c">${Number(u.personen) > 0 ? Number(u.personen) : `1 <small>angenommen</small>`}</div>
+          </div>`).join("")}</div>` : `<div class="note">Noch keine Einheit angelegt.</div>`}`;
+
+      // --- Schritt 3: Ergebnis ---
+      const s3 = r.zeilen.length ? `
+        <div class="eq-zustand"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${esc(b.satz)}</div>
+          <div class="eq-zustand-d">Zeile antippen zeigt die Abrechnung der Einheit.${b.frei ? " Für " + (b.frei === 1 ? "eine freie Einheit" : b.frei + " freie Einheiten") + " gibt es keinen Mieter – diesen Anteil (" + eur(b.anteilLeer) + ") trägst du selbst. ESTRIQ kennt nur den Stand von heute: War die Einheit im Abrechnungsjahr zeitweise vermietet, rechne diesen Teil von Hand ab." : ""}</div></div></div>
+        <div class="eq-nk-tab">
+          <div class="eq-nk-kopf eq-nk-vier"><div>Einheit</div><div>Anteil</div><div>Vorauszahlung</div><div>Ergebnis</div></div>
+          ${r.zeilen.map((z, i) => {
+            const frei = z.u.status !== "vermietet";
+            return `<div class="eq-nk-z eq-nk-vier nk-t-row" data-einheit="${i}" role="button" tabindex="0">
+              <div class="eq-nk-n">${esc(z.u.wohnung || "Einheit")}<small>${frei ? "frei" : esc(z.u.mieter || "ohne Namen")}</small></div>
+              <div class="eq-nk-c" data-l="Anteil">${eur(z.anteil)}</div>
+              <div class="eq-nk-c" data-l="Vorauszahlung">${frei ? "—" : eur(z.voraus)}</div>
+              <div class="eq-nk-c eq-nk-e ${frei ? "" : z.saldo < -0.005 ? "nach" : z.saldo > 0.005 ? "zurueck" : ""}">${frei ? "trägst du selbst" : nkErgebnis(z.saldo)}</div>
+            </div>`; }).join("")}
+          <div class="eq-nk-z eq-nk-vier eq-nk-summe">
+            <div class="eq-nk-n">Summe</div>
+            <div class="eq-nk-c" data-l="Anteile">${eur(k.verteilt)}</div>
+            <div class="eq-nk-c" data-l="Vorauszahlungen">${eur(b.vorausMieter)}</div>
+            <div class="eq-nk-c eq-nk-e">${nkErgebnis(b.saldoMieter)}</div>
+          </div>
+        </div>
+        <div class="wi-hinweis">Die Vorauszahlung ist die bei der Einheit hinterlegte monatliche Nebenkosten-Zahlung mal zwölf. Die Abrechnung muss dem Mieter innerhalb von zwölf Monaten nach Ende des Abrechnungszeitraums zugehen. Orientierung, keine Rechtsberatung.</div>`
+        : `<div class="eq-leer" style="padding:16px">Dieses Objekt hat noch keine Einheit.</div>`;
+
+      // --- Kontrollzeile ---
+      const kontrolle = !uml.length
+        ? `<div class="eq-kontrolle"><span>Noch keine umlagefähigen Kosten erfasst</span></div>`
+        : `<div class="eq-kontrolle${k.stimmt ? " gut" : " achtung"}" role="status">
+            <span>Umlagefähig <b>${eur(r.summeUml)}</b></span>
+            <span>Summe der Anteile <b>${eur(k.verteilt)}</b></span>
+            <span class="eq-marke ${k.stimmt ? "gut" : "achtung"}">${k.stimmt ? "geht auf" : eur(Math.abs(k.fehlt)) + " nicht verteilt"}</span>
+          </div>`;
 
       body.innerHTML = `
         <div class="nk-jahr">
-          <button class="cal-btn" id="nkPrev">‹</button>
+          <button type="button" class="cal-btn" id="nkPrev" aria-label="Jahr zurück">‹</button>
           <span>Abrechnungsjahr <b>${jahr}</b></span>
-          <button class="cal-btn" id="nkNext">›</button>
+          <button type="button" class="cal-btn" id="nkNext" aria-label="Jahr vor">›</button>
         </div>
-        <div class="gw-kacheln vier">
-          <div class="gw-kachel"><span>Umlagefähig</span><b>${eur(r.summeUml)}</b></div>
-          <div class="gw-kachel"><span>Nicht umlagefähig</span><b>${eur(r.summeNicht)}</b></div>
-          <div class="gw-kachel"><span>Vorauszahlungen</span><b>${eur(r.vorausGes)}</b></div>
-          <div class="gw-kachel"><span>${r.saldoGes >= 0 ? "Guthaben" : "Nachzahlung"}</span>
-            <b class="${r.saldoGes >= 0 ? "gut" : "warn"}">${eur(Math.abs(r.saldoGes))}</b></div>
+        <div class="eq-schritte" role="tablist" aria-label="Ablauf der Abrechnung">
+          ${SCHRITTE.map((t, i) => `<button type="button" class="eq-schritt${schritt === i + 1 ? " on" : ""}" role="tab" aria-selected="${schritt === i + 1}" data-schritt="${i + 1}"><b>${i + 1}</b><span>${t}</span></button>`).join("")}
         </div>
-        ${hatModul() ? "" : `<div class="gw-hinweis">${NUR_LESEN}</div>`}
-        ${r.hatVerbrauch ? `<div class="gw-hinweis">Heizung und Warmwasser werden hier ersatzweise nach Fläche verteilt. Die Heizkostenverordnung verlangt eine verbrauchsabhängige Abrechnung — nimm dafür die Werte deines Ablesedienstes.</div>` : ""}
-        ${efTitel("Kostenarten " + jahr)}
-        <div class="nk-liste">${liste}</div>
-        <div class="nk-btns">
-          <button class="add-btn" id="nkAdd">+ Kostenart</button>
-          ${posten.length ? "" : `<button class="add-btn" id="nkVorlage">Vorlage übernehmen</button>`}
-        </div>
-        ${efTitel("Verteilung auf die Mieter")}
-        ${tabelle}
-        <div class="wi-hinweis">Die Abrechnung muss dem Mieter innerhalb von zwölf Monaten nach Ende des Abrechnungszeitraums zugehen. Orientierung, keine Rechtsberatung.</div>`;
+        ${kontrolle}
+        ${hatModul() ? "" : `<div class="gw-hinweis" style="margin-bottom:14px">${NUR_LESEN}</div>`}
+        <div class="eq-schritt-feld" data-feld="1"${schritt === 1 ? "" : " hidden"}>${s1}</div>
+        <div class="eq-schritt-feld" data-feld="2"${schritt === 2 ? "" : " hidden"}>${s2}</div>
+        <div class="eq-schritt-feld" data-feld="3"${schritt === 3 ? "" : " hidden"}>${s3}</div>
+        <div class="ef-actions eq-fest">
+          <div class="ef-knoepfe">
+            <button type="button" class="eq-btn" id="nkWeiter"></button>
+            <button type="button" class="eq-btn zweit" id="nkZurueck">Zurück</button>
+          </div>
+        </div>`;
 
+      const zeige = (n) => {
+        schritt = n;
+        body.querySelectorAll("[data-feld]").forEach(f => { f.hidden = Number(f.dataset.feld) !== n; });
+        body.querySelectorAll("[data-schritt]").forEach(t => { const an = Number(t.dataset.schritt) === n; t.classList.toggle("on", an); t.setAttribute("aria-selected", an); });
+        body.querySelector("#nkWeiter").textContent = n === 1 ? "Weiter: Verteilung prüfen" : n === 2 ? "Weiter: Ergebnis je Einheit" : "Fertig";
+        body.querySelector("#nkZurueck").hidden = n === 1;
+        const sb = sheet.querySelector(".sheet-b"); if (sb) sb.scrollTop = 0;
+      };
+      zeige(schritt);
+      body.querySelectorAll("[data-schritt]").forEach(t => t.onclick = () => zeige(Number(t.dataset.schritt)));
+      body.querySelector("#nkWeiter").onclick = () => { if (schritt < 3) zeige(schritt + 1); else closeSheet(); };
+      body.querySelector("#nkZurueck").onclick = () => zeige(Math.max(1, schritt - 1));
       body.querySelector("#nkPrev").onclick = () => { jahr--; zeichne(); };
       body.querySelector("#nkNext").onclick = () => { jahr++; zeichne(); };
-      body.querySelector("#nkAdd").onclick = () => openNkPosten(s, jahr, null, zeichne);
+      body.querySelector("#nkAdd").onclick = () => openNkPosten(s, jahr, null);
       const vb = body.querySelector("#nkVorlage");
       if (vb) vb.onclick = async () => {
+        if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
         if (!pruefeModul("nebenkosten")) return;
         vb.disabled = true; vb.textContent = "Wird angelegt…";
         try {
@@ -2842,33 +2946,32 @@
           const { error } = await window.sb.from("nebenkosten").insert(rows);
           if (error) throw error;
           await zeichne();
-          showToast("Vorlage übernommen – jetzt die Beträge eintragen.");
+          showToast("Vorlage übernommen. Trag jetzt die Beträge ein.");
         } catch (e) { vb.disabled = false; vb.textContent = "Vorlage übernehmen"; showToast(window.fehlerText(e)); }
       };
-      body.querySelectorAll("[data-p]").forEach(n => n.onclick = () => {
-        openNkPosten(s, jahr, posten.find(x => x.id === n.dataset.p), zeichne);
-      });
-      body.querySelectorAll("[data-einheit]").forEach(n => n.onclick = () => {
-        openNkEinheit(r.zeilen[Number(n.dataset.einheit)], jahr);
-      });
+      const taste = (n, tun) => { n.onclick = tun; n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); tun(); } }; };
+      body.querySelectorAll("[data-p]").forEach(n => taste(n, () => openNkPosten(s, jahr, posten.find(x => x.id === n.dataset.p))));
+      body.querySelectorAll("[data-einheit]").forEach(n => taste(n, () => openNkEinheit(r.zeilen[Number(n.dataset.einheit)], jahr, { r, s })));
     }
     zeichne();
   }
 
-  // Eine Kostenart anlegen oder bearbeiten
-  function openNkPosten(s, jahr, p, fertig) {
+  // Eine Kostenart anlegen oder bearbeiten. Danach geht es zurück in Schritt 1 der Abrechnung.
+  function openNkPosten(s, jahr, p) {
     if (!pruefeModul("nebenkosten")) return;
     const body = `
       ${ef("Kostenart", "art", p ? p.art : "", "text", { pflicht: true, platzhalter: "z. B. Grundsteuer" })}
       ${ef("Betrag im Jahr", "betrag", p ? (p.betrag ?? "") : "", "number",
-        { pflicht: true, minus: true, hinweis: "Gesamtbetrag für " + jahr })}
-      ${efSel("Verteilerschlüssel", "schluessel", p ? p.schluessel : "flaeche",
-        Object.keys(NK_SCHLUESSEL).map(k => ({ v: k, t: NK_SCHLUESSEL[k].name + " – " + NK_SCHLUESSEL[k].info })))}
-      ${efSel("Umlagefähig", "umlagefaehig", p && p.umlagefaehig === false ? "0" : "1",
-        [{ v: "1", t: "ja – wird auf Mieter verteilt" }, { v: "0", t: "nein – trägst du selbst" }],
+        { pflicht: true, minus: true, einheit: "€", hinweis: "Gesamtbetrag für " + jahr + " laut Bescheid oder Rechnung" })}
+      ${efSel("Verteilung", "schluessel", p ? p.schluessel : "flaeche",
+        [{ v: "flaeche", t: "nach Wohnfläche (üblich)" }, { v: "einheiten", t: "gleich je Einheit" },
+         { v: "personen", t: "nach Personen im Haushalt" }, { v: "verbrauch", t: "nach Verbrauch (hier ersatzweise nach Wohnfläche)" }],
+        { hinweis: "Wonach die Kosten auf die Einheiten aufgeteilt werden" })}
+      ${efSel("Umlagefähig?", "umlagefaehig", p && p.umlagefaehig === false ? "0" : "1",
+        [{ v: "1", t: "ja – wird auf die Mieter verteilt" }, { v: "0", t: "nein – trägst du selbst" }],
         { hinweis: "Instandhaltung, Verwaltung und Rücklagen sind nicht umlagefähig." })}
       ${efArea("Notiz", "notiz", p ? (p.notiz || "") : "")}
-      ${efAktionen({ loeschen: p ? "Löschen" : null })}`;
+      ${efAktionen({ loeschen: p ? "Kostenart löschen" : null })}`;
     const sheet = openSheet(p ? "Kostenart bearbeiten" : "Kostenart erfassen", jahr + " · " + s.name, body);
     const bauen = (w) => ({
       art: text(w.art) || "Kostenart",
@@ -2877,57 +2980,60 @@
       umlagefaehig: w.umlagefaehig === "1",
       notiz: text(w.notiz)
     });
-    // Eigene Speicherlogik – das Sheet danach neu zeichnen
-    const msg = () => sheet.querySelector("#efMsg");
-    sheet.querySelector("#efSave").onclick = async () => {
-      const m = msg(); m.textContent = "Speichere…"; m.className = "ef-msg";
-      try {
-        const w = bauen(efWerte(sheet));
+    const zurueck = (meldung) => () => {
+      showToast(meldung);
+      const s2 = (D.streams || []).find(x => x._id === s._id) || s;
+      openNkAbrechnung(s2, jahr, 1);
+    };
+    efBind(sheet,
+      async (w) => {
+        const d = bauen(w);
         const { error } = p
-          ? await window.sb.from("nebenkosten").update(w).eq("id", p.id)
-          : await window.sb.from("nebenkosten").insert({ ...w, objekt_id: s._id, jahr });
+          ? await window.sb.from("nebenkosten").update(d).eq("id", p.id)
+          : await window.sb.from("nebenkosten").insert({ ...d, objekt_id: s._id, jahr });
         if (error) throw error;
-        closeSheet();
-        setTimeout(() => { openNkAbrechnung(s, jahr); }, 260);
-      } catch (e) { m.textContent = window.fehlerText(e); m.className = "ef-msg bad"; }
-    };
-    const del = sheet.querySelector("#efDel");
-    if (del && p) del.onclick = async () => {
-      if (del.dataset.sicher !== "1") {
-        del.dataset.sicher = "1"; del.textContent = "Wirklich löschen?"; del.classList.add("armed");
-        setTimeout(() => { if (del.dataset.sicher === "1") { del.dataset.sicher = ""; del.textContent = "Löschen"; del.classList.remove("armed"); } }, 4000);
-        return;
-      }
-      try {
-        const { error } = await window.sb.from("nebenkosten").delete().eq("id", p.id);
-        if (error) throw error;
-        closeSheet();
-        setTimeout(() => { openNkAbrechnung(s, jahr); }, 260);
-      } catch (e) { const m = msg(); m.textContent = window.fehlerText(e); m.className = "ef-msg bad"; }
-    };
+      },
+      p ? async () => { const { error } = await window.sb.from("nebenkosten").delete().eq("id", p.id); if (error) throw error; } : null,
+      "Kostenart wirklich löschen?",
+      zurueck("Gespeichert."), zurueck("Gelöscht."));
   }
 
-  // Einzelabrechnung für eine Wohnung – das, was der Mieter bekommt
-  function openNkEinheit(z, jahr) {
+  // Abrechnung einer Einheit – das, was der Mieter bekommt. opt: { r, s } für die Grundlage und den Weg zurück
+  function openNkEinheit(z, jahr, opt) {
+    opt = opt || {};
+    const r = opt.r;
+    const frei = z.u.status !== "vermietet";
+    const stufe = "";   // keine Wertung durch Farbe: Eine Nachzahlung ist für den Vermieter nichts Schlechtes
+    // Woraus sich der Anteil ergibt, z. B. „72,5 von 332,75 m²"
+    const grundlage = (key) => {
+      if (!r) return "";
+      if (key === "einheiten") return "1 von " + mehrzahl(r.anzahl, "Einheit", "Einheiten");
+      if (key === "personen") return (Number(z.u.personen) || 1) + " von " + mehrzahl(r.personenGes, "Person", "Personen");
+      return qm(Number(z.u.flaeche) || 0).replace("\u00A0m²", "") + " von " + qm(r.flaecheGes) + (key === "verbrauch" ? " (ersatzweise)" : "");
+    };
     const body = `
-      <div class="nk-erg ${z.saldo >= 0 ? "gut" : "warn"}">
-        <div class="nk-erg-z">${z.saldo >= 0 ? "+" : "−"}${eur(Math.abs(z.saldo))}</div>
-        <div class="nk-erg-t">${z.saldo >= 0 ? "Guthaben für den Mieter" : "Nachzahlung an dich"}</div>
+      <div class="nk-erg${stufe}">
+        <div class="nk-erg-t">${frei ? "Diese Einheit ist frei" : Math.abs(z.saldo) < 0.005 ? "Ausgeglichen" : z.saldo >= 0 ? "Guthaben für den Mieter" : "Nachzahlung des Mieters"}</div>
+        <div class="nk-erg-z">${frei ? eur(z.anteil) : eur(Math.abs(z.saldo))}</div>
+        <div class="nk-erg-u">${frei ? "Diesen Anteil trägst du selbst." : z.saldo >= 0 ? "Der Mieter hat mehr vorausgezahlt, als angefallen ist." : "Die Vorauszahlungen haben die Kosten nicht gedeckt."}</div>
       </div>
-      ${efTitel("Aufteilung der Kosten")}
-      <div class="nk-liste">
-        ${z.detail.map(d => `<div class="nk-p">
-          <div class="nk-p-tx"><div class="nk-p-n">${esc(d.art)}</div>
-            <div class="nk-p-m">verteilt nach ${esc((NK_SCHLUESSEL[d.schluessel] || NK_SCHLUESSEL.flaeche).name)}</div></div>
-          <b>${eur(d.betrag)}</b></div>`).join("")}
-      </div>
-      <div class="rc-zeilen">
-        <div class="rc-z gross"><span>Anteil gesamt</span><b>${eur(z.anteil)}</b></div>
-        <div class="rc-z"><span>− Vorauszahlungen ${jahr}</span><b>− ${eur(z.voraus)}</b></div>
+      ${frei ? "" : `<div class="rc-zeilen" style="margin-top:8px">
+        <div class="rc-z"><span>Anteil an den Kosten ${jahr}</span><b>${eur(z.anteil)}</b></div>
+        <div class="rc-z"><span>Vorauszahlungen ${jahr}</span><b>− ${eur(z.voraus)}</b></div>
         <div class="rc-z gross"><span>${z.saldo >= 0 ? "Guthaben" : "Nachzahlung"}</span><b>${eur(Math.abs(z.saldo))}</b></div>
+      </div>`}
+      ${efTitel("So setzt sich der Anteil zusammen")}
+      <div class="nk-liste">
+        ${z.detail.length ? z.detail.map(d => `<div class="nk-p eq-nk-fest">
+          <div class="nk-p-tx"><div class="nk-p-n">${esc(d.art)}</div>
+            <div class="nk-p-m">${esc(nkSchText(d.schluessel))}${grundlage(d.schluessel) ? " · " + esc(grundlage(d.schluessel)) : ""}</div></div>
+          <b>${eur(d.betrag)}</b></div>`).join("") : `<div class="note">Noch keine umlagefähigen Kosten erfasst.</div>`}
       </div>
-      <div class="wi-hinweis">Die Vorauszahlung ergibt sich aus den bei der Einheit hinterlegten monatlichen Nebenkosten × 12.</div>`;
-    openSheet(z.u.wohnung || "Einheit", (z.u.mieter || "ohne Mieter") + " · " + jahr, body);
+      <div class="wi-hinweis">Die Vorauszahlung ergibt sich aus den bei der Einheit hinterlegten monatlichen Nebenkosten mal zwölf.</div>
+      ${opt.s ? `<button type="button" class="ef-open" id="nkZurAbr">Zurück zur Abrechnung</button>` : ""}`;
+    const sh = openSheet(z.u.wohnung || "Einheit", (frei ? "frei" : (z.u.mieter || "ohne Namen")) + " · Nebenkosten " + jahr, body);
+    const zb = sh.querySelector("#nkZurAbr");
+    if (zb) zb.onclick = () => openNkAbrechnung(opt.s, jahr, 3);
   }
 
   /* ================= GEWERKE & KOSTENKONTROLLE ================= */
@@ -4088,6 +4194,7 @@
       kurz: "Was tatsächlich jeden Monat auf dein Konto kommt.",
       text: "Summe aller Mieten aus <b>vermieteten</b> Einheiten. Leerstehende Wohnungen zählen hier nicht mit — die findest du im Potenzial.",
       formel: "Kaltmiete + Nebenkosten (aller vermieteten Einheiten)",
+      gut: "Einen festen Zielwert gibt es nicht. Wichtig ist der Vergleich mit dem Potenzial: Je näher die Einnahmen daran liegen, desto besser ist dein Bestand ausgelastet.",
       merke: "Einnahmen sind nicht dein Gewinn. Kreditrate und laufende Kosten gehen noch ab — das siehst du im Netto-Cashflow.",
       grafik: "balken"
     },
@@ -4096,6 +4203,7 @@
       kurz: "Was möglich wäre, wenn alles vermietet ist.",
       text: "Rechnet alle Einheiten mit, auch die leerstehenden. Die Lücke zu den echten Einnahmen ist dein <b>Leerstandsverlust</b>.",
       formel: "Einnahmen bei Vollvermietung",
+      gut: "Gut ist, wenn Einnahmen und Potenzial fast gleich sind. Eine dauerhafte Lücke heißt: Leerstand kostet dich jeden Monat Geld.",
       merke: "Jeder Monat Leerstand ist verlorenes Geld, das nicht nachgeholt werden kann.",
       grafik: "luecke"
     },
@@ -4104,6 +4212,7 @@
       kurz: "Was von den Einnahmen nach den Kreditraten übrig bleibt.",
       text: "Von den Einnahmen wird die Kreditrate abgezogen. <b>Laufende Kosten sind nicht abgezogen</b> – Instandhaltung, Verwaltung, nicht umlagefähige Nebenkosten und Steuern kommen noch dazu. Ist die Zahl negativ, legst du schon ohne diese Kosten jeden Monat Geld drauf.",
       formel: "Einnahmen − Kreditraten (Zins und Tilgung)",
+      gut: "Über null heißt: Die Mieten tragen die Kreditraten. Rechne die laufenden Kosten noch dazu – bleibt danach etwas übrig, trägt sich das Objekt selbst.",
       merke: "Ein negativer Cashflow ist nicht automatisch schlecht: Tilgung ist Vermögensaufbau. Aber du musst ihn dir leisten können.",
       grafik: "wasserfall"
     },
@@ -4112,7 +4221,8 @@
       kurz: "Wie viel Prozent deines Kaufpreises die Miete jährlich einbringt.",
       text: "Die Standardkennzahl zum Vergleichen von Objekten. Sie sagt nichts über Kosten oder Finanzierung — dafür ist sie schnell und überall gleich gerechnet.",
       formel: "(Jahreskaltmiete ÷ Investition) × 100",
-      merke: "Als grobe Orientierung: unter 4 % wird es in der Regel schwer, positiven Cashflow zu erreichen. Ab etwa 6 % wird es interessant. Die Lage entscheidet mit.",
+      gut: "Grobe Richtschnur: Unter 4 % wird ein Überschuss nach der Kreditrate meist schwierig, ab etwa 6 % wird es interessant. In teuren Lagen sind niedrigere Werte üblich.",
+      merke: "Die Bruttomietrendite lässt Kosten und Finanzierung außen vor. Sie taugt zum schnellen Vergleich von Objekten, nicht als Gewinn.",
       grafik: "skala"
     },
     auslastung: {
@@ -4120,6 +4230,7 @@
       kurz: "Wie viele deiner Einheiten vermietet sind.",
       text: "Verhältnis von vermieteten zu allen Einheiten. Schon eine leere Wohnung von fünf drückt deine Einnahmen um rund 20 Prozent.",
       formel: "(Vermietete Einheiten ÷ alle Einheiten) × 100",
+      gut: "100 % ist das Ziel. Eine kurze Lücke beim Mieterwechsel ist normal. Steht eine Einheit länger leer, lohnt ein Blick auf Preis und Zustand.",
       merke: "Dauerhafter Leerstand hat fast immer einen von drei Gründen: zu hoher Preis, schlechter Zustand oder schwache Lage.",
       grafik: "kreis"
     },
@@ -4128,6 +4239,7 @@
       kurz: "Was du der Bank aktuell noch schuldest.",
       text: "Summe aller offenen Kredite. Sie sinkt mit jeder Tilgungsrate und mit Sondertilgungen.",
       formel: "Ursprungsdarlehen − geleistete Tilgung",
+      gut: "Je niedriger, desto besser. Entscheidend ist aber, ob der Wert der Immobilie darüber liegt und ob du die Rate bequem aus der Miete zahlen kannst.",
       merke: "Die Restschuld allein sagt wenig. Entscheidend ist, ob der Wert der Immobilie darüber liegt und ob du die Rate tragen kannst.",
       grafik: "abbau"
     },
@@ -4136,6 +4248,7 @@
       kurz: "Was du jeden Monat an die Bank zahlst – Zins und Tilgung zusammen.",
       text: "Deine Kreditrate besteht aus Zins und Tilgung. Nur die <b>Tilgung</b> verringert deine Schuld und baut Vermögen auf — der Zins ist der Preis fürs Geliehene.",
       formel: "Zins + Tilgung (alle Kredite zusammen)",
+      gut: "Gut ist eine Rate, die deine Mieten sicher tragen – auch wenn eine Einheit einmal leer steht. Ein hoher Tilgungsanteil macht dich schneller schuldenfrei.",
       merke: "Am Anfang der Laufzeit ist der Zinsanteil hoch. Mit jeder Rate verschiebt sich das Verhältnis zugunsten der Tilgung.",
       grafik: "zinstilgung"
     },
@@ -4144,6 +4257,7 @@
       kurz: "Was dich das Objekt insgesamt gekostet hat.",
       text: "Kaufpreis plus Kaufnebenkosten: Grunderwerbsteuer, Notar, Grundbuch und gegebenenfalls Makler. Basis für alle Renditekennzahlen.",
       formel: "Kaufpreis + Kaufnebenkosten",
+      gut: "Hier gibt es kein Gut oder Schlecht. Wichtig ist, dass die Summe vollständig ist: mit Kaufnebenkosten und großen Sanierungen. Sonst sieht die Rendite besser aus, als sie ist.",
       merke: "Die Kaufnebenkosten liegen in Deutschland je nach Bundesland bei etwa 9 bis 15 Prozent. Wer sie weglässt, rechnet sich die Rendite schön.",
       grafik: "anteile"
     },
@@ -4152,6 +4266,7 @@
       kurz: "Wie stark sich dein eingesetztes Kapital verzinst.",
       text: "Setzt den jährlichen Netto-Cashflow ins Verhältnis zur Investition. Anders als die Bruttorendite berücksichtigt er die Finanzierung.",
       formel: "(Netto-Cashflow × 12 ÷ Investition) × 100",
+      gut: "Über null verdient dein eingesetztes Geld nach den Kreditraten etwas dazu. Zum Vergleich taugt, was eine sichere Geldanlage bringen würde.",
       merke: "Vergleich diesen Wert mit dem, was dein Geld woanders bringen würde — das nennt man Opportunitätskosten.",
       grafik: "skala"
     },
@@ -4160,6 +4275,7 @@
       kurz: "Was du für Betriebskosten zurücklegst.",
       text: "Nebenkosten sind durchlaufende Posten: Dein Mieter zahlt sie voraus, du gibst sie für Heizung, Wasser, Müll und Versicherung wieder aus.",
       formel: "Nebenkostenvorauszahlungen der Mieter",
+      gut: "Gut ist, wenn die Vorauszahlungen die tatsächlichen Nebenkosten decken. Dann gibt es bei der Abrechnung weder hohe Nachzahlungen noch hohe Guthaben.",
       merke: "Nebenkosten als Gewinn zu zählen ist der häufigste Rechenfehler von Vermietern. Am Jahresende sind sie meist weg.",
       grafik: "durchlauf"
     }
@@ -4210,20 +4326,23 @@
     }
   }
 
+  // Erklärfenster als kleine Lektion: was es ist, wie es entsteht, was ein guter Wert ist
   function openInfoSheet(schluessel) {
     const i = KPI_INFO[schluessel];
     if (!i) return;
+    const teil = (titel, inhalt) => `<div class="eq-lektion-teil"><div class="eq-lektion-t" role="heading" aria-level="3">${titel}</div>${inhalt}</div>`;
     const body = `
-      <div class="info-kopf">
-        <div class="info-kurz">${esc(i.kurz)}</div>
-      </div>
+      <div class="info-kurz">${esc(i.kurz)}</div>
       ${infoGrafik(i.grafik)}
-      <p class="info-text">${i.text}</p>
-      <div class="info-formel"><span>So rechnet ESTRIQ</span><b>${esc(i.formel)}</b></div>
+      <div class="eq-lektion">
+        ${teil("Was es ist", `<p class="info-text">${i.text}</p>`)}
+        ${teil("Wie es entsteht", `<div class="info-formel"><b>${esc(i.formel)}</b></div>`)}
+        ${i.gut ? teil("Was ein guter Wert ist", `<p class="info-text">${esc(i.gut)}</p>`) : ""}
+      </div>
       <div class="info-merke"><span>Merke</span>${esc(i.merke)}</div>
-      <button class="wc-cta" id="infoTools" style="margin-top:20px">Passende Rechner öffnen</button>`;
-    const sheet = openSheet(i.titel, "", body);
-    sheet.querySelector("#infoTools").onclick = () => { closeSheet(); route("tools"); };
+      <button type="button" class="ef-open" id="infoTools">Zu den Rechnern</button>`;
+    const sheet = openSheet(i.titel, "Kurz erklärt", body);
+    sheet.querySelector("#infoTools").onclick = () => { closeSheet(); geheZu("tools"); };
   }
 
   // Kleines "i" für eine Kennzahl
@@ -4236,7 +4355,8 @@
   // Kennzahl-Karte: Beschriftung, große Zahl, Erläuterung. Überall gleich aufgebaut.
   // (icon bleibt als Parameter erhalten, wird aber nicht mehr gezeichnet.)
   function kpiCard(icon, num, lab, desc, accent, action, info) {
-    return `<div class="card kpi${accent ? ' accent' : ''}${action ? ' clickable' : ''}"${action ? ` data-act="${action}" role="button" tabindex="0"` : ''}>
+    const minus = /^[-−]\s?\d/.test(String(num));
+    return `<div class="card kpi${minus ? ' minus' : accent ? ' accent' : ''}${action ? ' clickable' : ''}"${action ? ` data-act="${action}" role="button" tabindex="0"` : ''}>
       ${infoIcon(info)}
       <div class="lab">${esc(lab)}</div>
       <div class="num" style="--eq-z:${String(num == null ? "" : num).length}">${esc(num)}</div>
@@ -4504,7 +4624,7 @@
   }
 
   // Speichern-Knopf verdrahten, inkl. Fehleranzeige
-  function efBind(sheet, speichernFn, loeschenFn, loeschFrage, nachErfolg) {
+  function efBind(sheet, speichernFn, loeschenFn, loeschFrage, nachErfolg, nachLoeschen) {
     const msg = sheet.querySelector("#efMsg");
     const btn = sheet.querySelector("#efSave");
     if (btn) btn.onclick = async () => {
@@ -4549,8 +4669,9 @@
         return;
       }
       closeSheet();
-      try { await window.nachSpeichern(); showToast("Gelöscht."); }
-      catch (_) { showToast(NEULADEN_HINWEIS); }
+      try { await window.nachSpeichern(); }
+      catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      if (nachLoeschen) nachLoeschen(); else showToast("Gelöscht.");
     };
   }
 
@@ -4883,7 +5004,7 @@
     const karte = el(`<div class="card eq-haupt">
       <div class="eq-haupt-l">
         <div class="eq-haupt-zeile"><span>${esc(o.zeile)}</span>${o.info ? infoKnopf(o.info) : ""}</div>
-        <div class="eq-haupt-zahl">${esc(o.zahl)}</div>
+        <div class="eq-haupt-zahl${o.minus ? " minus" : ""}">${esc(o.zahl)}</div>
         <div class="eq-haupt-unter">${esc(o.unter || "")}</div>
         ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${esc(o.anteilText || o.anteil + " Prozent des möglichen Ertrags")}"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
       </div>
@@ -5042,9 +5163,48 @@
   }
 
   /* ---------- OVERVIEW ---------- */
+  /* ---------- ÜBERSICHT ---------- */
+  // Frage: Wie steht mein Bestand heute da?
+  // Reihenfolge: Hauptaussage, Hinweise, Kennzahlen, Objekte – Suche, Kalender und Wetter danach.
+
+  // Was über Mieteingang und Leerstand hinaus Aufmerksamkeit braucht: Handwerker und Kredite
+  function bestandsHinweise(streams) {
+    const liste = [];
+    streams.forEach(s => {
+      const gw = gewerkeVon(s);
+      if (gw.length) {
+        const z = hwGesamtZustand(gw);
+        if (z.klasse === " kritisch" || z.klasse === " achtung")
+          liste.push({ s, stufe: z.klasse.trim(), marke: z.klasse === " kritisch" ? "zu viel bezahlt" : "etwas voraus bezahlt", titel: "Handwerker: " + z.titel, text: s.name });
+      }
+      FE.creditsOf(s).forEach(kr => {
+        if (kreditStand(kr).tilgtNie)
+          liste.push({ s, stufe: "achtung", marke: "wird nicht abbezahlt", titel: (kr.name || "Kredit") + ": Die Rate ist zu niedrig", text: s.name });
+      });
+    });
+    return liste;
+  }
+  function hinweisKarte(streams) {
+    const liste = bestandsHinweise(streams);
+    if (!liste.length) return null;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Darauf solltest du schauen</div>
+        <div class="card-s">Zeile antippen öffnet das Objekt</div></div></div>
+      <div class="card-b">${liste.map((h, i) => `<div class="drow clickable eq-hinweis" data-i="${i}" role="button" tabindex="0">
+        <div class="drow-l"><div><div class="drow-name">${esc(h.titel)}</div><div class="drow-sub">${esc(h.text)}</div></div></div>
+        <span class="eq-marke ${h.stufe}">${esc(h.marke)}</span></div>`).join("")}</div></div>`);
+    karte.querySelectorAll("[data-i]").forEach(z => {
+      const h = liste[Number(z.dataset.i)];
+      z.onclick = () => geheZu(h.s.id);
+      z.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); geheZu(h.s.id); } };
+    });
+    return karte;
+  }
+
   function renderOverview(host) {
     const t = FE.totals(D);
-    // Portfolio-Kredite + Einheiten aggregieren
+    const streams = mietStreams();
+    // Kredite und Einheiten über alle Objekte
     let debtMonth = 0, debtRest = 0, debtOrig = 0, paidSoFar = 0;
     let unitsTotal = 0, unitsLet = 0;
     (D.streams || []).forEach(s => {
@@ -5058,89 +5218,97 @@
       (s.einheiten || []).forEach(u => { unitsTotal++; if (u.status === "vermietet") unitsLet++; });
     });
     const nettoMonth = t.ist - debtMonth;
-    const occ = unitsTotal ? Math.round(unitsLet / unitsTotal * 100) : 0;
     const upside = t.potenzial - t.ist;          // ungenutztes Einnahmenpotenzial
     const nettoPot = t.potenzial - debtMonth;    // Netto bei Vollvermietung
+    const stand = (D.meta && D.meta.version) || "";
 
     $("#eyebrow").textContent = "Portfolio";
     $("#pageTitle").textContent = "Übersicht";
-    $("#pageSub").textContent = "Alle Mietobjekte auf einen Blick · Stand " + ((D.meta && D.meta.version) || "");
+    $("#pageSub").textContent = "Dein Bestand auf einen Blick" + (stand ? " · Stand " + (/^\d{4}-\d\d-\d\d/.test(stand) ? dateDE(stand) : stand) : "");
 
     const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside };
 
-    // Persönliche Begrüßung + Suche
     host.appendChild(begruessungsKarte());
-    host.appendChild(searchCard());
 
-    // KPI-Reihe 1 — Einnahmen & Cashflow
+    // Noch kein Objekt: ein Satz, eine Aktion – Suche, Kalender und Wetter bleiben erreichbar
+    if (!streams.length) {
+      const leer = el(`<div class="card eq-leer">
+        <div>Noch kein Objekt im Bestand. Leg dein erstes Mietobjekt an – danach steht hier, was jeden Monat übrig bleibt.</div>
+        <button type="button" class="eq-btn" id="ersteObjekt">Objekt anlegen</button></div>`);
+      leer.querySelector("#ersteObjekt").onclick = () => { if (pruefeObjekt()) assistentObjekt(); };
+      host.appendChild(leer);
+      const reihe = el(`<div class="grid g-2"></div>`);
+      reihe.appendChild(calendarCard()); reihe.appendChild(weatherCard());
+      host.appendChild(reihe);
+      return;
+    }
+
+    // 1 Hauptaussage: Was bleibt im Monat übrig – und die drei Zustände des Bestands
+    const fin = finanzStand((D.streams || []).reduce((a, s) => a.concat(FE.creditsOf(s)), []));
+    const fakten = standFakten(vermietungsStand(streams));
+    fakten[0].tun = () => openPortfolioSheet("auslastung", ctx); fakten[0].hinweis = "Alle Einheiten ansehen";
+    host.appendChild(hauptKarte({
+      zeile: "Netto-Cashflow im Monat", info: "cashflow",
+      zahl: eur(nettoMonth), minus: nettoMonth < 0,
+      unter: (nettoMonth < 0 ? "Du legst im Monat drauf – gerechnet " : "bleiben dir im Monat – gerechnet ") + CF_HINWEIS,
+      fakten,
+      knopf: { id: "cfHerleitung", text: "So kommt die Zahl zustande", tun: () => openPortfolioSheet("netto", ctx) }
+    }));
+
+    // 2 Was sonst Aufmerksamkeit braucht
+    const hinweise = hinweisKarte(streams); if (hinweise) host.appendChild(hinweise);
+
+    // 3 Kennzahlen: erst das Geld, dann die Kredite
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
-      ${kpiCard("euro", eur(t.ist), "Einnahmen / Monat", "aktuell vermietet", true, "einnahmen", "einnahmen")}
-      ${kpiCard("layers", eur(t.potenzial), "Potenzial / Monat", "+" + eur(upside) + " ungenutzt", false, "potenzial", "potenzial")}
-      ${kpiCard("wallet", eur(nettoMonth), "Netto-Cashflow / Monat", CF_HINWEIS, nettoMonth >= 0, "netto", "cashflow")}
-      ${kpiCard("home", occ + " %", "Auslastung", unitsLet + " / " + unitsTotal + " Einheiten", occ >= 60, "auslastung", "auslastung")}
+      ${kpiCard("euro", eur(t.ist), "Einnahmen / Monat", "aktuell vermietet", false, "einnahmen", "einnahmen")}
+      ${kpiCard("layers", eur(t.potenzial), "Potenzial / Monat", upside > 0 ? eur(upside) + " ungenutzt" : "voll ausgeschöpft", false, "potenzial", "potenzial")}
+      ${kpiCard("trend", eur(t.jahrIst), "Einnahmen / Jahr", "hochgerechnet", false, "jahr")}
+      ${kpiCard("chart", eur(nettoPot), "Netto-Cashflow bei Vollvermietung", "wenn alles vermietet wäre", false, "nettoPot")}
     </div>`), {
       einnahmen: () => openPortfolioSheet("einnahmen", ctx),
       potenzial: () => openPortfolioSheet("potenzial", ctx),
-      netto: () => openPortfolioSheet("netto", ctx),
-      auslastung: () => openPortfolioSheet("auslastung", ctx)
-    }));
-
-    // KPI-Reihe 2 — Jahr, Tilgung, Schuldenstand
-    host.appendChild(wireActs(el(`<div class="grid g-kpi">
-      ${kpiCard("trend", eur(t.jahrIst), "Einnahmen / Jahr", "hochgerechnet", false, "jahr")}
-      ${kpiCard("chart", eur(nettoPot), "Netto-Potenzial / Mon.", "bei Vollvermietung", nettoPot >= 0, "potenzial")}
-      ${kpiCard("bank", eur(debtMonth), "Kreditraten / Monat", eur(debtMonth * 12) + " / Jahr", false, "tilgung", "tilgung")}
-      ${kpiCard("debt", eur(debtRest), "Restschuld heute", "exakt " + eur2(debtRest), false, "schuld", "restschuld")}
-    </div>`), {
       jahr: () => openPortfolioSheet("einnahmen", ctx),
-      potenzial: () => openPortfolioSheet("potenzial", ctx),
+      nettoPot: () => openPortfolioSheet("potenzial", ctx)
+    }));
+    if (fin.n) host.appendChild(wireActs(el(`<div class="grid g-kpi">
+      ${kpiCard("bank", eur(debtMonth), "Kreditraten / Monat", "davon " + eur(fin.tilgung) + " Tilgung", false, "tilgung", "tilgung")}
+      ${kpiCard("debt", eur(debtRest), "Restschuld heute", "exakt " + eur2(debtRest), false, "schuld", "restschuld")}
+      ${kpiCard("coins", eur(paidSoFar), "Getilgt bisher", prozent(fin.anteil, 0) + " von " + eur(debtOrig), false, "schuld")}
+      ${kpiCard("trend", fin.tilgtNie ? "offen" : !fin.laufend ? "erreicht" : monatLang(fin.ende), "Schuldenfrei",
+        fin.tilgtNie ? "bei einem Kredit ist die Rate zu niedrig" : !fin.laufend ? "alle Kredite abbezahlt" : restzeitText(fin.restMonate), false, "schuld")}
+    </div>`), {
       tilgung: () => openPortfolioSheet("schuld", ctx),
       schuld: () => openPortfolioSheet("schuld", ctx)
     }));
 
-    // Composition donut + legend (nur echte Einnahmen)
-    const segs = (D.streams || []).map((s, i) => {
-      const m = FE.streamMonthly(s);
-      return { id: s.id, name: s.name, value: m.gesamt, color: PALETTE[i % PALETTE.length], kind: s.kind };
-    }).filter(x => x.value > 0);
-    const legend = segs.map(s => `<div class="leg clickable" data-sid="${esc(s.id)}">
-      <span class="sw" style="background:${s.color}"></span>
-      <span class="lt">${esc(s.name)}</span>
-      <span class="lv">${eur(s.value)}</span></div>`).join("");
-    const compCard = el(`<div class="card pad">
-      <div class="card-t" style="margin-bottom:4px">Zusammensetzung</div>
-      <div class="card-s" style="margin-bottom:18px">Einnahmen je Objekt / Monat</div>
-      <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`);
-    compCard.querySelectorAll(".leg[data-sid]").forEach(l =>
-      l.onclick = () => route(l.dataset.sid));
-    host.appendChild(compCard);
+    // 4 Die Objekte – dieselbe Karte wie unter „Objekte"
+    host.appendChild(abschnittKopf("Objekte", "Antippen öffnet das Objekt", { id: "alleObjekte", text: "Alle ansehen", tun: () => geheZu("vermietung") }));
+    const grid = el(`<div class="grid g-objekte"></div>`);
+    streams.forEach(s => grid.appendChild(objektKarte(s)));
+    host.appendChild(grid);
 
-    // Kalender + Wetter nebeneinander
+    // 5 Nachgeordnet: Suche, Verteilung, Kalender, Wetter
+    host.appendChild(searchCard());
+    const segs = streams.map((s, i) => ({ id: s.id, name: s.name, value: FE.streamMonthly(s).gesamt, color: PALETTE[i % PALETTE.length] })).filter(x => x.value > 0);
+    if (segs.length > 1) {
+      const legend = segs.map(s => `<div class="leg clickable" data-sid="${esc(s.id)}" role="button" tabindex="0">
+        <span class="sw" style="background:${s.color}"></span>
+        <span class="lt">${esc(s.name)}</span>
+        <span class="lv">${eur(s.value)}</span></div>`).join("");
+      const compCard = el(`<div class="card pad">
+        <div class="card-t" style="margin-bottom:4px">Verteilung</div>
+        <div class="card-s" style="margin-bottom:18px">Einnahmen je Objekt im Monat</div>
+        <div class="donut-row">${donut(segs)}<div class="legend">${legend}</div></div></div>`);
+      compCard.querySelectorAll(".leg[data-sid]").forEach(l => {
+        l.onclick = () => geheZu(l.dataset.sid);
+        l.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); geheZu(l.dataset.sid); } };
+      });
+      host.appendChild(compCard);
+    }
     const row = el(`<div class="grid g-2"></div>`);
     row.appendChild(calendarCard());
     row.appendChild(weatherCard());
     host.appendChild(row);
-
-    // Stream tiles
-    const tiles = el(`<div class="tiles"></div>`);
-    (D.streams || []).forEach(s => {
-      const m = FE.streamMonthly(s);
-      let meta = "";
-      const kr = FE.creditsOf(s);
-      if (kr.length) {
-        meta = `<span class="pillet on">Netto ${eur(m.netto)}</span><span class="pillet">${kr.length} Kredit${kr.length > 1 ? "e" : ""}</span>`;
-      }
-      else meta = `<span class="pillet on">${m.vermietet}/${m.einheiten} vermietet</span><span class="pillet">Potenzial ${eur(m.gesamtPotenzial)}</span>`;
-      const t = el(`<div class="tile" data-id="${s.id}">
-        <div class="tile-go">${svg("trend")}</div>
-        <div class="tile-head"><div class="tile-ic">${svg(s.icon || "home")}</div>
-          <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
-        <div class="tile-num">${eur(m.gesamt)} <small>/ Mon.</small></div>
-        <div class="tile-meta">${meta}</div></div>`);
-      t.onclick = () => route(s.id);
-      tiles.appendChild(t);
-    });
-    host.appendChild(tiles);
   }
 
   /* ---------- KALENDER (Monatsansicht) ---------- */
@@ -6054,15 +6222,18 @@
     const entgangen = frei.reduce((a, u) => a + FE.unitIncome(u).nk, 0);
 
     const body = `
+      <div class="eq-zustand"><div class="eq-zustand-tx">
+        <div class="eq-zustand-t">${eur(m.nkPuffer)} im Monat legst du für Nebenkosten zurück</div>
+        <div class="eq-zustand-d">Das sind ${eur(jahr)} im Jahr. Sie zählen nicht zu deinen Einnahmen.</div></div></div>
       <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>je Monat</span><b style="color:var(--gold)">${eur(m.nkPuffer)}</b></div>
+        <div class="s"><span>je Monat</span><b>${eur(m.nkPuffer)}</b></div>
         <div class="s"><span>je Jahr</span><b>${eur(jahr)}</b></div>
         <div class="s"><span>je m²</span><b>${(s.einheiten || [])[0] ? ((s.einheiten[0].nkProM2 != null ? s.einheiten[0].nkProM2 : (FE.unitIncome(s.einheiten[0]).nk / (s.einheiten[0].flaeche || 1)))).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} €</b></div>
         <div class="s"><span>Einheiten</span><b>${verm.length} vermietet</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Beitrag je Wohnung</div>
       ${miniBars(proWohnung)}
-      ${entgangen > 0 ? `<div class="note" style="margin-top:10px">Durch Leerstand fehlen zusätzlich ${eur(entgangen)}/Monat an NK-Umlage.</div>` : ""}
+      ${entgangen > 0 ? `<div class="note" style="margin-top:10px">Durch Leerstand fehlen zusätzlich ${eur(entgangen)} Nebenkosten im Monat.</div>` : ""}
       ${pos.length ? `<div class="card-t" style="font-size:14px;margin:20px 0 10px">Wofür die Rücklage verwendet wird</div>
       ${miniBars(pos)}
       <div class="note" style="margin-top:10px">Richtwerte für die Verteilung. Die tatsächliche Abrechnung erfolgt jährlich gegenüber den Mietern.</div>` : ""}
