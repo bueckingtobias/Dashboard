@@ -23,18 +23,18 @@
     home: '<path d="M4 11l8-6 8 6M6 10v9h12v-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     coins: '<ellipse cx="8" cy="7" rx="5" ry="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 7v5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7" stroke="currentColor" stroke-width="1.8"/><path d="M11 14.5c.6 1.2 2.6 2 5 2 2.8 0 5-1.1 5-2.5v-5" stroke="currentColor" stroke-width="1.8"/><ellipse cx="16" cy="9" rx="5" ry="2.5" stroke="currentColor" stroke-width="1.8"/>',
     euro: '<path d="M15 8a5 5 0 1 0 0 8M5 10h7M5 14h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-    layers: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
     trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     key: '<circle cx="8" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M11 11l7 7M16 16l2-2M14 18l2-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-    bank: '<path d="M4 10l8-5 8 5M5 10v8M19 10v8M9 10v8M15 10v8M3 20h18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    wallet: '<path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M3 7h16M16 12h5v4h-5a2 2 0 0 1 0-4z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    debt: '<path d="M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-    tool: '<path d="M14.5 6.2a4 4 0 0 0-5.3 5.3L4 16.7V20h3.3l5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.2-.6-.6-2.2z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    beleg: '<path d="M7 3h10a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1zM9 8h6M9 12h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    calendar: '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 9h16M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    user: '<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    bank: '<path d="M4 10l8-5 8 5M5 10v8M19 10v8M9 10v8M15 10v8M3 20h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    wallet: '<path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M3 7h16M16 12h5v4h-5a2 2 0 0 1 0-4z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    debt: '<path d="M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    tool: '<path d="M14.5 6.2a4 4 0 0 0-5.3 5.3L4 16.7V20h3.3l5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.2-.6-.6-2.2z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    beleg: '<path d="M7 3h10a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1zM9 8h6M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    calendar: '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 9h16M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    user: '<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
   };
   const svg = (k, cls) => `<svg viewBox="0 0 24 24" fill="none" class="${cls || ''}">${IC[k] || IC.grid}</svg>`;
 
@@ -49,7 +49,7 @@
   async function ladeProfil(session) {
     const mail = ((session.user && session.user.email) || "");
     const { data, error } = await window.sb.from("mitglieder")
-      .select("name, email, avatar_url, rolle, theme, accent, tipps_an")
+      .select("name, email, avatar_url, rolle, theme, tipps_an")
       .eq("auth_user_id", session.user.id).limit(1);
     if (error) throw error;
     const profil = data && data[0];
@@ -68,25 +68,20 @@
       avatar: profil.avatar_url || null,
       rolle: profil.rolle || "bearbeiter",
       theme: profil.theme || null,
-      accent: profil.accent || null,
       tipps_an: profil.tipps_an === false ? false : true
     };
     merkUmzug();
     // Farbschema aus dem Profil anwenden (geräteübergreifend).
     // Der im Gerät gemerkte Wert zählt nur, wenn er von diesem Nutzer stammt.
-    // Sonst Standard Graphit/Silber.
-    let lokalTheme = null, lokalAccent = null;
+    // Sonst Standard Anthrazit.
+    let lokalTheme = null;
     try {
       const besitzer = localStorage.getItem("estriq_nutzer");
-      if (!besitzer || besitzer === currentUser.id) {
-        lokalTheme = localStorage.getItem("estriq_theme");
-        lokalAccent = localStorage.getItem("estriq_accent");
-      }
+      if (!besitzer || besitzer === currentUser.id) lokalTheme = localStorage.getItem("estriq_theme");
     } catch (_) {}
-    const theme = currentUser.theme || lokalTheme || "graphit";
-    const accent = currentUser.accent || lokalAccent || "buecking";
-    themeAnwenden(theme, accent);
-    themeSpeichern(theme, accent);
+    const theme = themeGueltig(currentUser.theme || lokalTheme);
+    themeAnwenden(theme);
+    themeSpeichern(theme);
   }
 
   /* ---------- GERÄTESPEICHER JE NUTZER ---------- */
@@ -185,56 +180,79 @@
     location.reload();
   }
 
-  /* ---------- DESIGN / THEME ---------- */
+  /* ---------- DESIGN / FARBSCHEMA ---------- */
+  // Fünf Schemata, jedes mit fest abgestimmtem Akzent. Die Farbwerte stehen im CSS.
+  // "graphit" (Anthrazit) ist der Standard und kommt ohne Attribut aus.
   const THEMES = [
-    { id: "graphit", name: "Graphit", bg: "#1c1f26" },
-    { id: "hell",    name: "Hell",    bg: "#f4f6f9" },
-    { id: "smaragd", name: "Smaragd", bg: "#0a1f1a" },
-    { id: "marine",  name: "Marine",  bg: "#111a2b" }
+    { id: "hell",    name: "Weiß" },
+    { id: "graphit", name: "Anthrazit" },
+    { id: "marine",  name: "Dunkelblau" },
+    { id: "smaragd", name: "Smaragdgrün" },
+    { id: "violett", name: "Violett" }
   ];
-  const AKZENTE = [
-    { id: "buecking",  name: "Bücking",   farbe: "#4CAF7D" },
-    { id: "teal",      name: "Teal",      farbe: "#2dd4bf" },
-    { id: "mint",      name: "Mint",      farbe: "#4ade9e" },
-    { id: "blau",      name: "Blau",      farbe: "#4a9fee" },
-    { id: "violett",   name: "Violett",   farbe: "#a98cf0" },
-    { id: "bernstein", name: "Bernstein", farbe: "#e0a94a" },
-    { id: "rose",      name: "Rosé",      farbe: "#ee7a9f" },
-    { id: "rubin",     name: "Rubin",     farbe: "#c0392b" },
-    { id: "silber",    name: "Silber",    farbe: "#c8ccd4" }
-  ];
-  function themeAnwenden(theme, accent) {
-    const el2 = document.documentElement;
-    if (theme === "graphit") el2.removeAttribute("data-theme");
-    else el2.setAttribute("data-theme", theme);
-    el2.setAttribute("data-accent", accent || "buecking");
-    PALETTE = palette();
-    if (typeof currentView !== "undefined" && currentView) { try { route(currentView); } catch (_) {} }
+  const themeGueltig = (theme) => THEMES.some(x => x.id === theme) ? theme : "graphit";
+  function themeAnwenden(theme) {
+    const de = document.documentElement;
+    theme = themeGueltig(theme);
+    if (theme === "graphit") de.removeAttribute("data-theme");
+    else de.setAttribute("data-theme", theme);
+    statusleisteFarbe();
   }
-  function themeSpeichern(theme, accent) {
+  // Die Farbe der Statusleiste folgt nach dem Login dem Schema. Davor bleibt sie wie auf der Landing.
+  function statusleisteFarbe() {
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (!tc) return;
+    const drin = document.documentElement.classList.contains("eq-app");
+    tc.setAttribute("content", drin ? cssVar("--bg", "#16181D") : "#0B1220");
+  }
+  function themeSpeichern(theme) {
     try {
       if (theme === "graphit") localStorage.removeItem("estriq_theme");
       else localStorage.setItem("estriq_theme", theme);
-      localStorage.setItem("estriq_accent", accent || "buecking");
+      // Die frühere freie Akzentwahl gibt es nicht mehr
+      localStorage.removeItem("estriq_accent");
       // Merken, wessen Farben das sind – der nächste Nutzer am Gerät übernimmt sie nicht
       if (currentUser) localStorage.setItem("estriq_nutzer", currentUser.id);
     } catch (_) {}
   }
   // Farbschema am Nutzer in der Datenbank speichern (geräteübergreifend)
-  async function themeInDB(theme, accent) {
+  async function themeInDB(theme) {
     try {
       if (!currentUser || !window.sb) return;
       await window.sb.from("mitglieder")
-        .update({ theme: theme, accent: accent }).eq("auth_user_id", currentUser.id);
-      currentUser.theme = theme; currentUser.accent = accent;
+        .update({ theme: theme }).eq("auth_user_id", currentUser.id);
+      currentUser.theme = theme;
     } catch (_) {}
   }
   function aktThemeId() {
-    const t = document.documentElement.getAttribute("data-theme");
-    return t || "graphit";
+    return themeGueltig(document.documentElement.getAttribute("data-theme"));
   }
-  function aktAccentId() {
-    return document.documentElement.getAttribute("data-accent") || "buecking";
+  // Farbwahl: fünf Vorschau-Kacheln mit Hintergrund, Fläche, Text und Akzent
+  function schemaKacheln(id) {
+    return `<div class="eq-schemata" id="${id}" role="group" aria-label="Farbschema">
+      ${THEMES.map(th => `<button type="button" class="eq-schema" data-theme="${th.id}" aria-pressed="false">
+        <span class="eq-schema-bild" aria-hidden="true"><i><b></b><b class="kurz"></b><b class="ak"></b></i></span>
+        <span class="eq-schema-n">${esc(th.name)}</span></button>`).join("")}
+    </div>`;
+  }
+  // Ein Antippen wechselt sofort sichtbar; beiWahl speichert zusätzlich
+  function schemaVerdrahten(wurzel, id, beiWahl) {
+    const knoepfe = wurzel.querySelectorAll("#" + id + " .eq-schema");
+    const markiere = () => {
+      const tid = aktThemeId();
+      knoepfe.forEach(b => {
+        const an = b.dataset.theme === tid;
+        b.classList.toggle("active", an);
+        b.setAttribute("aria-pressed", an ? "true" : "false");
+      });
+    };
+    knoepfe.forEach(b => b.onclick = () => {
+      themeAnwenden(b.dataset.theme);
+      themeSpeichern(b.dataset.theme);
+      if (beiWahl) beiWahl(b.dataset.theme);
+      markiere();
+    });
+    markiere();
   }
 
   /* ---------- ABO / TARIF ---------- */
@@ -594,7 +612,7 @@
         <button type="button" class="ava-circle ${ava ? "filled" : ""}" id="pAvaBtn" aria-label="Profilbild ändern">
           <div class="ava-img" id="pAvaPrev" ${ava ? `style="background-image:url(${esc(ava)})"` : ""}></div>
           ${ava ? "" : `<div class="ava-letter">${esc(initial)}</div>`}
-          <div class="ava-edit"><svg viewBox="0 0 24 24" fill="none" stroke="#052018" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+          <div class="ava-edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
         </button>
         <input type="file" id="pAvaFile" accept="image/*" class="hide">
         <div class="prof-cap" id="pAvaCap">Zum Ändern tippen</div>
@@ -607,33 +625,26 @@
       </div>
       <div class="ef-msg" id="pMsg"></div>
       ${efTitel("Darstellung")}
-      <div class="ef-l">Hintergrund</div>
-      <div class="accent-row" id="themeRow">
-        ${THEMES.map(t => `<button type="button" class="accent-dot theme-dot" data-theme="${t.id}"
-          style="--ac:${t.bg}" title="${esc(t.name)}" aria-label="${esc(t.name)}"></button>`).join("")}
-      </div>
-      <div class="ef-l" style="margin-top:14px">Akzentfarbe</div>
-      <div class="accent-row" id="accentRow">
-        ${AKZENTE.map(a => `<button type="button" class="accent-dot" data-accent="${a.id}"
-          style="--ac:${a.farbe}" title="${esc(a.name)}" aria-label="${esc(a.name)}"></button>`).join("")}
-      </div>
+      <div class="ef-l">Farbschema</div>
+      ${schemaKacheln("themeRow")}
+      <div class="ef-h">Gilt nur für dich und auf all deinen Geräten.</div>
       ${efTitel("Hinweise")}
       <div class="opt-row">
         <div class="opt-tx">
           <div class="opt-n">Verbesserungs-Vorschläge</div>
           <div class="opt-m">Ab und zu ein Hinweis, wie du dein Portfolio vollständiger pflegst</div>
         </div>
-        <button type="button" class="opt-schalter" id="pTipps" role="switch"><span></span></button>
+        <button type="button" class="opt-schalter" id="pTipps" role="switch" aria-checked="false" aria-label="Verbesserungs-Vorschläge"><span></span></button>
       </div>
       ${efTitel("Tarif")}
       <div class="prof-tarif" id="pTarif"></div>
       ${inhaber
-        ? `<button class="up-cta" id="pTarifBtn" style="margin-top:12px">Tarif verwalten</button>`
+        ? `<button class="add-btn wide" id="pTarifBtn" style="margin-top:12px">Tarif verwalten</button>`
         : `<div class="ef-h" style="margin-top:10px">${esc(chef ? "Den Tarif verwaltet " + chef + "." : "Den Tarif verwaltet der Inhaber des Kontos.")}</div>`}
       ${efTitel("Nutzer")}
       <div class="nu-box" id="pNutzer"></div>
       ${efTitel("Konto")}
-      <button class="up-cta" id="pLogout" style="margin-top:4px">Abmelden</button>
+      <button class="add-btn wide" id="pLogout" style="margin-top:4px">Abmelden</button>
       ${efTitel("Gefahrenzone")}
       <button class="ef-del" id="pDel" style="width:100%">${inhaber ? "Konto löschen" : "Meinen Zugang löschen"}</button>
       <div class="ef-h" id="pDelHinweis" style="margin-top:8px">${esc(inhaber
@@ -695,7 +706,11 @@
     // Schalter für Verbesserungs-Vorschläge
     const tp = sheet.querySelector("#pTipps");
     if (tp) {
-      const setzen = () => tp.classList.toggle("an", currentUser && currentUser.tipps_an !== false);
+      const setzen = () => {
+        const an = !!(currentUser && currentUser.tipps_an !== false);
+        tp.classList.toggle("an", an);
+        tp.setAttribute("aria-checked", an ? "true" : "false");
+      };
       setzen();
       tp.onclick = async () => {
         const neu = !(currentUser && currentUser.tipps_an !== false);
@@ -703,27 +718,8 @@
       };
     }
 
-    // Design: Hintergrund + Akzent, sofortige Vorschau, direkt gespeichert
-    function markiere() {
-      const tid = aktThemeId(), aid = aktAccentId();
-      sheet.querySelectorAll("#themeRow .accent-dot").forEach(b =>
-        b.classList.toggle("active", b.dataset.theme === tid));
-      sheet.querySelectorAll("#accentRow .accent-dot").forEach(b =>
-        b.classList.toggle("active", b.dataset.accent === aid));
-    }
-    sheet.querySelectorAll("#themeRow .accent-dot").forEach(b => b.onclick = () => {
-      themeAnwenden(b.dataset.theme, aktAccentId());
-      themeSpeichern(b.dataset.theme, aktAccentId());
-      themeInDB(b.dataset.theme, aktAccentId());
-      markiere();
-    });
-    sheet.querySelectorAll("#accentRow .accent-dot").forEach(b => b.onclick = () => {
-      themeAnwenden(aktThemeId(), b.dataset.accent);
-      themeSpeichern(aktThemeId(), b.dataset.accent);
-      themeInDB(aktThemeId(), b.dataset.accent);
-      markiere();
-    });
-    markiere();
+    // Farbschema: sofortige Vorschau, direkt gespeichert
+    schemaVerdrahten(sheet, "themeRow", (theme) => themeInDB(theme));
 
     // Bildauswahl
     const avaBtn = sheet.querySelector("#pAvaBtn");
@@ -738,6 +734,7 @@
       }
       zuschneiden(file, (datei, vorschau) => {
         profilAvatarDatei = datei;
+        sheet._geaendert = true;   // neues Bild ist noch nicht gespeichert
         const prev = sheet.querySelector("#pAvaPrev");
         prev.style.backgroundImage = `url(${vorschau})`;
         avaBtn.classList.add("filled");
@@ -1393,10 +1390,12 @@
   };
 
   function enterApp() {
-    document.documentElement.classList.remove("pre-login");
+    // Ab hier greift das gewählte Farbschema. Vor dem Login sieht die Seite für jeden gleich aus.
+    const de = document.documentElement;
+    de.classList.remove("pre-login", "eq-wartet");
+    de.classList.add("eq-app");
     const lp = $("#landing"); if (lp) lp.classList.add("hide");
-    const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute("content", "#16181d");
+    statusleisteFarbe();
     $("#login").classList.add("hide"); $("#app").classList.remove("hide");
     buildRail(); route("overview");
     // Rückkehr von der Stripe-Bezahlseite auswerten
@@ -1551,6 +1550,7 @@
     }
 
     async function weiter() {
+      sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
       if (idx < schritte.length - 1) { idx++; zeige(); return; }
       // Letzter Schritt: speichern
       bodyEl.innerHTML = `<div class="wc-hero"><div class="wc-t" style="font-size:18px">Wird gespeichert…</div></div>`;
@@ -1997,41 +1997,23 @@
   // Onboarding-Schritt 1: Farbschema wählen
   function openFarbwahlSheet(opt) {
     opt = opt || {};
-    const themeChips = THEMES.map(t => `<button type="button" class="accent-dot theme-dot" data-theme="${t.id}"
-      style="--ac:${t.bg}" title="${esc(t.name)}" aria-label="${esc(t.name)}"></button>`).join("");
-    const accentDots = AKZENTE.map(a => `<button type="button" class="accent-dot" data-accent="${a.id}"
-      style="--ac:${a.farbe}" title="${esc(a.name)}" aria-label="${esc(a.name)}"></button>`).join("");
     // opt.willkommen: erster Start einer eingeladenen Person – nur die Farben, kein weiterer Ablauf
     const firma = abo().firma;
     const body = `
       <div class="wc-hero">
-        ${opt.onboarding || opt.willkommen ? `<img src="estriq.PNG" alt="ESTRIQ" class="wc-logo" onerror="this.style.display='none'">` : ""}
+        ${opt.onboarding || opt.willkommen ? `<span class="eq-logo wc-logo" role="img" aria-label="ESTRIQ"></span>` : ""}
         ${opt.onboarding ? `<div class="wc-steps"><span class="on"></span><span></span><span></span></div>` : ""}
         <div class="wc-badge">${opt.onboarding || opt.willkommen ? "Willkommen bei ESTRIQ" : "Darstellung"}</div>
         <div class="wc-t">Mach es zu deinem</div>
-        <div class="wc-d">${opt.willkommen ? esc(firma ? "Du arbeitest jetzt im Konto „" + firma + "“. " : "Du arbeitest jetzt im Konto deiner Firma. ") : ""}Wähle Hintergrund und Akzentfarbe. Du kannst das jederzeit im Profil ändern — die Auswahl gilt auf all deinen Geräten${opt.willkommen ? " und nur für dich" : ""}.</div>
+        <div class="wc-d">${opt.willkommen ? esc(firma ? "Du arbeitest jetzt im Konto „" + firma + "“. " : "Du arbeitest jetzt im Konto deiner Firma. ") : ""}Wähle dein Farbschema. Du kannst es jederzeit im Profil ändern — die Auswahl gilt auf all deinen Geräten${opt.willkommen ? " und nur für dich" : ""}.</div>
       </div>
-      <div class="ef-l">Hintergrund</div>
-      <div class="accent-row" id="wcTheme">${themeChips}</div>
-      <div class="ef-l" style="margin-top:16px">Akzentfarbe</div>
-      <div class="accent-row" id="wcAccent">${accentDots}</div>
+      ${schemaKacheln("wcTheme")}
       <button class="wc-cta prem" id="wcDone" style="margin-top:24px">${opt.onboarding ? "Weiter" : opt.willkommen ? "Los geht’s" : "Speichern"}</button>`;
     const sheet = openSheet("Darstellung", "", body);
 
-    function markiere() {
-      const tid = aktThemeId(), aid = aktAccentId();
-      sheet.querySelectorAll("#wcTheme .accent-dot").forEach(b => b.classList.toggle("active", b.dataset.theme === tid));
-      sheet.querySelectorAll("#wcAccent .accent-dot").forEach(b => b.classList.toggle("active", b.dataset.accent === aid));
-    }
-    sheet.querySelectorAll("#wcTheme .accent-dot").forEach(b => b.onclick = () => {
-      themeAnwenden(b.dataset.theme, aktAccentId()); themeSpeichern(b.dataset.theme, aktAccentId()); markiere();
-    });
-    sheet.querySelectorAll("#wcAccent .accent-dot").forEach(b => b.onclick = () => {
-      themeAnwenden(aktThemeId(), b.dataset.accent); themeSpeichern(aktThemeId(), b.dataset.accent); markiere();
-    });
-    markiere();
+    schemaVerdrahten(sheet, "wcTheme");
     sheet.querySelector("#wcDone").onclick = async () => {
-      await themeInDB(aktThemeId(), aktAccentId());
+      await themeInDB(aktThemeId());
       if (opt.onboarding) { closeSheet(); setTimeout(() => openErstesObjektSheet(), 250); }
       else { closeSheet(); }
     };
@@ -2203,39 +2185,60 @@
   }
   function shortLabel(n) { return (n || "").split(" · ")[0]; }
 
+  // Drei Formen der Navigation: unten am Handy, schmale Leiste am iPad, breite Leiste ab 1200 Pixel.
+  const istHandy = () => window.matchMedia("(max-width: 599px)").matches;
+  const navForm = () => istHandy() ? "handy" : window.matchMedia("(min-width: 1200px)").matches ? "breit" : "schmal";
+
+  // Baut die Navigation vollständig auf – unten am Handy, links als Leiste auf iPad und Mac.
   function buildRail() {
     const rail = $("#rail");
-    const mobil = window.innerWidth <= 560;
-    if (mobil) { buildRailMobil(rail); return; }
-    const spacer = rail.querySelector(".rail-spacer");
-    // remove old nav buttons (keep mark, spacer, profile, logout, add)
-    $$(".rail-btn:not(.logout):not(.profile):not(.rail-add)", rail).forEach(b => b.remove());
-    navItems().forEach(it => {
-      const b = el(`<button class="rail-btn" data-id="${it.id}" title="${esc(it.label)}">
-        ${svg(it.icon)}<span class="tip">${esc(it.label)}</span></button>`);
-      b.onclick = (e) => {
-        if (it.group) { e.stopPropagation(); openSubmenu(b); }
-        else route(it.id);
-      };
-      rail.insertBefore(b, spacer);
-    });
-  }
-
-  // Handy: feste Leiste — Neu · Übersicht · Objekte · Profil · Logout
-  function buildRailMobil(rail) {
+    if (!rail) return;
     rail.innerHTML = "";
-    const mk = (cls, icon, label, fn, extra) => {
-      const b = el(`<button class="rail-btn ${cls}" title="${esc(label)}">
+    const mk = (cls, icon, label, fn, opt) => {
+      opt = opt || {};
+      const b = el(`<button type="button" class="rail-btn${cls ? " " + cls : ""}"${opt.id ? ` id="${opt.id}"` : ""}${opt.ansicht ? ` data-id="${opt.ansicht}"` : ""} title="${esc(opt.titel || label)}">
         ${svg(icon)}<span class="tip">${esc(label)}</span></button>`);
       b.onclick = fn;
       rail.appendChild(b);
       return b;
     };
-    mk("rail-add", "plus", "Neu", (e) => { e.stopPropagation(); openAnlegenMenu(rail); });
-    mk("", "grid", "Übersicht", () => route("overview"));
-    const objBtn = mk("", "home", "Objekte", (e) => { e.stopPropagation(); openObjekteMenu(objBtn); });
-    mk("", "chart", "Tools", () => route("tools"));
-    mk("profile", "user", "Profil", () => openProfilSheet());
+    const neu = (label) => mk("rail-add", "plus", label,
+      (e) => { e.stopPropagation(); openAnlegenMenu(e.currentTarget); }, { id: "railAdd", titel: "Neu anlegen" });
+    const profil = () => mk("profile", "user", "Profil", () => openProfilSheet(), { id: "profileBtn" });
+    if (istHandy()) {
+      // Fünf Einträge, „Neu“ in der Mitte. Abmelden steht im Profil.
+      mk("", "grid", "Übersicht", () => geheZu("overview"), { ansicht: "overview" });
+      mk("", "home", "Objekte", (e) => { e.stopPropagation(); openObjekteMenu(e.currentTarget); }, { ansicht: "vermietung" });
+      neu("Neu");
+      mk("", "chart", "Tools", () => geheZu("tools"), { ansicht: "tools" });
+      profil();
+    } else {
+      rail.appendChild(el(`<div class="rail-mark"><span class="eq-logo" role="img" aria-label="ESTRIQ"></span></div>`));
+      neu(navForm() === "breit" ? "Neu anlegen" : "Neu");
+      navItems().forEach(it => mk("", it.icon, it.label, (e) => {
+        if (it.group) { e.stopPropagation(); openSubmenu(e.currentTarget); }
+        else geheZu(it.id);
+      }, { ansicht: it.id }));
+      rail.appendChild(el(`<div class="rail-spacer"></div>`));
+      profil();
+      mk("logout", "logout", "Abmelden", () => logout(), { id: "logoutBtn" });
+    }
+    railMarkieren(currentView);
+  }
+  // Antippen in der Navigation: Ansicht zeigen und oben beginnen – auch wenn man schon dort ist
+  function geheZu(id) {
+    route(id);
+    const sc = $(".scroll"); if (sc) sc.scrollTop = 0;
+  }
+  // Zeigt in der Navigation, wo man gerade ist
+  function railMarkieren(id) {
+    const isMiete = mietStreams().some(s => s.id === id) || id === "vermietung";
+    $$("#rail .rail-btn").forEach(b => {
+      const d = b.dataset.id;
+      const an = !!d && (d === id || (d === "vermietung" && isMiete));
+      b.classList.toggle("on", an);
+      if (an) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
   }
 
   // Handy: Objekte-Menü (Sammelübersicht + einzelne Objekte)
@@ -2297,15 +2300,30 @@
     bd.onclick = closeSubmenu;
   }
 
+  // Auf iPad und Mac neben der Leiste, am Handy als Blatt von unten (per CSS)
   function positioniereSubmenu(anchor, menu) {
-    const bd = document.querySelector(".sub-bd");
-    if (window.innerWidth > 560) {
+    const bd = menu.previousElementSibling;
+    if (!istHandy()) {
       const r = anchor.getBoundingClientRect();
-      menu.style.left = (r.right + 10) + "px";
-      const h = menu.offsetHeight;
+      const leiste = $("#rail") ? $("#rail").getBoundingClientRect().right : 0;
+      const b = menu.offsetWidth, h = menu.offsetHeight;
+      menu.style.left = Math.max(12, Math.min(Math.max(r.right + 10, leiste + 8), window.innerWidth - b - 12)) + "px";
       menu.style.top = Math.max(12, Math.min(r.top, window.innerHeight - h - 12)) + "px";
     }
-    requestAnimationFrame(() => { if (bd) bd.classList.add("on"); menu.classList.add("on"); });
+    if (bd && bd.classList.contains("sub-bd")) bd.classList.add("on");
+    menu.classList.add("on");
+    menu.setAttribute("role", "menu");
+    // Einträge mit Tabulator erreichbar, Enter oder Leertaste wählt
+    menu.querySelectorAll(".sub-item").forEach(it => {
+      it.setAttribute("role", "menuitem");
+      it.setAttribute("tabindex", "0");
+      it.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); it.click(); } });
+    });
+    if (feinerZeiger()) {
+      menu._zurueck = anchor;
+      const erster = menu.querySelector(".sub-item.on") || menu.querySelector(".sub-item");
+      if (erster) { try { erster.focus({ preventScroll: true }); } catch (_) {} }
+    }
     document.addEventListener("keydown", subEsc);
   }
 
@@ -2331,44 +2349,42 @@
       ${items}</div>`);
     document.body.appendChild(bd); document.body.appendChild(menu);
 
-    // Position: Desktop/iPad neben der Rail, Handy als Bottom-Sheet (per CSS)
-    if (window.innerWidth > 560) {
-      const r = anchor.getBoundingClientRect();
-      menu.style.left = (r.right + 10) + "px";
-      const h = menu.offsetHeight;
-      menu.style.top = Math.max(12, Math.min(r.top, window.innerHeight - h - 12)) + "px";
-    }
-    requestAnimationFrame(() => { bd.classList.add("on"); menu.classList.add("on"); });
+    positioniereSubmenu(anchor, menu);
 
     menu.querySelectorAll(".sub-item").forEach(it => {
       it.onclick = () => { const id = it.dataset.id; closeSubmenu(); route(id); };
     });
     bd.onclick = closeSubmenu;
-    document.addEventListener("keydown", subEsc);
   }
   function subEsc(e) { if (e.key === "Escape") closeSubmenu(); }
   function closeSubmenu() {
     document.removeEventListener("keydown", subEsc);
     $$(".sub-bd, .submenu").forEach(n => {
       n.classList.remove("on");
-      setTimeout(() => n.remove(), 220);
+      n.classList.add("eq-zu");
+      setTimeout(() => n.remove(), 200);
+      const z = n._zurueck;
+      if (z && z.focus && document.contains(z) && n.contains(document.activeElement)) { try { z.focus({ preventScroll: true }); } catch (_) {} }
     });
   }
 
   let currentView = "overview";
+  let gezeigteAnsicht = null;   // was gerade gezeichnet ist (currentView kann vorab umgestellt sein, etwa beim Löschen)
   function route(id) {
+    const host = $("#views");
+    // Eine neue Ansicht blendet sanft ein und beginnt oben. Werden nur die Daten derselben
+    // Ansicht neu gezeichnet (nach dem Speichern), bewegt sich nichts und die Stelle bleibt.
+    const wechsel = id !== gezeigteAnsicht || !host.childElementCount;
+    gezeigteAnsicht = id;
     currentView = id;
-    const isMiete = mietStreams().some(s => s.id === id) || id === "vermietung";
-    $$("#rail .rail-btn").forEach(b => {
-      const d = b.dataset.id;
-      b.classList.toggle("on", d === id || (d === "vermietung" && isMiete));
-    });
-    const host = $("#views"); host.innerHTML = "";
+    railMarkieren(id);
+    host.classList.toggle("eq-neu", wechsel);
+    host.innerHTML = "";
     if (id === "overview") renderOverview(host);
     else if (id === "vermietung") renderVermietung(host);
     else if (id === "tools") renderTools(host);
     else renderStream(host, id);
-    $(".scroll").scrollTop = 0;
+    if (wechsel) $(".scroll").scrollTop = 0;
   }
 
   /* ---------- shared bits ---------- */
@@ -2610,7 +2626,7 @@
     const body = `
       ${ef("Kostenart", "art", p ? p.art : "", "text", { pflicht: true, platzhalter: "z. B. Grundsteuer" })}
       ${ef("Betrag im Jahr", "betrag", p ? (p.betrag ?? "") : "", "number",
-        { pflicht: true, hinweis: "Gesamtbetrag für " + jahr })}
+        { pflicht: true, minus: true, hinweis: "Gesamtbetrag für " + jahr })}
       ${efSel("Verteilerschlüssel", "schluessel", p ? p.schluessel : "flaeche",
         Object.keys(NK_SCHLUESSEL).map(k => ({ v: k, t: NK_SCHLUESSEL[k].name + " – " + NK_SCHLUESSEL[k].info })))}
       ${efSel("Umlagefähig", "umlagefaehig", p && p.umlagefaehig === false ? "0" : "1",
@@ -2920,7 +2936,7 @@
       ${ef("Bezeichnung", "bezeichnung", r ? (r.bezeichnung || "") : "", "text",
         { platzhalter: "z. B. Abschlag 1 oder Schlussrechnung" })}
       ${ef("Betrag", "betrag", r ? (r.betrag ?? "") : "", "number",
-        { pflicht: true, einheit: "€", hinweis: "Brutto laut Rechnung" })}
+        { pflicht: true, minus: true, einheit: "€", hinweis: "Brutto laut Rechnung" })}
       ${ef("Rechnungsdatum", "datum", r ? (r.datum || "") : heute, "date")}
       ${efSel("Zahlung", "bezahlt", r && r.bezahlt ? "1" : "0",
         [{ v: "0", t: "noch offen" }, { v: "1", t: "bezahlt" }])}
@@ -3927,20 +3943,25 @@
       : "";
   }
 
+  // Kennzahl-Karte: Beschriftung, große Zahl, Erläuterung. Überall gleich aufgebaut.
+  // (icon bleibt als Parameter erhalten, wird aber nicht mehr gezeichnet.)
   function kpiCard(icon, num, lab, desc, accent, action, info) {
-    return `<div class="card kpi ${accent ? 'accent' : ''}${action ? ' clickable' : ''}"${action ? ` data-act="${action}"` : ''}><div class="card-glow"></div>
-      ${action ? '<span class="tapme">Details ›</span>' : ''}
+    return `<div class="card kpi${accent ? ' accent' : ''}${action ? ' clickable' : ''}"${action ? ` data-act="${action}" role="button" tabindex="0"` : ''}>
       ${infoIcon(info)}
-      <div class="chip">${svg(icon)}</div>
-      <div class="num">${esc(num)}</div>
       <div class="lab">${esc(lab)}</div>
-      <div class="desc">${esc(desc)}</div></div>`;
+      <div class="num">${esc(num)}</div>
+      <div class="desc">${esc(desc)}</div>
+      ${action ? '<span class="tapme" aria-hidden="true">›</span>' : ''}</div>`;
   }
   // verdrahtet [data-act] innerhalb eines Containers
   function wireActs(node, map) {
     node.querySelectorAll("[data-act]").forEach(n => {
       const fn = map[n.dataset.act];
-      if (fn) n.onclick = fn;
+      if (!fn) return;
+      // Das Info-Symbol auf der Karte öffnet nur die Erklärung, nicht zusätzlich die Karte
+      n.onclick = (e) => { if (e && e.target && e.target.closest && e.target.closest("[data-info]")) return; fn(e); };
+      // Mit der Tastatur: Enter oder Leertaste auf der Karte selbst
+      n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === n) { e.preventDefault(); fn(e); } };
     });
     return node;
   }
@@ -3967,12 +3988,13 @@
     const last = pts[n - 1];
     const xlabs = labels ? `<div class="chart-x">${labels.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : "";
     // "Heute"-Marker
-    let marker = "";
+    let marker = "", heute = "";
     if (markerIndex != null && markerIndex >= 0 && markerIndex < n) {
       const mp = pts[markerIndex];
       marker = `<line x1="${mp[0]}" x2="${mp[0]}" y1="${pad}" y2="${H - pad}" stroke="var(--mint-2)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>
-        <circle cx="${mp[0]}" cy="${mp[1]}" r="5" fill="var(--mint-2)" stroke="var(--bg2)" stroke-width="2"/>
-        <text x="${Math.min(W - pad - 28, mp[0] + 6)}" y="${pad + 12}" fill="var(--mint-2)" font-size="11" font-weight="600">heute</text>`;
+        <circle cx="${mp[0]}" cy="${mp[1]}" r="5" fill="var(--mint-2)" stroke="var(--panel-solid)" stroke-width="2"/>`;
+      const anteil = mp[0] / W * 100;
+      heute = `<span class="chart-heute${anteil > 82 ? " links" : ""}" style="left:${anteil.toFixed(2)}%">heute</span>`;
     }
     return `<div class="chart-wrap">
       <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:220px">
@@ -3984,7 +4006,7 @@
         <path class="line" d="${dLine}"/>
         ${marker}
         <circle class="dot lastdot" cx="${last[0]}" cy="${last[1]}" r="4.5"/>
-      </svg>${xlabs}</div>`;
+      </svg>${heute}${xlabs}</div>`;
   }
 
   // Donut chart (composition)
@@ -3994,72 +4016,143 @@
     let off = 0;
     const rings = segments.map(s => {
       const frac = s.value / total, len = frac * C;
-      const ring = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="14"
+      const ring = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" style="stroke:${s.color}" stroke-width="14"
         stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt"/>`;
       off += len; return ring;
     }).join("");
     return `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" class="donut">
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="color-mix(in srgb,var(--bg) 60%,transparent)" stroke-width="14"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="14"/>
       ${rings}
       <text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="var(--text)" font-family="var(--fdisp)" font-size="26" font-weight="600">${eur(total).replace(/\s?€/, "")}</text>
-      <text x="${cx}" y="${cy + 16}" text-anchor="middle" fill="var(--soft)" font-size="11">€ / Monat</text>
+      <text x="${cx}" y="${cy + 17}" text-anchor="middle" fill="var(--soft)" font-size="13">€ / Monat</text>
     </svg>`;
   }
 
-  // Palette folgt dem Akzent: liest die aktuellen CSS-Variablen zur Laufzeit
+  // Liest eine CSS-Variable des aktuellen Schemas
   function cssVar(name, fallback) {
     try {
       const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       return v || fallback;
     } catch (_) { return fallback; }
   }
-  function palette() {
-    const mint = cssVar("--mint", "#2dd4bf");
-    const mint2 = cssVar("--mint-2", "#5eead4");
-    const deep = cssVar("--deep", "#0f766e");
-    const gold = cssVar("--gold", "#d8b978");
-    return [mint, deep, mint2, gold,
-      "color-mix(in srgb," + mint + " 60%,#000)",
-      "color-mix(in srgb," + mint2 + " 70%," + deep + ")"];
-  }
-  let PALETTE = palette();  // wird bei Themewechsel neu befüllt
+  // Farben für Diagrammreihen: Akzent für die Hauptreihe, neutrale Töne für Vergleichswerte.
+  // Es sind Verweise auf Variablen – sie folgen dem Schema von selbst.
+  const PALETTE = ["var(--eq-reihe-1)", "var(--eq-reihe-2)", "var(--eq-reihe-3)",
+    "var(--eq-reihe-4)", "var(--eq-reihe-5)", "var(--eq-reihe-6)"];
 
   /* ---------- SHEET (Detail-Overlay) ---------- */
   function openSheet(title, subtitle, bodyHtml) {
-    closeSheet();
-    const bd = el(`<div class="sheet-bd">
-      <div class="sheet" role="dialog" aria-modal="true">
+    // Es gibt immer nur ein Fenster: Ein neues ersetzt das alte sofort.
+    document.removeEventListener("keydown", sheetEsc);
+    $$(".sheet-bd").forEach(n => n.remove());
+    const bd = el(`<div class="sheet-bd on">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
         <div class="sheet-grip"></div>
         <div class="sheet-h">
-          <div class="st"><div class="sheet-t">${esc(title)}</div>
+          <div class="eq-kopf"><div class="sheet-t">${esc(title)}</div>
             ${subtitle ? `<div class="sheet-s">${esc(subtitle)}</div>` : ""}</div>
-          <button class="sheet-x" aria-label="Schließen">×</button>
+          <button type="button" class="sheet-x" aria-label="Schließen">×</button>
         </div>
-        <div class="sheet-b">${bodyHtml}</div>
+        <div class="sheet-b">${bodyHtml}<div class="eq-fuss"></div></div>
       </div></div>`);
     document.body.appendChild(bd);
-    requestAnimationFrame(() => bd.classList.add("on"));
-    bd.addEventListener("click", e => { if (e.target === bd) closeSheet(); });
-    bd.querySelector(".sheet-x").onclick = closeSheet;
+    // Geänderte Felder merken: Wer das Fenster dann schließt, wird gefragt.
+    // Zählt: Formularfelder und die Eingabe im Assistenten. Rechner zählen nicht.
+    const merken = (e) => { if (e.target && e.target.closest && e.target.closest("[data-f]:not(.rc-i), .as-i")) bd._geaendert = true; };
+    bd.addEventListener("input", merken);
+    bd.addEventListener("change", merken);
+    bd.addEventListener("click", e => { if (e.target === bd) sheetZu(bd); });
+    bd.querySelector(".sheet-x").onclick = () => sheetZu(bd);
+    // Mac: Enter in einem einzeiligen Feld speichert. Am Handy und iPad nicht –
+    // dort würde die Eingabetaste der Bildschirmtastatur sonst ungewollt speichern.
+    bd.addEventListener("keydown", e => {
+      if (e.key === "Tab") { fokusImFenster(bd, e); return; }
+      if (e.key !== "Enter" || !e.target || !e.target.matches || !e.target.matches("input[data-f]")) return;
+      if (!feinerZeiger()) return;
+      const s = bd.querySelector("#efSave") || bd.querySelector(".ef-save");
+      if (s && !s.disabled) { e.preventDefault(); s.click(); }
+    });
+    // Ein Feld, das den Fokus bekommt, darf nicht unter der festen Aktionsleiste liegen
+    const inhalt = bd.querySelector(".sheet-b");
+    const leiste = inhalt.querySelector(".ef-actions.eq-fest");
+    if (leiste) {
+      inhalt.style.scrollPaddingBottom = (leiste.offsetHeight + 12) + "px";
+      bd.addEventListener("focusin", e => {
+        if (!e.target || leiste.contains(e.target) || !inhalt.contains(e.target)) return;
+        requestAnimationFrame(() => {
+          const f = e.target.getBoundingClientRect(), oben = inhalt.getBoundingClientRect().top, grenze = leiste.getBoundingClientRect().top;
+          if (f.bottom > grenze - 12) inhalt.scrollTop += Math.min(f.bottom - grenze + 12, Math.max(0, f.top - oben - 8));
+          else if (f.top < oben + 8) inhalt.scrollTop -= oben + 8 - f.top;
+        });
+      });
+    }
     document.addEventListener("keydown", sheetEsc);
+    // Mac: Der Fokus wandert ins Fenster, damit die Tabulatortaste dort weitergeht.
+    // Am Handy und iPad nicht – dort würde sonst die Tastatur aufgehen oder die Seite springen.
+    if (feinerZeiger()) {
+      bd._zurueck = document.activeElement;
+      try { bd.querySelector(".sheet").focus({ preventScroll: true }); } catch (_) {}
+    }
     return bd;
   }
-  function sheetEsc(e) { if (e.key === "Escape") closeSheet(); }
+  const feinerZeiger = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  // Tabulator bleibt im Fenster: nach dem letzten Element geht es mit dem ersten weiter
+  function fokusImFenster(bd, e) {
+    const alle = [...bd.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(n => !n.disabled && n.type !== "hidden" && n.getClientRects().length);
+    if (!alle.length) return;
+    const erst = alle[0], letzt = alle[alle.length - 1], jetzt = document.activeElement;
+    if (e.shiftKey && (jetzt === erst || !bd.contains(jetzt) || jetzt === bd.querySelector(".sheet"))) { e.preventDefault(); letzt.focus(); }
+    else if (!e.shiftKey && jetzt === letzt) { e.preventDefault(); erst.focus(); }
+  }
+  function sheetEsc(e) {
+    if (e.key !== "Escape") return;
+    const bd = $(".sheet-bd.on");
+    const frage = bd && bd.querySelector(".eq-frage");
+    if (frage) { frage.remove(); return; }
+    sheetZu(bd);
+  }
+  // Schließen durch den Nutzer (X, Fläche daneben, Escape):
+  // Bei ungespeicherten Änderungen erst fragen. closeSheet() selbst fragt nie.
+  function sheetZu(bd) {
+    if (!bd || !bd._geaendert) { closeSheet(); return; }
+    const sheet = bd.querySelector(".sheet");
+    if (sheet.querySelector(".eq-frage")) return;
+    const frage = el(`<div class="eq-frage" role="alertdialog" aria-label="Änderungen verwerfen?">
+      <span>Änderungen verwerfen?</span>
+      <button type="button" class="eq-btn zweit" data-frage="weg">Verwerfen</button>
+      <button type="button" class="eq-btn" data-frage="bleiben">Weiter bearbeiten</button>
+    </div>`);
+    sheet.appendChild(frage);
+    frage.querySelector('[data-frage="weg"]').onclick = () => closeSheet();
+    frage.querySelector('[data-frage="bleiben"]').onclick = () => frage.remove();
+    if (feinerZeiger()) { try { frage.querySelector('[data-frage="bleiben"]').focus(); } catch (_) {} }
+  }
   function closeSheet() {
     document.removeEventListener("keydown", sheetEsc);
-    $$(".sheet-bd").forEach(n => { n.classList.remove("on"); setTimeout(() => n.remove(), 260); });
+    $$(".sheet-bd").forEach(n => {
+      n.classList.remove("on");
+      n.classList.add("eq-zu");
+      setTimeout(() => n.remove(), 200);
+      // Fokus zurück an die Stelle, von der das Fenster geöffnet wurde
+      const z = n._zurueck;
+      if (z && z.focus && document.contains(z) && !z.closest(".sheet-bd")) { try { z.focus({ preventScroll: true }); } catch (_) {} }
+    });
   }
   /* ---------- BEARBEITEN: Formular-Bausteine ---------- */
   // Einzelnes Eingabefeld
   function ef(label, name, wert, typ, opt) {
     opt = opt || {};
     const v = (wert === null || wert === undefined) ? "" : wert;
-    const step = typ === "number" ? ` step="${opt.step || "0.01"}"` : "";
+    // Zahlenfelder öffnen am Handy die Zahlentastatur (bei Beträgen mit Komma).
+    // opt.minus: Feld darf negativ sein (Gutschrift) – die Zahlentastatur am iPhone hat kein Minus, also normale Tastatur.
+    const step = typ === "number"
+      ? ` step="${opt.step || "0.01"}"${opt.minus ? "" : ` inputmode="${String(opt.step || "") === "1" ? "numeric" : "decimal"}"`}` : "";
     const ph = opt.platzhalter ? ` placeholder="${esc(opt.platzhalter)}"` : "";
     return `<div class="ef-row">
-      <label class="ef-l">${esc(label)}${opt.pflicht ? ' <span class="ef-req">*</span>' : ""}</label>
+      <label class="ef-l" for="ef-${name}">${esc(label)}${opt.pflicht ? ' <span class="ef-req">*</span>' : ""}</label>
       <div class="${opt.einheit ? "ef-mit-e" : ""}">
-        <input class="ef-i" data-f="${name}" type="${typ || "text"}"${step}${ph}
+        <input class="ef-i" id="ef-${name}" data-f="${name}" type="${typ || "text"}"${step}${ph}
                value="${esc(v)}"${opt.readonly ? " readonly" : ""}>
         ${opt.einheit ? `<span class="ef-e">${esc(opt.einheit)}</span>` : ""}
       </div>
@@ -4070,8 +4163,8 @@
   function efSel(label, name, wert, optionen, opt) {
     opt = opt || {};
     return `<div class="ef-row">
-      <label class="ef-l">${esc(label)}</label>
-      <select class="ef-i" data-f="${name}">
+      <label class="ef-l" for="ef-${name}">${esc(label)}</label>
+      <select class="ef-i" id="ef-${name}" data-f="${name}">
         ${optionen.map(o => `<option value="${esc(o.v)}"${o.v === wert ? " selected" : ""}>${esc(o.t)}</option>`).join("")}
       </select>
       ${opt.hinweis ? `<div class="ef-h">${esc(opt.hinweis)}</div>` : ""}
@@ -4081,21 +4174,23 @@
   function efArea(label, name, wert, opt) {
     opt = opt || {};
     return `<div class="ef-row">
-      <label class="ef-l">${esc(label)}</label>
-      <textarea class="ef-i" data-f="${name}" rows="3">${esc(wert || "")}</textarea>
+      <label class="ef-l" for="ef-${name}">${esc(label)}</label>
+      <textarea class="ef-i" id="ef-${name}" data-f="${name}" rows="3">${esc(wert || "")}</textarea>
       ${opt.hinweis ? `<div class="ef-h">${esc(opt.hinweis)}</div>` : ""}
     </div>`;
   }
   // Abschnittsüberschrift im Formular
   const efTitel = (t) => `<div class="ef-sec">${esc(t)}</div>`;
-  // Knopfleiste
+  // Knopfleiste: bleibt am unteren Rand des Fensters stehen, die Meldung direkt darüber.
   function efAktionen(opt) {
     opt = opt || {};
-    return `<div class="ef-actions">
-      <button class="ef-save" id="efSave">${esc(opt.speichern || "Speichern")}</button>
-      ${opt.loeschen ? `<button class="ef-del" id="efDel">${esc(opt.loeschen)}</button>` : ""}
-    </div>
-    <div class="ef-msg" id="efMsg"></div>`;
+    return `<div class="ef-actions eq-fest">
+      <div class="ef-msg" id="efMsg" role="status"></div>
+      <div class="ef-knoepfe">
+        <button type="button" class="ef-save" id="efSave">${esc(opt.speichern || "Speichern")}</button>
+        ${opt.loeschen ? `<button type="button" class="ef-del" id="efDel">${esc(opt.loeschen)}</button>` : ""}
+      </div>
+    </div>`;
   }
   // Werte aus dem Formular auslesen
   function efWerte(wurzel) {
@@ -4158,7 +4253,7 @@
     const max = Math.max(...rows.map(r => r.value), 1);
     return `<div class="mini">${rows.map(r => `<div class="mini-row">
       <span class="mini-lab">${esc(r.label)}</span>
-      <span class="mini-track"><span style="width:${Math.round(r.value / max * 100)}%;background:${r.color || "linear-gradient(90deg,var(--deep),var(--mint))"}"></span></span>
+      <span class="mini-track"><span style="width:${Math.round(r.value / max * 100)}%;background:${r.color || "var(--eq-reihe-1)"}"></span></span>
       <span class="mini-val">${r.display || eur(r.value)}</span></div>`).join("")}</div>`;
   }
 
@@ -4495,7 +4590,7 @@
           <div><div class="tile-name">${esc(s.name)}</div><div class="tile-loc">${esc(s.ort || "")}</div></div></div>
         <div class="stat-strip" style="margin-bottom:14px">
           <div class="s"><span>Einnahmen</span><b>${eur(m.gesamt)}</b></div>
-          <div class="s"><span>Netto n. Tilgung</span><b style="color:${m.netto >= 0 ? "var(--mint-2)" : "var(--danger)"}">${eur(m.netto)}</b></div>
+          <div class="s"><span>Netto n. Tilgung</span><b style="color:${m.netto >= 0 ? "var(--ok)" : "var(--danger)"}">${eur(m.netto)}</b></div>
           <div class="s"><span>Auslastung</span><b>${o} %</b></div>
           <div class="s"><span>Fläche</span><b>${flaeche} m²</b></div>
         </div>
@@ -4668,8 +4763,8 @@
   const EVT = {
     miete:   { col: "var(--mint)", bg: "color-mix(in srgb,var(--mint) 14%,transparent)",  br: "color-mix(in srgb,var(--mint) 40%,transparent)",  label: "Miete" },
     einzug:  { col: "var(--mint-2)", bg: "color-mix(in srgb,var(--mint-2) 14%,transparent)", br: "color-mix(in srgb,var(--mint-2) 40%,transparent)", label: "Einzug" },
-    zahlung: { col: "#d8b978", bg: "rgba(216,185,120,.16)", br: "rgba(216,185,120,.45)",label: "Zahlung" },
-    termin:  { col: "var(--deep)", bg: "color-mix(in srgb,var(--deep) 20%,transparent)",  br: "color-mix(in srgb,var(--deep) 45%,transparent)",  label: "Termin" }
+    zahlung: { col: "var(--warn)", bg: "color-mix(in srgb,var(--warn) 16%,transparent)", br: "color-mix(in srgb,var(--warn) 45%,transparent)", label: "Zahlung" },
+    termin:  { col: "var(--soft)", bg: "color-mix(in srgb,var(--soft) 16%,transparent)",  br: "color-mix(in srgb,var(--soft) 45%,transparent)",  label: "Termin" }
   };
 
   let calYear = null, calMonth = null, calSelected = null;
@@ -5039,10 +5134,9 @@
 
     // NK-Puffer Hinweis (klickbar)
     if (m.nkPuffer > 0) {
-      const nkCard = el(`<div class="card pad clickable" style="border-color:rgba(216,185,120,.28)">
-        <span class="tapme">Details ›</span>
+      const nkCard = el(`<div class="card pad clickable" style="border-color:color-mix(in srgb,var(--warn) 45%,transparent)">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <div class="tile-ic" style="color:var(--gold);border-color:rgba(216,185,120,.3)">${svg("layers")}</div>
+          <div class="tile-ic" style="color:var(--warn)">${svg("layers")}</div>
           <div style="flex:1;min-width:180px"><div class="card-t">Nebenkosten als Puffer</div>
             <div class="note">${eur(m.nkPuffer)}/Monat (${eur(m.nkPuffer * 12)}/Jahr) werden vollständig zurückgelegt – antippen für Aufschlüsselung.</div></div>
           <div style="text-align:right"><div class="tile-num" style="color:var(--gold)">${eur(m.nkPuffer)}</div><div class="note">Rücklage/Mon.</div></div>
@@ -5194,8 +5288,8 @@
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Kostenverteilung</div>
       ${miniBars([
-        { label: "Darlehen", value: Number(kr.summe) || 0, color: "linear-gradient(90deg,var(--deep),var(--mint))" },
-        { label: "Zinskosten", value: p.zinsGesamt, color: "linear-gradient(90deg,#8a6d2f,var(--gold))" }
+        { label: "Darlehen", value: Number(kr.summe) || 0, color: "var(--eq-reihe-1)" },
+        { label: "Zinskosten", value: p.zinsGesamt, color: "var(--eq-reihe-2)" }
       ])}
       <div class="note" style="margin-top:8px">${zinsAnteil.toFixed(1)} % der Gesamtkosten sind Zinsen.</div>
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgung je Jahr</div>
@@ -5639,8 +5733,8 @@
       ${efTitel("Mieter (optional)")}
       ${ef("Name", "mieter", "", "text", { platzhalter: "z. B. Familie Müller" })}
       ${ef("Einzug", "einzug", "", "date")}
-      ${efAktionen({ speichern: "Speichern & weiter" })}
-      <div class="wc-skip"><a href="#" id="ehSkip">Ohne Einheit weiter</a></div>`;
+      <div class="wc-skip"><a href="#" id="ehSkip">Ohne Einheit weiter</a></div>
+      ${efAktionen({ speichern: "Speichern & weiter" })}`;
     const sheet = openSheet("Erste Einheit", "", body);
 
     const bauen = (w) => {
@@ -5998,15 +6092,15 @@
     });
     $("#loginBtn").addEventListener("click", tryLogin);
     $("#pw").addEventListener("keydown", e => { if (e.key === "Enter") regMode ? tryRegister() : tryLogin(); });
-    $("#logoutBtn").addEventListener("click", logout);
-    if ($("#profileBtn")) $("#profileBtn").addEventListener("click", openProfilSheet);
-    // Rail bei Wechsel zwischen Handy/Desktop neu aufbauen
-    let warMobil = window.innerWidth <= 560;
+    // Navigation neu aufbauen, wenn sich ihre Form ändert (Drehen, Fenstergröße)
+    let navWar = navForm();
     window.addEventListener("resize", () => {
-      const jetztMobil = window.innerWidth <= 560;
-      if (jetztMobil !== warMobil) { warMobil = jetztMobil; buildRail(); }
+      const navJetzt = navForm();
+      if (navJetzt !== navWar) { navWar = navJetzt; closeSubmenu(); buildRail(); }
     });
-    if ($("#railAdd")) $("#railAdd").addEventListener("click", (e) => { e.stopPropagation(); openAnlegenMenu($("#railAdd")); });
+    tastaturBeobachten();
+    mitLadebalken("ladeDaten");
+    mitLadebalken("nachSpeichern");
 
     // Registrierung
     if ($("#registerBtn")) $("#registerBtn").addEventListener("click", tryRegister);
@@ -6023,25 +6117,85 @@
     let einlCode = "";
     try { einlCode = (new URLSearchParams(location.search).get("einladung") || "").trim(); } catch (_) {}
 
-    if (await sessionOK()) {
-      try {
-        await window.ladeDaten();
-        D = window.DASHBOARD_DATA;
-        enterApp();
-        // Schon angemeldet: erklären, dass man sich zuerst abmelden muss
-        if (einlCode) openEinladungAngemeldet();
-      } catch (e) {
-        // Angemeldet, aber Daten konnten nicht geladen werden → Login-Popup mit Hinweis
-        loginOeffnen("anmelden");
-        $("#loginMsg").textContent = window.fehlerText(e);
-        $("#loginMsg").className = "login-msg bad";
-        console.error(e);
+    try {
+      if (await sessionOK()) {
+        try {
+          await window.ladeDaten();
+          D = window.DASHBOARD_DATA;
+          enterApp();
+          // Schon angemeldet: erklären, dass man sich zuerst abmelden muss
+          if (einlCode) openEinladungAngemeldet();
+        } catch (e) {
+          // Angemeldet, aber Daten konnten nicht geladen werden → Login-Popup mit Hinweis
+          loginOeffnen("anmelden");
+          $("#loginMsg").textContent = window.fehlerText(e);
+          $("#loginMsg").className = "login-msg bad";
+          console.error(e);
+        }
+      } else if (einlCode) {
+        // Niemand angemeldet: eigenes Fenster über der Landing
+        loginSchliessen();
+        openEinladungFenster(einlCode);
       }
-    } else if (einlCode) {
-      // Niemand angemeldet: eigenes Fenster über der Landing
-      loginSchliessen();
-      openEinladungFenster(einlCode);
+      // Sonst bleibt die Landing-Seite stehen; der Login öffnet sich erst per Klick.
+    } finally {
+      startbildAus();
     }
-    // Sonst bleibt die Landing-Seite stehen; der Login öffnet sich erst per Klick.
   });
+
+  // Startbild für angemeldete Nutzer wieder wegnehmen, falls die App nicht geöffnet wurde.
+  // Dann gilt wieder der Zustand vor dem Login – die Landing erscheint wie für jeden Besucher.
+  function startbildAus() {
+    const de = document.documentElement;
+    if (!de.classList.contains("eq-wartet")) return;
+    de.classList.remove("eq-wartet");
+    if (!de.classList.contains("eq-app")) { de.classList.add("pre-login"); statusleisteFarbe(); }
+  }
+
+  // Balken am oberen Rand, solange Daten geladen oder gespeichert werden
+  let ladeZahl = 0, ladeTimer = null;
+  function ladebalken(an) {
+    const b = $("#eqLadebalken");
+    if (!b) return;
+    ladeZahl = Math.max(0, ladeZahl + (an ? 1 : -1));
+    clearTimeout(ladeTimer);
+    if (ladeZahl > 0) { b.classList.remove("fertig"); b.classList.add("on"); }
+    else if (b.classList.contains("on")) {
+      b.classList.remove("on"); b.classList.add("fertig");
+      ladeTimer = setTimeout(() => b.classList.remove("fertig"), 600);
+    }
+  }
+  // Legt den Balken um eine vorhandene Funktion. Aufruf, Ergebnis und Fehler bleiben unverändert.
+  function mitLadebalken(name) {
+    const alt = window[name];
+    if (typeof alt !== "function" || alt._eqBalken) return;
+    const neu = async function () {
+      ladebalken(true);
+      try { return await alt.apply(this, arguments); }
+      finally { ladebalken(false); }
+    };
+    neu._eqBalken = true;
+    window[name] = neu;
+  }
+
+  // Tastatur am Handy: Das Fenster rückt über die Tastatur, damit der Speichern-Knopf erreichbar bleibt.
+  function tastaturBeobachten() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let zuletzt = 0;
+    const setzen = () => {
+      const a = document.activeElement;
+      const tippt = !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest && a.closest(".sheet-bd"));
+      let h = tippt ? Math.round(window.innerHeight - vv.height - vv.offsetTop) : 0;
+      if (h < 120) h = 0;                                   // nur eine echte Tastatur zählt
+      h = Math.min(h, Math.round(window.innerHeight * 0.6));
+      if (h === zuletzt) return;
+      zuletzt = h;
+      document.documentElement.style.setProperty("--eq-tastatur", h + "px");
+    };
+    vv.addEventListener("resize", setzen);
+    vv.addEventListener("scroll", setzen);
+    document.addEventListener("focusin", setzen);
+    document.addEventListener("focusout", () => setTimeout(setzen, 80));
+  }
 })();
