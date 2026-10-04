@@ -2435,7 +2435,7 @@
   function navItems() {
     return [
       { id: "overview", label: "Übersicht", icon: "grid" },
-      { id: "vermietung", label: "Vermietung", icon: "home", group: true },
+      { id: "vermietung", label: "Objekte", icon: "home", group: true },
       { id: "tools", label: "Tools", icon: "chart" }
     ];
   }
@@ -2515,7 +2515,7 @@
     }).join("");
     const bd = el(`<div class="sub-bd"></div>`);
     const menu = el(`<div class="submenu obj-menu">
-      <div class="submenu-t">Vermietung</div>
+      <div class="submenu-t">Objekte</div>
       <div class="sub-item${currentView === "vermietung" ? " on" : ""}" data-id="vermietung">
         <div class="sub-ic">${svg("layers")}</div>
         <div class="sub-tx"><div class="sub-n">Alle Mietobjekte</div>
@@ -2976,16 +2976,58 @@
 
   const proz = (v) => (Number(v) || 0).toFixed(0) + " %";
 
+  /* ---------- HANDWERKER: ZAHLUNG GEGEN BAUFORTSCHRITT ---------- */
+  // Frage: Habe ich mehr bezahlt, als gebaut wurde?
+  // Alle Zahlen kommen aus gewerkeVon(), die Stufe aus ampel(). Hier wird nur gezeigt und beschriftet.
+
+  // Die Ampel in Worten – die Farbe kommt nur dazu
+  const HW_AMPEL = {
+    neutral: { wort: "noch nichts bezahlt", marke: "", zustand: "" },
+    gut:     { wort: "im Plan", marke: " gut", zustand: " gut" },
+    achtung: { wort: "etwas voraus bezahlt", marke: " achtung", zustand: " achtung" },
+    ueber:   { wort: "zu viel bezahlt", marke: " kritisch", zustand: " kritisch" }
+  };
+  const hwStufe = (g) => ampel(g.punkte, g.gezahlt > 0);
+
+  // Zwei Balken im selben Maßstab: oben Bezahlt, darunter Gebaut. Die Lücke dazwischen ist die Antwort.
+  function hwBalken(g, kl) {
+    return `<div class="eq-hw-balken" role="img" aria-label="Bezahlt ${Math.round(g.quote)} Prozent, gebaut ${Math.round(g.fortschritt)} Prozent">
+      <div class="eq-hw-b"><span>Bezahlt</span><div class="gw-bar"><i class="${kl}" style="width:${Math.min(100, g.quote).toFixed(1)}%"></i></div><b>${proz(g.quote)}</b></div>
+      <div class="eq-hw-b"><span>Gebaut</span><div class="gw-bar"><i class="bau" style="width:${g.fortschritt}%"></i></div><b>${proz(g.fortschritt)}</b></div>
+    </div>`;
+  }
+
+  // Zustand über alle Handwerker eines Objekts, in einem Satz
+  function hwGesamtZustand(gw) {
+    const gezahlt = gw.reduce((a, g) => a + g.gezahlt, 0);
+    const vorleistung = gw.reduce((a, g) => a + g.vorleistung, 0);
+    const betroffen = gw.filter(g => { const k = hwStufe(g); return k === "ueber" || k === "achtung"; });
+    if (!gezahlt) return { klasse: "", titel: "Noch nichts bezahlt", text: "Sobald du Rechnungen erfasst, vergleicht ESTRIQ deine Zahlungen mit dem Baufortschritt." };
+    if (betroffen.length) {
+      const summe = betroffen.reduce((a, g) => a + g.vorleistung, 0);
+      return {
+        klasse: betroffen.some(g => hwStufe(g) === "ueber") ? " kritisch" : " achtung",
+        titel: "Du hast " + eur(summe) + " mehr bezahlt, als gebaut wurde",
+        text: "Betrifft: " + betroffen.map(g => g.name).join(", ") + ". Zahle dort erst weiter, wenn mehr fertig ist."
+      };
+    }
+    return {
+      klasse: " gut", titel: "Deine Zahlungen passen zum Baufortschritt",
+      text: vorleistung > 0 ? "Im Voraus bezahlt sind " + eur(vorleistung) + " – das liegt im üblichen Rahmen." : "Kein Handwerker ist im Voraus bezahlt."
+    };
+  }
+
+  // Karte „Handwerker" der Objektseite
   function gewerkeKarte(s) {
     const frei = hatModul();
     const gw = gewerkeVon(s);
     if (!gw.length) {
       if (!frei) return modulVorschau("gewerke");
       const leer = el(`<div class="card">
-        <div class="card-h"><div><div class="card-t">Gewerke &amp; Kosten</div>
-          <div class="card-s">Zahlung gegen Baufortschritt</div></div>
-          <button class="add-btn" id="addGewerk">+ Gewerk</button></div>
-        <div class="card-b"><div class="note">Noch keine Gewerke erfasst. Leg den ersten Handwerker an — ESTRIQ stellt dann Angebot, Zahlungen und Baufortschritt gegenüber.</div></div></div>`);
+        <div class="card-h"><div><div class="card-t">Handwerker</div>
+          <div class="card-s">Zahlung gegen Baufortschritt</div></div></div>
+        <div class="card-b"><div class="eq-leer">Noch kein Handwerker erfasst. Leg den ersten an – ESTRIQ zeigt dann, ob du mehr bezahlt hast, als gebaut wurde.
+          <div><button type="button" class="add-btn" id="addGewerk">+ Handwerker</button></div></div></div></div>`);
       leer.querySelector("#addGewerk").onclick = () => openGewerkEdit(s, null, true);
       return leer;
     }
@@ -2993,160 +3035,171 @@
     const soll = gw.reduce((a, g) => a + g.soll, 0);
     const gezahlt = gw.reduce((a, g) => a + g.gezahlt, 0);
     const vorleistung = gw.reduce((a, g) => a + g.vorleistung, 0);
-    // Ø Fortschritt nach Auftragswert gewichtet – große Gewerke zählen stärker
+    // Ø Fortschritt nach Auftragswert gewichtet – große Aufträge zählen stärker
     const fortschritt = soll ? gw.reduce((a, g) => a + g.soll * g.fortschritt, 0) / soll : 0;
     const quote = soll ? gezahlt / soll * 100 : 0;
-    const kritisch = gw.filter(g => ampel(g.punkte, g.gezahlt > 0) === "ueber");
+    const z = hwGesamtZustand(gw);
 
     const zeilen = gw.map(g => {
-      const kl = ampel(g.punkte, g.gezahlt > 0);
-      return `<div class="gwt-row ${kl}" data-gewerk="${g.id}">
-        <div class="gwt-n">${esc(g.name)}<small>${esc(g.gewerk || "Gewerk")}</small></div>
-        <div class="gwt-c">${eur(g.soll)}</div>
-        <div class="gwt-c stark ${kl}">${eur(g.gezahlt)}</div>
-        <div class="gwt-c stark ${kl}">${proz(g.quote)}</div>
-        <div class="gwt-c dim">${proz(g.fortschritt)}</div>
+      const kl = hwStufe(g), a = HW_AMPEL[kl];
+      const fuss = [eur(g.gezahlt) + " bezahlt von " + eur(g.soll),
+        g.vorleistung > 0 && kl !== "gut" ? eur(g.vorleistung) + " im Voraus" : "",
+        g.offenRn > 0 ? eur(g.offenRn) + " in offenen Rechnungen" : ""].filter(Boolean).join(" · ");
+      return `<div class="eq-hw ${kl}" data-gewerk="${g.id}" role="button" tabindex="0">
+        <div class="eq-hw-kopf">
+          <div class="eq-hw-n">${esc(g.name)}<small>${esc(g.gewerk || "Handwerker")}</small></div>
+          <span class="eq-marke${a.marke}">${a.wort}</span>
+        </div>
+        ${hwBalken(g, kl)}
+        <div class="eq-hw-fuss">${esc(fuss)}</div>
       </div>`;
     }).join("");
 
     const karte = el(`<div class="card">
       <div class="card-h">
-        <div><div class="card-t">Zahlung gegen Fortschritt${frei ? "" : ' <span class="lock-badge">Premium</span>'}</div>
-          <div class="card-s">${gw.length} ${gw.length === 1 ? "Gewerk" : "Gewerke"} · Quote gegen Baufortschritt</div></div>
-        <button class="add-btn" id="addGewerk">${frei ? "+ Gewerk" : "Freischalten"}</button>
+        <div><div class="card-t">Handwerker${frei ? "" : ' <span class="lock-badge">Premium</span>'}</div>
+          <div class="card-s">${mehrzahl(gw.length, "Handwerker", "Handwerker")} · Zahlung gegen Baufortschritt</div></div>
+        <button type="button" class="add-btn" id="addGewerk">${frei ? "+ Handwerker" : "Freischalten"}</button>
       </div>
       <div class="card-b">
         ${frei ? "" : `<div class="gw-hinweis" style="margin:0 0 12px">${NUR_LESEN}</div>`}
-        <div class="gwt">
-          <div class="gwt-kopf">
-            <div>Gewerk</div><div class="gwt-c">Angebot</div><div class="gwt-c">Gezahlt</div>
-            <div class="gwt-c">Quote</div><div class="gwt-c">Gebaut</div>
-          </div>
-          ${zeilen}
+        <div class="eq-zustand${z.klasse}"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${esc(z.titel)}</div><div class="eq-zustand-d">${esc(z.text)}</div></div></div>
+        <div class="eq-hw-liste">${zeilen}</div>
+        <div class="eq-werte eq-hw-summe">
+          ${wert("Angebote gesamt", eur(soll))}
+          ${wert("Bezahlt", eur(gezahlt), proz(quote) + " der Angebote")}
+          ${wert("Gebaut im Schnitt", proz(fortschritt), "nach Auftragswert gewichtet")}
+          ${wert("Im Voraus bezahlt", eur(vorleistung), vorleistung > 0 ? "mehr bezahlt als gebaut" : "nichts")}
         </div>
-        <div class="gw-kacheln">
-          <div class="gw-kachel"><span>Angebotssumme</span><b>${eur(soll)}</b></div>
-          <div class="gw-kachel"><span>Gezahlt</span><b class="${quote > fortschritt + 15 ? "warn" : ""}">${eur(gezahlt)}</b></div>
-          <div class="gw-kachel"><span>Ø Fortschritt</span><b>${proz(fortschritt)}</b></div>
-          <div class="gw-kachel"><span>In Vorleistung</span><b class="${vorleistung > 0 ? "warn" : "gut"}">${eur(vorleistung)}</b></div>
-        </div>
-        ${vorleistung > 0
-          ? `<div class="gw-hinweis warn">Auffällig: Zahlungsquote liegt über dem Baufortschritt — ${eur(vorleistung)} sind vorausgezahlt.${kritisch.length ? " Betroffen: " + kritisch.map(g => esc(g.name)).join(", ") + "." : ""} Abschläge und offene Posten prüfen.</div>`
-          : `<div class="gw-hinweis gut">Zahlungen decken sich mit dem Baufortschritt. Keine Vorleistung.</div>`}
       </div></div>`);
     karte.querySelector("#addGewerk").onclick = () => openGewerkEdit(s, null, true);
-    karte.querySelectorAll("[data-gewerk]").forEach(n =>
-      n.onclick = () => openGewerkDetail(s, n.dataset.gewerk));
+    karte.querySelectorAll("[data-gewerk]").forEach(n => {
+      n.onclick = () => openGewerkDetail(s, n.dataset.gewerk);
+      n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); openGewerkDetail(s, n.dataset.gewerk); } };
+    });
     return karte;
   }
 
-  // Ein Gewerk im Detail: Angebot, Zahlungen, Baufortschritt, alle Rechnungen
+  // Ein Handwerker im Einzelnen: Zustand zuerst, dann Zahlung gegen Fortschritt, Eckwerte, Rechnungen
   function openGewerkDetail(s, id) {
     const g = gewerkeVon(s).find(x => x.id === id);
     if (!g) return;
-    const kl = ampel(g.punkte, g.gezahlt > 0);
+    const kl = hwStufe(g), a = HW_AMPEL[kl];
     const pkt = Math.round(g.punkte);
+    const vergleich = "Bezahlt sind " + proz(g.quote) + " des Angebots, gebaut sind " + proz(g.fortschritt) + ".";
 
+    let titel, text;
+    if (kl === "ueber") { titel = "Zu viel bezahlt: " + eur(g.vorleistung) + " mehr, als gebaut wurde"; text = vergleich + " Zahle erst weiter, wenn mehr fertig ist."; }
+    else if (kl === "achtung") { titel = "Etwas voraus bezahlt: " + eur(g.vorleistung); text = vergleich + " Behalte die nächste Rechnung im Blick."; }
+    else if (kl === "neutral") { titel = "Noch nichts bezahlt"; text = "Gebaut sind " + proz(g.fortschritt) + ". Erfasse die erste Rechnung, dann vergleicht ESTRIQ Zahlung und Baufortschritt."; }
+    else if (pkt < -5) { titel = "Im Plan – du hast weniger bezahlt, als gebaut wurde"; text = vergleich; }
+    else { titel = "Im Plan – Zahlung und Baufortschritt passen zusammen"; text = vergleich; }
+
+    const datum = (d) => d ? new Date(d).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "ohne Datum";
     const rechnungen = g.rechnungen.length
-      ? `<div class="gwr">
-          <div class="gwr-kopf"><div>Beleg</div><div>Datum</div><div class="gwr-c">Betrag</div><div class="gwr-s">Status</div></div>
-          ${g.rechnungen.map(r => `
-            <div class="gwr-row" data-rechnung="${r.id}">
-              <div class="gwr-b">${esc(r.beleg || r.bezeichnung || "Rechnung")}</div>
-              <div class="gwr-d">${r.datum ? new Date(r.datum).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + "." : "—"}</div>
-              <div class="gwr-c">${eur(Number(r.betrag) || 0)}</div>
-              <div class="gwr-s"><span class="gwr-tag ${r.bezahlt ? "ok" : "offen"}">${r.bezahlt ? "bezahlt" : "offen"}</span></div>
-            </div>`).join("")}
-        </div>`
-      : `<div class="note">Noch keine Rechnung erfasst.</div>`;
+      ? `<div class="eq-rn-liste">${g.rechnungen.map(r => `
+          <div class="eq-rn" data-rechnung="${r.id}" role="button" tabindex="0">
+            <div class="eq-rn-tx"><div class="eq-rn-n">${esc(r.bezeichnung || r.beleg || "Rechnung")}</div>
+              <div class="eq-rn-d">${esc([datum(r.datum), r.bezeichnung && r.beleg ? r.beleg : ""].filter(Boolean).join(" · "))}</div></div>
+            <div class="eq-rn-b">${eur(Number(r.betrag) || 0)}</div>
+            <div class="eq-rn-s">${r.bezahlt
+              ? `<span class="eq-marke gut">bezahlt</span>`
+              : `<span class="eq-marke achtung">offen</span><button type="button" class="mk-ok" data-zahlen="${r.id}">Bezahlt</button>`}</div>
+          </div>`).join("")}</div>`
+      : `<div class="eq-leer" style="padding:16px">Noch keine Rechnung erfasst.</div>`;
 
     // Nächste Schritte aus den Daten ableiten
     const schritte = [];
-    if (g.fortschritt < 100) schritte.push({ ok: true, t: "Teilabnahme dokumentieren, bevor der nächste Abschlag freigegeben wird" });
     const offeneRn = g.rechnungen.filter(r => !r.bezahlt);
+    if (kl === "ueber") schritte.push({ ok: false, t: "Beim Handwerker nachfragen: " + pkt + " Prozentpunkte mehr bezahlt als gebaut" });
     if (offeneRn.length) schritte.push({
       ok: g.vorleistung <= 0,
-      t: (offeneRn[0].beleg ? "Abschlag " + offeneRn[0].beleg : "Offenen Abschlag")
-         + (g.vorleistung > 0 ? " erst nach weiterem Baufortschritt freigeben" : " kann freigegeben werden")
+      t: (offeneRn[0].bezeichnung || offeneRn[0].beleg || "Die offene Rechnung")
+         + (g.vorleistung > 0 ? " erst bezahlen, wenn mehr gebaut ist" : " kann bezahlt werden")
     });
-    if (pkt > 15) schritte.push({ ok: false, t: g.name + ": Abweichung " + pkt + " Punkte — Rückfrage beim Handwerker offen" });
-    schritte.push({ ok: true, t: "Schlusszahlung an das Abnahmeprotokoll binden" });
+    if (g.fortschritt < 100) schritte.push({ ok: true, t: "Fertige Teile abnehmen und festhalten, bevor du die nächste Rechnung bezahlst" });
+    schritte.push({ ok: true, t: "Die letzte Zahlung erst nach der Abnahme leisten" });
 
+    const ueberAngebot = g.diff > 0 && g.soll > 0;
     const body = `
-      <div class="gw-kacheln vier">
-        <div class="gw-kachel"><span>Angebot</span><b>${eur(g.soll)}</b></div>
-        <div class="gw-kachel"><span>Gezahlt</span><b class="${kl === "ueber" ? "warn" : ""}">${eur(g.gezahlt)}</b></div>
-        <div class="gw-kachel"><span>Offen</span><b>${eur(g.restBudget + g.offenRn)}</b></div>
-        <div class="gw-kachel"><span>Fortschritt</span><b>${proz(g.fortschritt)}</b></div>
+      <div class="eq-zustand${a.zustand}"><div class="eq-zustand-tx">
+        <div class="eq-zustand-t">${esc(titel)}</div><div class="eq-zustand-d">${esc(text)}</div></div></div>
+      <div class="eq-hw-gross">${hwBalken(g, kl)}
+        <button type="button" class="add-btn" id="gwFortschritt">Baufortschritt ändern</button></div>
+      <div class="eq-werte" style="margin-bottom:8px">
+        ${wert("Angebot", eur(g.soll))}
+        ${wert("Bezahlt", eur(g.gezahlt), proz(g.quote) + " des Angebots")}
+        ${wert("Durch Gebautes gedeckt", eur(g.freigegeben), proz(g.fortschritt) + " vom Angebot")}
+        ${wert("Im Voraus bezahlt", eur(g.vorleistung), g.vorleistung > 0 ? "mehr bezahlt als gebaut" : "nichts")}
+        ${wert("Rechnungen offen", eur(g.offenRn), g.offenRn > 0 ? "gestellt, noch nicht bezahlt" : "keine")}
+        ${wert("Noch nicht abgerechnet", eur(g.restBudget), "vom Angebot")}
       </div>
-
-      <div class="gw-bar-blk">
-        <div class="gw-bar-top"><span>Zahlungen</span>
-          <b class="${kl === "ueber" ? "warn" : "gut"}">${proz(g.quote)} · ${eur(g.gezahlt)}</b></div>
-        <div class="gw-bar"><i class="${kl}" style="width:${Math.min(100, g.quote).toFixed(1)}%"></i></div>
-      </div>
-      <div class="gw-bar-blk">
-        <div class="gw-bar-top"><span>Baufortschritt</span><b>${proz(g.fortschritt)}</b></div>
-        <div class="gw-bar"><i class="bau" style="width:${g.fortschritt}%"></i></div>
-      </div>
-
-      ${g.gezahlt > 0 && pkt > 5
-        ? `<div class="gw-hinweis warn">${pkt} Punkte Abweichung — anteilig mehr gezahlt als gebaut. ${eur(g.vorleistung)} sind vorausgezahlt.</div>`
-        : g.gezahlt > 0 && pkt < -5
-          ? `<div class="gw-hinweis gut">${Math.abs(pkt)} Punkte Puffer — es ist weniger gezahlt als gebaut.</div>`
-          : g.gezahlt > 0
-            ? `<div class="gw-hinweis gut">Zahlung und Baufortschritt laufen im Gleichschritt.</div>`
-            : `<div class="gw-hinweis">Noch keine Zahlung geleistet.</div>`}
-
-      ${efTitel("Zahlungsfreigabe")}
-      <div class="gw-kacheln drei">
-        <div class="gw-kachel"><span>Freigegeben</span><b class="gut">${eur(g.freigegeben)}</b></div>
-        <div class="gw-kachel"><span>Gesperrt</span><b class="${g.vorleistung > 0 ? "warn" : ""}">${eur(g.vorleistung)}</b></div>
-        <div class="gw-kachel"><span>Fortschritt</span><b>${proz(g.fortschritt)}</b></div>
-      </div>
-      <div class="gw-schritte">
-        ${schritte.map(x => `<div class="gw-schritt ${x.ok ? "ok" : "warn"}">
-          <i>${x.ok ? "✓" : "!"}</i><span>${esc(x.t)}</span></div>`).join("")}
-      </div>
-      ${g.vorleistung > 0 ? `<div class="gw-hinweis gut" style="margin-top:10px">Sobald die Zahlungsquote wieder unter dem Fortschritt liegt, verschwindet die Warnung.</div>` : ""}
-
-      ${g.notiz ? `<div class="note" style="margin-top:14px">${esc(g.notiz)}</div>` : ""}
+      ${ueberAngebot ? `<div class="gw-hinweis warn">Die Rechnungen liegen ${eur(g.diff)} über dem Angebot.</div>` : ""}
       ${efTitel("Rechnungen")}
       ${rechnungen}
-      <button class="add-btn" id="addRn" style="margin-top:12px;width:100%">+ Rechnung erfassen</button>
-      <div class="ef-actions" style="margin-top:22px">
-        <button class="ef-save" id="gwEdit">Gewerk bearbeiten</button>
-      </div>`;
-    const unter = esc(g.name) + (g.auftrag_am ? " · Auftrag vom " + dateDE(g.auftrag_am) : "");
-    const sheet = openSheet(g.gewerk || g.name, unter, (hatModul() ? "" : `<div class="gw-hinweis" style="margin:0 0 14px">${NUR_LESEN}</div>`) + body);
-    sheet.querySelector("#addRn").onclick = () => { closeSheet(); openRechnungEdit(s, g, null, true); };
-    sheet.querySelector("#gwEdit").onclick = () => { closeSheet(); openGewerkEdit(s, g, false); };
-    sheet.querySelectorAll("[data-rechnung]").forEach(n => n.onclick = () => {
-      const r = g.rechnungen.find(x => x.id === n.dataset.rechnung);
-      closeSheet(); openRechnungEdit(s, g, r, false);
+      <button type="button" class="eq-btn eq-breit" id="addRn">+ Rechnung erfassen</button>
+      ${efTitel("Nächste Schritte")}
+      <div class="gw-schritte">
+        ${schritte.map(x => `<div class="gw-schritt ${x.ok ? "ok" : "warn"}">
+          <i aria-hidden="true">${x.ok ? "✓" : "!"}</i><span>${esc(x.t)}</span></div>`).join("")}
+      </div>
+      ${g.notiz ? `${efTitel("Notiz")}<div class="note">${esc(g.notiz)}</div>` : ""}
+      <button type="button" class="ef-open" id="gwEdit">Handwerker bearbeiten</button>`;
+    const unter = [g.gewerk, s.name, g.auftrag_am ? "Auftrag vom " + dateDE(g.auftrag_am) : ""].filter(Boolean).join(" · ");
+    const sheet = openSheet(g.name || "Handwerker", unter, (hatModul() ? "" : `<div class="gw-hinweis" style="margin:0 0 14px">${NUR_LESEN}</div>`) + body);
+    sheet.querySelector("#addRn").onclick = () => openRechnungEdit(s, g, null, true);
+    sheet.querySelector("#gwEdit").onclick = () => openGewerkEdit(s, g, false);
+    sheet.querySelector("#gwFortschritt").onclick = () => openGewerkEdit(s, g, false, { feld: "fortschritt" });
+    sheet.querySelectorAll("[data-rechnung]").forEach(n => {
+      const oeffnen = () => openRechnungEdit(s, g, g.rechnungen.find(x => x.id === n.dataset.rechnung), false);
+      n.onclick = (e) => { if (e.target.closest("button")) return; oeffnen(); };
+      n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === n && !e.repeat) { e.preventDefault(); oeffnen(); } };
+    });
+    // Offene Rechnung in einem Schritt als bezahlt vermerken
+    sheet.querySelectorAll("[data-zahlen]").forEach(b => b.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      if (!pruefeModul("gewerke")) return;
+      b.disabled = true; b.textContent = "Speichere…";
+      try { await window.speichereRechnung(b.dataset.zahlen, { bezahlt: true }); }
+      catch (e) { b.disabled = false; b.textContent = "Bezahlt"; showToast(window.fehlerText(e)); return; }
+      try { await window.nachSpeichern(); }
+      catch (_) { b.textContent = "bezahlt"; showToast(NEULADEN_HINWEIS); return; }
+      showToast("Gespeichert: Die Rechnung ist bezahlt.");
+      hwZurueck(s, g.id);
     });
   }
+  // Nach dem Speichern zurück ins Fenster des Handwerkers, mit dem neuen Stand
+  function hwZurueck(s, gewerkId) {
+    const s2 = (D.streams || []).find(x => x._id === s._id);
+    if (s2 && gewerkeVon(s2).some(x => x.id === gewerkId)) openGewerkDetail(s2, gewerkId);
+  }
 
-  // Gewerk anlegen oder bearbeiten
-  function openGewerkEdit(s, g, neu) {
+  // Handwerker anlegen oder bearbeiten. opt.feld: dieses Feld bekommt gleich den Fokus.
+  function openGewerkEdit(s, g, neu, opt) {
     if (!pruefeModul("gewerke")) return;
+    opt = opt || {};
     const body = `
       ${efTitel("Handwerker")}
       ${ef("Firma oder Name", "name", g ? g.name : "", "text", { pflicht: true, platzhalter: "z. B. Elektro Meyer GmbH" })}
-      ${ef("Gewerk", "gewerk", g ? (g.gewerk || "") : "", "text", { platzhalter: "z. B. Elektrik, Sanitär, Maler" })}
-      ${efTitel("Kalkulation")}
+      ${ef("Arbeit", "gewerk", g ? (g.gewerk || "") : "", "text", { platzhalter: "z. B. Elektrik, Sanitär, Maler" })}
+      ${efTitel("Auftrag")}
       ${ef("Angebotssumme", "angebot", g ? (g.angebot ?? "") : "", "number",
-        { pflicht: true, einheit: "€", hinweis: "Brutto, wie im Angebot ausgewiesen" })}
-      ${ef("Baufortschritt in %", "fortschritt", g ? (g.fortschritt ?? 0) : 0, "number",
-        { step: "1", hinweis: "Wie viel der Leistung ist erbracht? ESTRIQ vergleicht das mit deinen Zahlungen." })}
+        { pflicht: true, einheit: "€", min: 0, hinweis: "Brutto, wie im Angebot ausgewiesen" })}
+      ${ef("Baufortschritt", "fortschritt", g ? (g.fortschritt ?? 0) : 0, "number",
+        { step: "1", min: 0, max: 100, einheit: "%", hinweis: "Wie viel der Arbeit ist fertig? ESTRIQ vergleicht das mit deinen Zahlungen." })}
       ${ef("Auftrag vom", "auftrag_am", g ? (g.auftrag_am || "") : "", "date")}
-      ${efSel("Status", "status", g ? (g.status || "offen") : "offen",
+      ${efSel("Stand", "status", g ? (g.status || "offen") : "offen",
         [{ v: "offen", t: "beauftragt" }, { v: "laufend", t: "in Arbeit" }, { v: "fertig", t: "abgeschlossen" }])}
       ${efArea("Notiz", "notiz", g ? (g.notiz || "") : "")}
-      ${efAktionen({ loeschen: neu ? null : "Gewerk löschen" })}`;
-    const sheet = openSheet(neu ? "Gewerk anlegen" : "Gewerk bearbeiten", neu ? s.name : "", body);
+      ${efAktionen({ loeschen: neu ? null : "Handwerker löschen" })}`;
+    const sheet = openSheet(neu ? "Handwerker anlegen" : "Handwerker bearbeiten", neu ? s.name : g.name, body);
+    if (opt.feld) {
+      const f = sheet.querySelector("#ef-" + opt.feld);
+      if (f) { const b = sheet.querySelector(".sheet-b"); b.scrollTop += f.getBoundingClientRect().top - b.getBoundingClientRect().top - 90; if (feinerZeiger()) { try { f.focus({ preventScroll: true }); f.select(); } catch (_) {} } }
+    }
     const bauen = (w) => ({
-      name: text(w.name) || "Gewerk",
+      name: text(w.name) || "Handwerker",
       gewerk: text(w.gewerk),
       angebot: zahl(w.angebot) || 0,
       fortschritt: Math.max(0, Math.min(100, Number(w.fortschritt) || 0)),
@@ -3157,24 +3210,25 @@
     efBind(sheet,
       async (w) => neu ? await window.neuesGewerk(s._id, bauen(w)) : await window.speichereGewerk(g.id, bauen(w)),
       neu ? null : async () => { await window.loescheGewerk(g.id); },
-      "Gewerk mit allen Rechnungen löschen?");
+      "Handwerker mit allen Rechnungen löschen?",
+      neu ? null : () => { showToast("Gespeichert."); hwZurueck(s, g.id); });
   }
 
-  // Rechnung anlegen oder bearbeiten
+  // Rechnung erfassen oder bearbeiten: erst das Nötige (Betrag, bezahlt?, Datum), dann das Freiwillige
   function openRechnungEdit(s, g, r, neu) {
     if (!pruefeModul("gewerke")) return;
     const heute = new Date().toISOString().slice(0, 10);
     const body = `
-      ${efTitel("Rechnung")}
-      ${ef("Belegnummer", "beleg", r ? (r.beleg || "") : "", "text",
-        { platzhalter: "z. B. AR-2026-081" })}
+      ${ef("Betrag", "betrag", r ? (r.betrag ?? "") : "", "number",
+        { pflicht: true, minus: true, einheit: "€", hinweis: "Brutto laut Rechnung. Eine Gutschrift trägst du mit Minus ein." })}
+      ${efSel("Schon bezahlt?", "bezahlt", r && r.bezahlt ? "1" : "0",
+        [{ v: "0", t: "nein, noch offen" }, { v: "1", t: "ja, bezahlt" }])}
+      ${ef("Rechnungsdatum", "datum", r ? (r.datum || "") : heute, "date")}
+      ${efTitel("Freiwillig")}
       ${ef("Bezeichnung", "bezeichnung", r ? (r.bezeichnung || "") : "", "text",
         { platzhalter: "z. B. Abschlag 1 oder Schlussrechnung" })}
-      ${ef("Betrag", "betrag", r ? (r.betrag ?? "") : "", "number",
-        { pflicht: true, minus: true, einheit: "€", hinweis: "Brutto laut Rechnung" })}
-      ${ef("Rechnungsdatum", "datum", r ? (r.datum || "") : heute, "date")}
-      ${efSel("Zahlung", "bezahlt", r && r.bezahlt ? "1" : "0",
-        [{ v: "0", t: "noch offen" }, { v: "1", t: "bezahlt" }])}
+      ${ef("Belegnummer", "beleg", r ? (r.beleg || "") : "", "text",
+        { platzhalter: "z. B. AR-2026-081" })}
       ${efAktionen({ loeschen: neu ? null : "Rechnung löschen" })}`;
     const sheet = openSheet(neu ? "Rechnung erfassen" : "Rechnung bearbeiten", g.name, body);
     const bauen = (w) => ({
@@ -3187,7 +3241,8 @@
     efBind(sheet,
       async (w) => neu ? await window.neueRechnung(g.id, bauen(w)) : await window.speichereRechnung(r.id, bauen(w)),
       neu ? null : async () => { await window.loescheRechnung(r.id); },
-      "Rechnung löschen?");
+      "Rechnung löschen?",
+      () => { showToast("Gespeichert."); hwZurueck(s, g.id); });
   }
 
   /* ================= TOOLS: RECHNER & WISSEN ================= */
@@ -4077,10 +4132,10 @@
       grafik: "abbau"
     },
     tilgung: {
-      titel: "Tilgung pro Monat",
-      kurz: "Der Teil deiner Rate, der die Schulden verringert.",
-      text: "Deine Kreditrate besteht aus Zins und Tilgung. Nur die Tilgung baut Vermögen auf — der Zins ist der Preis fürs Geliehene.",
-      formel: "Kreditrate − Zinsanteil",
+      titel: "Kreditraten pro Monat",
+      kurz: "Was du jeden Monat an die Bank zahlst – Zins und Tilgung zusammen.",
+      text: "Deine Kreditrate besteht aus Zins und Tilgung. Nur die <b>Tilgung</b> verringert deine Schuld und baut Vermögen auf — der Zins ist der Preis fürs Geliehene.",
+      formel: "Zins + Tilgung (alle Kredite zusammen)",
       merke: "Am Anfang der Laufzeit ist der Zinsanteil hoch. Mit jeder Rate verschiebt sich das Verhältnis zugunsten der Tilgung.",
       grafik: "zinstilgung"
     },
@@ -4202,48 +4257,6 @@
   }
 
   // SVG area+line chart from values
-  function areaChart(values, labels, markerIndex) {
-    const W = 720, H = 220, pad = 16;
-    if (!values.length) return `<div class="note">Keine Daten.</div>`;
-    const max = Math.max(...values) * 1.12, min = Math.min(...values, 0) * 0.9;
-    const span = (max - min) || 1;
-    const n = values.length;
-    const x = i => pad + i * (W - pad * 2) / (n - 1 || 1);
-    const y = v => H - pad - (v - min) / span * (H - pad * 2);
-    const pts = values.map((v, i) => [x(i), y(v)]);
-    // smooth path
-    let dLine = `M ${pts[0][0]},${pts[0][1]}`;
-    for (let i = 1; i < pts.length; i++) {
-      const [px, py] = pts[i - 1], [cx, cy] = pts[i];
-      const mx = (px + cx) / 2;
-      dLine += ` C ${mx},${py} ${mx},${cy} ${cx},${cy}`;
-    }
-    const dArea = dLine + ` L ${pts[n - 1][0]},${H - pad} L ${pts[0][0]},${H - pad} Z`;
-    const gridY = [0.25, 0.5, 0.75].map(f => `<line class="grid-l" x1="${pad}" x2="${W - pad}" y1="${pad + f * (H - pad * 2)}" y2="${pad + f * (H - pad * 2)}"/>`).join("");
-    const last = pts[n - 1];
-    const xlabs = labels ? `<div class="chart-x">${labels.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : "";
-    // "Heute"-Marker
-    let marker = "", heute = "";
-    if (markerIndex != null && markerIndex >= 0 && markerIndex < n) {
-      const mp = pts[markerIndex];
-      marker = `<line x1="${mp[0]}" x2="${mp[0]}" y1="${pad}" y2="${H - pad}" stroke="var(--mint-2)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>
-        <circle cx="${mp[0]}" cy="${mp[1]}" r="5" fill="var(--mint-2)" stroke="var(--panel-solid)" stroke-width="2"/>`;
-      const anteil = mp[0] / W * 100;
-      heute = `<span class="chart-heute${anteil > 82 ? " links" : ""}" style="left:${anteil.toFixed(2)}%">heute</span>`;
-    }
-    return `<div class="chart-wrap">
-      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:220px">
-        <defs><linearGradient id="mintFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="color-mix(in srgb,var(--mint) 34%,transparent)"/><stop offset="100%" stop-color="transparent"/>
-        </linearGradient></defs>
-        ${gridY}
-        <path class="area" d="${dArea}"/>
-        <path class="line" d="${dLine}"/>
-        ${marker}
-        <circle class="dot lastdot" cx="${last[0]}" cy="${last[1]}" r="4.5"/>
-      </svg>${heute}${xlabs}</div>`;
-  }
-
   // Donut chart (composition)
   function donut(segments, size) {
     const S = size || 168, r = S / 2 - 14, cx = S / 2, cy = S / 2, C = 2 * Math.PI * r;
@@ -4582,7 +4595,7 @@
     add("Restschuld", eur(debtRest), "über alle Kredite",
         "restschuld schulden kredit darlehen offen rest tilgung schuld",
         () => route("overview"));
-    add("Tilgung pro Monat", eur(debtMonth), "alle Kreditraten zusammen",
+    add("Kreditraten pro Monat", eur(debtMonth), "Zins und Tilgung, alle Kredite zusammen",
         "tilgung rate monatlich kredit zahlung abtrag", () => route("overview"));
     add("Potenzial", eur(t.potenzial), "bei Vollvermietung möglich",
         "potenzial möglich maximal vollvermietung upside luft nach oben",
@@ -4808,7 +4821,8 @@
     if (units && let_ === units) f.push(`Alle <b>${units} Einheiten</b> sind vermietet – volle Auslastung.`);
     else if (units && let_ / units >= 0.6)
       f.push(`<b>${let_} von ${units}</b> Einheiten sind vermietet – ${Math.round(let_ / units * 100)} % Auslastung.`);
-    if (tilgMonat > 0) f.push(`Jeden Monat wandern <b>${eur(tilgMonat)}</b> in die Tilgung – das ist Vermögensaufbau.`);
+    const tilgEcht = (D.streams || []).reduce((a, s) => a + finanzStand(FE.creditsOf(s)).tilgung, 0);
+    if (tilgEcht > 0) f.push(`Von deinen Kreditraten sind jeden Monat <b>${eur(tilgEcht)}</b> Tilgung – das ist Vermögensaufbau.`);
     if (tilgGetilgt > 0) f.push(`Bereits <b>${eur(tilgGetilgt)}</b> Schulden getilgt.`);
     if (nkJahr > 0) f.push(`<b>${eur(nkJahr)}</b> Nebenkosten-Rücklage pro Jahr sorgen für Puffer.`);
 
@@ -4871,7 +4885,7 @@
         <div class="eq-haupt-zeile"><span>${esc(o.zeile)}</span>${o.info ? infoKnopf(o.info) : ""}</div>
         <div class="eq-haupt-zahl">${esc(o.zahl)}</div>
         <div class="eq-haupt-unter">${esc(o.unter || "")}</div>
-        ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${o.anteil} Prozent des möglichen Ertrags"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
+        ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${esc(o.anteilText || o.anteil + " Prozent des möglichen Ertrags")}"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
       </div>
       ${fakten ? `<div class="eq-fakten">${fakten}</div>` : ""}
       ${o.knopf ? `<div class="eq-haupt-fuss"><button type="button" class="add-btn eq-haupt-knopf"${o.knopf.id ? ` id="${o.knopf.id}"` : ""}>${esc(o.knopf.text)}</button></div>` : ""}</div>`);
@@ -4971,10 +4985,11 @@
       return;
     }
 
-    let tilg = 0, rest = 0, nkP = 0, invest = 0;
+    let tilg = 0, rest = 0, nkP = 0, invest = 0, tilgAnteil = 0;
     streams.forEach(s => {
       const m = FE.streamMonthly(s);
       tilg += m.kreditAbtrag; nkP += m.nkPuffer; invest += Number(s.invest) || 0;
+      tilgAnteil += finanzStand(FE.creditsOf(s)).tilgung;
       FE.creditsOf(s).forEach(kr => { const p = FE.creditPlan(kr); rest += p ? p.restAktuell : (kr.summe || 0); });
     });
     const stand = vermietungsStand(streams);
@@ -4996,7 +5011,7 @@
     // 3 Geld im Überblick
     host.appendChild(el(`<div class="grid g-kpi">
       ${kpiCard("wallet", eur(netto), "Netto-Cashflow / Monat", CF_HINWEIS, netto >= 0, null, "cashflow")}
-      ${kpiCard("bank", eur(tilg), "Tilgung / Monat", eur(tilg * 12) + " / Jahr", false, null, "tilgung")}
+      ${kpiCard("bank", eur(tilg), "Kreditraten / Monat", "davon " + eur(tilgAnteil) + " Tilgung", false, null, "tilgung")}
       ${kpiCard("debt", eur(rest), "Restschuld heute", "exakt " + eur2(rest), false, null, "restschuld")}
       ${kpiCard("trend", eur(ist * 12), "Einnahmen / Jahr", "hochgerechnet")}
     </div>`));
@@ -5074,7 +5089,7 @@
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
       ${kpiCard("trend", eur(t.jahrIst), "Einnahmen / Jahr", "hochgerechnet", false, "jahr")}
       ${kpiCard("chart", eur(nettoPot), "Netto-Potenzial / Mon.", "bei Vollvermietung", nettoPot >= 0, "potenzial")}
-      ${kpiCard("bank", eur(debtMonth), "Tilgung / Monat", eur(debtMonth * 12) + " / Jahr", false, "tilgung", "tilgung")}
+      ${kpiCard("bank", eur(debtMonth), "Kreditraten / Monat", eur(debtMonth * 12) + " / Jahr", false, "tilgung", "tilgung")}
       ${kpiCard("debt", eur(debtRest), "Restschuld heute", "exakt " + eur2(debtRest), false, "schuld", "restschuld")}
     </div>`), {
       jahr: () => openPortfolioSheet("einnahmen", ctx),
@@ -5439,7 +5454,7 @@
       karten.push(kpiCard("coins", eur(k.invest), "Investition", "eingesetztes Kapital", false, null, "invest"));
     }
     if (k && kredite.length) {
-      karten.push(kpiCard("bank", eur(k.kreditAbtrag), "Tilgung / Monat", mehrzahl(kredite.length, "Kredit", "Kredite"), false, null, "tilgung"));
+      karten.push(kpiCard("bank", eur(k.kreditAbtrag), "Kreditraten / Monat", "davon " + eur(finanzStand(kredite).tilgung) + " Tilgung", false, null, "tilgung"));
       karten.push(kpiCard("debt", eur(k.restschuldGesamt), "Restschuld heute", "exakt " + eur2(k.restschuldGesamt), false, null, "restschuld"));
     }
     karten.push(kpiCard("trend", eur(m.gesamt * 12), "Einnahmen / Jahr", "hochgerechnet"));
@@ -5546,28 +5561,224 @@
     return karte;
   }
 
-  // Finanzierung: eine Karte je Kredit
+  /* ---------- FINANZIERUNG ---------- */
+  // Frage: Was schulde ich noch, was kostet es mich monatlich, wann bin ich fertig?
+  // Alle Beträge kommen aus FE.creditPlan (Rechenkern). Hier wird nur zusammengestellt und beschriftet.
+
+  const monatLang = (key) => new Date(key + "-01").toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+  const prozent = (n, stellen) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: stellen || 0, maximumFractionDigits: stellen == null ? 3 : stellen }) + " %";
+  const MONATSNAMEN = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+  // „in 14 Jahren und 8 Monaten"
+  function restzeitText(monate) {
+    if (monate <= 0) return "in diesem Monat";
+    const j = Math.floor(monate / 12), m = monate % 12;
+    const teile = [];
+    if (j) teile.push(j === 1 ? "einem Jahr" : j + " Jahren");
+    if (m) teile.push(m === 1 ? "einem Monat" : m + " Monaten");
+    return "in " + teile.join(" und ");
+  }
+  // Wann die Sondertilgung fällig ist, in Worten: „jeweils im Juni und Dezember"
+  function sonderText(st) {
+    const namen = ((st && st.monate) || []).map(n => MONATSNAMEN[n - 1]).filter(Boolean);
+    if (!namen.length) return "";
+    return (namen.length > 1 ? "jeweils im " : "im ") + (namen.length > 1 ? namen.slice(0, -1).join(", ") + " und " + namen[namen.length - 1] : namen[0]);
+  }
+
+  // Stand eines Kredits heute. Zins und Tilgung der laufenden Rate ergeben sich aus der heutigen Restschuld –
+  // ohne Kontostand der Bank ist das genau die Zeile dieses Monats im Tilgungsplan.
+  function kreditStand(kr) {
+    const p = FE.creditPlan(kr);
+    const summe = Number(kr.summe) || 0;
+    const rate = Number(kr.abtragMonat) || 0;
+    const nowKey = new Date().toISOString().slice(0, 7);
+    const rest = p ? p.restAktuell : summe;
+    const beginntNoch = !!(p && p.startKey > nowKey);
+    const fertig = rest <= 0.005;
+    const zins = fertig || beginntNoch ? 0 : Math.min(rate, rest * (Number(kr.zinsPa) || 0) / 100 / 12);
+    const tilgung = fertig || beginntNoch ? 0 : Math.max(0, Math.min(rate - zins, rest));
+    const tilgtNie = !fertig && !!p && !p.getilgt;      // Rate deckt die Zinsen nicht (oder Laufzeit über 50 Jahre)
+    const ende = p && p.getilgt ? p.abzahlDatum : null;
+    let restMonate = null;
+    if (ende) restMonate = Math.max(0, (Number(ende.slice(0, 4)) - Number(nowKey.slice(0, 4))) * 12 + Number(ende.slice(5, 7)) - Number(nowKey.slice(5, 7)));
+    const zinsOffen = p ? p.rows.filter(r => r.monat >= nowKey).reduce((a, r) => a + r.zins, 0) : 0;
+    return {
+      plan: p, summe, rate, rest, zins, tilgung, beginntNoch, fertig, tilgtNie, ende, restMonate, zinsOffen,
+      getilgt: p ? p.getilgtBisher : 0,
+      anteil: summe ? Math.max(0, Math.min(100, (summe - rest) / summe * 100)) : 0
+    };
+  }
+
+  // Alle Kredite eines Objekts zusammen
+  function finanzStand(kredite) {
+    const r = { n: kredite.length, summe: 0, rest: 0, rate: 0, zins: 0, tilgung: 0, zinsOffen: 0, ende: null, tilgtNie: false, laufend: 0, spaeter: 0 };
+    kredite.forEach(kr => {
+      const k = kreditStand(kr);
+      r.summe += k.summe; r.rest += k.rest; r.rate += k.rate; r.zins += k.zins; r.tilgung += k.tilgung; r.zinsOffen += k.zinsOffen;
+      if (k.tilgtNie) r.tilgtNie = true;
+      if (!k.fertig) r.laufend++;
+      if (k.beginntNoch) r.spaeter += k.rate;          // Rate eines Kredits, der erst noch beginnt
+      if (k.ende && (!r.ende || k.ende > r.ende)) r.ende = k.ende;
+    });
+    r.anteil = r.summe ? Math.max(0, Math.min(100, (r.summe - r.rest) / r.summe * 100)) : 0;
+    const nowKey = new Date().toISOString().slice(0, 7);
+    r.restMonate = r.ende ? Math.max(0, (Number(r.ende.slice(0, 4)) - Number(nowKey.slice(0, 4))) * 12 + Number(r.ende.slice(5, 7)) - Number(nowKey.slice(5, 7))) : null;
+    return r;
+  }
+
+  // Zustand eines Kredits als Marke: in Worten, die Farbe kommt nur dazu
+  function kreditMarke(k) {
+    if (k.fertig) return `<span class="eq-marke gut">abbezahlt</span>`;
+    if (k.tilgtNie) return `<span class="eq-marke achtung">wird nicht abbezahlt</span>`;
+    if (k.beginntNoch) return `<span class="eq-marke">beginnt ${esc(monatLang(k.plan.startKey))}</span>`;
+    return `<span class="eq-marke">läuft bis ${esc(monatLang(k.ende))}</span>`;
+  }
+
+  // Ruhiges Verlaufs-Diagramm: eine Linie mit zarter Fläche, Anfang und Ende beschriftet, „heute" markiert.
+  // Linie und Fläche dehnen sich mit der Breite; die Punkte liegen als eigene Elemente darüber und bleiben rund.
+  function areaChart(values, labels, markerIndex, beschreibung) {
+    const W = 720, H = 180, pad = 14;
+    if (!values.length) return `<div class="note">Keine Daten.</div>`;
+    const max = Math.max(...values) * 1.08, min = Math.min(...values, 0);
+    const span = (max - min) || 1;
+    const n = values.length;
+    const x = i => pad + i * (W - pad * 2) / (n - 1 || 1);
+    const y = v => H - pad - (v - min) / span * (H - pad * 2);
+    const pts = values.map((v, i) => [x(i), y(v)]);
+    let dLine = `M ${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [px, py] = pts[i - 1], [cx, cy] = pts[i];
+      const mx = (px + cx) / 2;
+      dLine += ` C ${mx},${py} ${mx},${cy} ${cx},${cy}`;
+    }
+    const dArea = dLine + ` L ${pts[n - 1][0]},${H - pad} L ${pts[0][0]},${H - pad} Z`;
+    const gridY = [0.5].map(f => `<line class="grid-l" x1="${pad}" x2="${W - pad}" y1="${pad + f * (H - pad * 2)}" y2="${pad + f * (H - pad * 2)}"/>`).join("")
+      + `<line class="grid-l" x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}"/>`;
+    const xlabs = labels ? `<div class="chart-x">${labels.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : "";
+    const punkt = (p, klasse) => `<span class="chart-punkt ${klasse}" style="left:${(p[0] / W * 100).toFixed(2)}%;top:${(p[1] / H * 100).toFixed(2)}%"></span>`;
+    let marker = "", heute = "", punkte = punkt(pts[n - 1], "ende");
+    if (markerIndex != null && markerIndex >= 0 && markerIndex < n) {
+      const mp = pts[markerIndex];
+      marker = `<line class="heute-l" x1="${mp[0]}" x2="${mp[0]}" y1="${pad}" y2="${H - pad}"/>`;
+      punkte += punkt(mp, "heute");
+      const anteil = mp[0] / W * 100;
+      heute = `<span class="chart-heute${anteil > 82 ? " links" : ""}" style="left:${anteil.toFixed(2)}%">heute</span>`;
+    }
+    const kennung = "eqFlaeche" + Math.random().toString(36).slice(2, 8);
+    return `<div class="chart-wrap">
+      <div class="chart-feld" role="img" aria-label="${esc(beschreibung || "Verlauf")}">
+        <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="${kennung}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--mint)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mint)" stop-opacity="0"/>
+          </linearGradient></defs>
+          ${gridY}
+          <path d="${dArea}" fill="url(#${kennung})"/>
+          <path class="line" d="${dLine}"/>
+          ${marker}
+        </svg>${punkte}${heute}
+      </div>${xlabs}</div>`;
+  }
+
+  // Kurve der Restschuld für das Diagramm: höchstens 96 Stützpunkte, dazu die Stelle „heute"
+  function kreditKurve(kr, k) {
+    const plan = k.plan, rowsPlan = plan ? plan.rows : [];
+    const curve = [], keys = [];
+    let markerIdx = null;
+    const nowKey = new Date().toISOString().slice(0, 7);
+    if (rowsPlan.length) {
+      const stepN = Math.min(rowsPlan.length, 96);
+      curve.push(k.summe); keys.push(plan.startKey);
+      for (let x = 1; x <= stepN; x++) {
+        const rowI = Math.min(rowsPlan.length - 1, Math.round(x * rowsPlan.length / stepN) - 1);
+        curve.push(rowsPlan[rowI].rest); keys.push(rowsPlan[rowI].monat);
+      }
+      if (plan.startKey <= nowKey) { let idx = 0; for (let j = 0; j < keys.length; j++) { if (keys[j] <= nowKey) idx = j; } markerIdx = idx; }
+    }
+    const start = plan && plan.startKey ? monatLang(plan.startKey) : "", ende = plan && plan.abzahlDatum ? monatLang(plan.abzahlDatum) : "";
+    return areaChart(curve.length ? curve : [k.summe, 0], plan ? [start, ende] : null, k.beginntNoch ? null : markerIdx,
+      "Verlauf der Restschuld von " + eur(k.summe) + (start ? " im " + start : "") + (ende ? " bis null im " + ende : ""));
+  }
+
+  // Werte-Raster: Bezeichnung, Wert, auf Wunsch eine Zeile darunter. Passt sich der Breite an, ohne leere Kacheln.
+  const wert = (titel, zahl, unter) => `<div><span>${esc(titel)}</span><b>${zahl}</b>${unter ? `<small>${esc(unter)}</small>` : ""}</div>`;
+
+  // Wann ist der Kredit abbezahlt – als Wert für das Raster
+  function endeWert(k) {
+    if (k.fertig) return wert("Schuldenfrei", "erreicht");
+    if (k.tilgtNie) return wert("Schuldenfrei", "nicht absehbar", "Die Rate ist dafür zu niedrig");
+    return wert("Schuldenfrei", esc(monatLang(k.ende)), k.beginntNoch ? "" : restzeitText(k.restMonate));
+  }
+
+  // Karte eines Kredits: Restschuld, Fortschritt, Rate mit Zins und Tilgung, Ende, Verlauf
+  function creditCard(kr) {
+    const k = kreditStand(kr);
+    const st = kr.sondertilgung || null;
+    const kopf = [eur(k.summe) + " Darlehen", kr.zinsPa ? prozent(kr.zinsPa, null) + " Zins" : "", k.plan && k.plan.startKey ? (k.beginntNoch ? "ab " : "seit ") + monatLang(k.plan.startKey) : ""].filter(Boolean).join(" · ");
+    return el(`<div class="card eq-kredit">
+      <div class="eq-kredit-kopf">
+        <div><div class="card-t">${esc(kr.name || "Kredit")}</div><div class="card-s">${esc(kopf)}</div></div>
+        ${kreditMarke(k)}
+      </div>
+      <div class="eq-kredit-haupt">
+        <div class="eq-kredit-zeile">Restschuld heute</div>
+        <div class="eq-kredit-zahl">${eur2(k.rest)}</div>
+        <div class="eq-fort" role="img" aria-label="${Math.round(k.anteil)} Prozent getilgt"><i style="width:${k.anteil.toFixed(1)}%"></i></div>
+        <div class="eq-kredit-unter">${k.beginntNoch ? "Noch nichts getilgt – die erste Rate ist im " + esc(monatLang(k.plan.startKey)) + " fällig." : prozent(k.anteil, 0) + " getilgt · " + eur(k.getilgt) + " von " + eur(k.summe)}</div>
+      </div>
+      <div class="eq-werte">
+        ${wert("Rate im Monat", eur2(k.rate), k.beginntNoch || k.fertig ? "" : "davon " + eur(k.zins) + " Zins, " + eur(k.tilgung) + " Tilgung")}
+        ${endeWert(k)}
+        ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
+        ${wert("Zinsen bis zum Ende", k.tilgtNie ? "—" : eur(k.zinsOffen), k.tilgtNie ? "" : "noch zu zahlen")}
+      </div>
+      ${kreditKurve(kr, k)}
+    </div>`);
+  }
+
+  // Alle Kredite eines Objekts auf einen Blick (ab zwei Krediten)
+  function finanzKarte(kredite) {
+    const f = finanzStand(kredite);
+    return hauptKarte({
+      zeile: "Restschuld heute", info: "restschuld",
+      zahl: eur(f.rest),
+      unter: prozent(f.anteil, 0) + " getilgt · " + eur(f.summe - f.rest) + " von " + eur(f.summe),
+      anteil: Math.round(f.anteil), anteilText: Math.round(f.anteil) + " Prozent getilgt",
+      fakten: [
+        { titel: "Raten im Monat", wert: eur(f.rate), text: "davon " + eur(f.zins) + " Zins, " + eur(f.tilgung) + " Tilgung" + (f.spaeter ? ", " + eur(f.spaeter) + " beginnen erst noch" : "") },
+        f.tilgtNie
+          ? { titel: "Schuldenfrei", wert: "nicht absehbar", text: "Bei einem Kredit ist die Rate dafür zu niedrig", zustand: "achtung" }
+          : !f.laufend ? { titel: "Schuldenfrei", wert: "erreicht", text: "Alle Kredite sind abbezahlt", zustand: "gut" }
+          : { titel: "Schuldenfrei", wert: monatLang(f.ende), text: restzeitText(f.restMonate) + ", wenn alles nach Plan läuft" },
+        { titel: "Zinsen bis zum Ende", wert: f.tilgtNie ? "—" : eur(f.zinsOffen), text: "noch zu zahlen, alle Kredite zusammen" }
+      ]
+    });
+  }
+
+  // Finanzierung der Objektseite: bei mehreren Krediten erst die Summe, dann eine Karte je Kredit
   function finanzierungBereich(s) {
     const kredite = FE.creditsOf(s);
     const anlegen = () => openCreditEdit(s, null, true);
     if (!kredite.length) {
       const leer = el(`<div class="card">
         <div class="card-h"><div><div class="card-t">Finanzierung</div></div></div>
-        <div class="card-b"><div class="eq-leer">Noch kein Kredit erfasst. Mit einem Kredit rechnet ESTRIQ Tilgung, Restschuld und Netto-Cashflow.
+        <div class="card-b"><div class="eq-leer">Noch kein Kredit erfasst. Mit einem Kredit zeigt ESTRIQ Restschuld, Rate und das Ende der Laufzeit.
           <div><button type="button" class="add-btn" id="addCredit">+ Kredit hinzufügen</button></div></div></div></div>`);
       leer.querySelector("#addCredit").onclick = anlegen;
       return leer;
     }
     const teile = [abschnittKopf("Finanzierung", mehrzahl(kredite.length, "Kredit", "Kredite") + " · Karte antippen für den Tilgungsplan",
       { id: "addCredit", text: "+ Kredit", tun: anlegen })];
+    if (kredite.length > 1) teile.push(finanzKarte(kredite));
+    const raster = el(`<div class="grid${kredite.length > 1 ? " eq-kredite" : ""}"></div>`);
     kredite.forEach(kr => {
       const c = creditCard(kr);
       c.classList.add("clickable");
       c.setAttribute("role", "button"); c.setAttribute("tabindex", "0");
       c.onclick = () => openCreditSheet(kr);
       c.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === c && !e.repeat) { e.preventDefault(); openCreditSheet(kr); } };
-      teile.push(c);
+      raster.appendChild(c);
     });
+    teile.push(raster);
     return teile;
   }
 
@@ -5615,55 +5826,6 @@
 
   function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
 
-  // Eine Kredit-Tilgungskarte (Zins, optional Sondertilgung, Restschuld-Kurve)
-  function creditCard(kr) {
-    const plan = FE.creditPlan(kr);
-    const months = plan ? plan.monate : 0;
-    const rowsPlan = plan ? plan.rows : [];
-    const curve = [];
-    const rawKeys = [];
-    const stepN = Math.min(rowsPlan.length, 96);
-    let markerIdx = null;
-    const nowKey = new Date().toISOString().slice(0, 7);
-    if (rowsPlan.length) {
-      curve.push(kr.summe); rawKeys.push(plan.startKey); // Startpunkt
-      for (let x = 1; x <= stepN; x++) {
-        const rowI = Math.min(rowsPlan.length - 1, Math.round(x * rowsPlan.length / stepN) - 1);
-        curve.push(rowsPlan[rowI].rest);
-        rawKeys.push(rowsPlan[rowI].monat);
-      }
-      // Index des ersten Kurvenpunkts, dessen Monat >= heute ist
-      if (plan.startKey <= nowKey) {
-        let idx = 0;
-        for (let j = 0; j < rawKeys.length; j++) { if (rawKeys[j] <= nowKey) idx = j; }
-        markerIdx = idx;
-      }
-    }
-    const hasSt = !!kr.sondertilgung;
-    const stTxt = hasSt ? `${eur(kr.sondertilgung.betrag)} zum 01.06. & 01.12.` : "keine";
-    const title = kr.name || "Kredit";
-    const restNow = plan ? plan.restAktuell : kr.summe;
-    const paid = plan ? plan.getilgtBisher : 0;
-    const startTxt = plan && plan.startKey ? monthYear(plan.startKey) : "";
-    const endTxt = plan && plan.abzahlDatum ? monthYear(plan.abzahlDatum) : "";
-    const startFuture = plan && plan.startKey > nowKey;
-    const chartLabels = plan ? [startTxt, "", "", endTxt] : null;
-    return el(`<div class="card"><div class="card-h"><div><div class="card-t">${esc(title)}</div>
-      <div class="card-s">${eur(kr.summe)} · ${kr.zinsPa ? kr.zinsPa.toLocaleString("de-DE") + " % Zins · " : ""}${eur2(kr.abtragMonat)}/Monat · Start ${startTxt}</div></div>
-      <div class="head-pill" style="padding:7px 13px">${plan && plan.getilgt ? "Laufzeit " + plan.jahre.toLocaleString("de-DE") + " J." : "läuft"}</div></div>
-      <div class="card-b">
-        <div class="stat-strip" style="margin-bottom:16px">
-          <div class="s"><span>Restschuld heute</span><b>${eur2(restNow)}</b></div>
-          <div class="s"><span>getilgt bisher</span><b>${startFuture ? "—" : eur2(paid)}</b></div>
-          <div class="s"><span>Rate/Monat</span><b>${eur2(kr.abtragMonat)}</b></div>
-          ${hasSt ? `<div class="s"><span>Sondertilgung</span><b>${eur(kr.sondertilgung.betrag)}</b></div>` : ""}
-          <div class="s"><span>Laufzeit</span><b>${months} Mon. (bis ${endTxt})</b></div>
-          ${hasSt ? `<div class="s"><span>Σ Sondertilgung</span><b>${eur(plan.sonderGesamt)}</b></div>` : ""}
-        </div>
-        ${areaChart(curve.length ? curve : [kr.summe, 0], chartLabels, startFuture ? null : markerIdx)}
-        <div class="note" style="margin-top:8px">${startFuture ? "Tilgung beginnt " + startTxt + ". " : "Der Punkt markiert die heutige Restschuld. "}Restschuld inkl. ${kr.zinsPa ? kr.zinsPa.toLocaleString("de-DE") + " % Zins p.a." : "Zins"}${hasSt ? " und Sondertilgung (" + stTxt + ")" : ""}. Nach Tilgung steigt der Netto-Cashflow um ${eur(kr.abtragMonat)}/Monat.</div>
-      </div></div>`);
-  }
   function monthYear(key) { const d = new Date(key + "-01"); return d.toLocaleDateString("de-DE", { month: "2-digit", year: "numeric" }); }
 
   /* ---------- DETAIL-SHEETS ---------- */
@@ -5773,43 +5935,82 @@
     };
   }
 
+  // Fenster eines Kredits: Zustand zuerst, dann die Rate, die Eckwerte, der Verlauf und der Plan je Jahr
   function openCreditSheet(kr) {
-    const p = FE.creditPlan(kr);
+    const k = kreditStand(kr);
+    const p = k.plan;
     if (!p) return;
-    const rows = p.rows;
-    // Jahresweise verdichten
+    const st = kr.sondertilgung || null;
+    const kstream = (D.streams || []).find(x => FE.creditsOf(x).some(c => c._id === kr._id));
+
+    // Zustand in einem Satz
+    let zustand;
+    if (k.fertig) zustand = `<div class="eq-zustand gut"><div class="eq-zustand-tx"><div class="eq-zustand-t">Dieser Kredit ist abbezahlt</div>
+      <div class="eq-zustand-d">Es ist keine Restschuld mehr offen.</div></div></div>`;
+    else if (k.tilgtNie) zustand = `<div class="eq-zustand achtung"><div class="eq-zustand-tx"><div class="eq-zustand-t">Mit dieser Rate wird der Kredit nicht abbezahlt</div>
+      <div class="eq-zustand-d">${k.tilgung > 0 ? "Auch nach 50 Jahren bliebe eine Restschuld." : "Die Rate deckt nur die Zinsen, die Restschuld von " + eur(k.rest) + " wird nicht kleiner."} Prüfe Rate und Zinssatz über „Bearbeiten“.</div></div></div>`;
+    else if (k.beginntNoch) zustand = `<div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Die erste Rate ist im ${esc(monatLang(p.startKey))} fällig</div>
+      <div class="eq-zustand-d">Schuldenfrei im ${esc(monatLang(k.ende))}, wenn alles nach Plan läuft.</div></div></div>`;
+    else zustand = `<div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Noch ${eur(k.rest)} offen</div>
+      <div class="eq-zustand-d">Schuldenfrei im ${esc(monatLang(k.ende))} – ${restzeitText(k.restMonate)}, wenn alles nach Plan läuft.</div></div></div>`;
+
+    // Die Rate dieses Monats: wie viel davon Zins ist und wie viel die Schuld verringert
+    const zinsAnteil = k.rate ? k.zins / k.rate * 100 : 0, tilgAnteil = k.rate ? k.tilgung / k.rate * 100 : 0;
+    const rate = `<div class="eq-rate">
+        <div class="eq-rate-kopf"><span>Rate im Monat</span><b>${eur2(k.rate)}</b></div>
+        ${k.fertig || k.beginntNoch ? "" : `<div class="rc-vh" role="img" aria-label="${Math.round(zinsAnteil)} Prozent Zins, ${Math.round(tilgAnteil)} Prozent Tilgung"><i class="z" style="width:${zinsAnteil.toFixed(1)}%"></i><i class="t" style="width:${tilgAnteil.toFixed(1)}%"></i></div>
+        <div class="eq-rate-teile">
+          <div><b class="z"></b><span>Zins</span><strong>${eur2(k.zins)}</strong></div>
+          <div><b class="t"></b><span>Tilgung</span><strong>${eur2(k.tilgung)}</strong></div>
+        </div>
+        <div class="note">Nur die Tilgung verringert deine Schuld. Ihr Anteil wächst mit jeder Rate.</div>`}
+      </div>`;
+
+    // Plan je Jahr
     const byYear = {};
-    rows.forEach(r => {
+    p.rows.forEach(r => {
       const y = r.monat.slice(0, 4);
       byYear[y] = byYear[y] || { zins: 0, tilgung: 0, sonder: 0, rest: 0 };
       byYear[y].zins += r.zins; byYear[y].tilgung += r.tilgung;
       byYear[y].sonder += r.sonder; byYear[y].rest = r.rest;
     });
+    const dieses = String(new Date().getFullYear());
+    const ganz = (n) => Math.round(Number(n) || 0).toLocaleString("de-DE");   // in der Tabelle ohne Euro-Zeichen, damit fünf Spalten aufs Handy passen
+    const mitSonder = p.sonderGesamt > 0;
     const trs = Object.keys(byYear).sort().map(y => {
       const b = byYear[y];
-      return `<tr><td>${y}</td><td>${eur(b.zins)}</td><td>${eur(b.tilgung + b.sonder)}</td>
-        <td class="hl">${eur(b.rest)}</td></tr>`;
+      return `<tr${y === dieses ? ' class="jetzt" aria-current="true"' : ""}><td>${y}${y === dieses ? "<small>heute</small>" : ""}</td><td>${ganz(b.zins)}</td><td>${ganz(b.tilgung)}</td>
+        ${mitSonder ? `<td>${b.sonder ? ganz(b.sonder) : "—"}</td>` : ""}<td>${ganz(b.rest)}</td></tr>`;
     }).join("");
-    const zinsAnteil = p.zinsGesamt / ((Number(kr.summe) || 1) + p.zinsGesamt) * 100;
+    const zinsQuote = p.zinsGesamt / (k.summe + p.zinsGesamt || 1) * 100;
+
     const body = `
-      <div class="stat-strip" style="margin-bottom:18px">
-        <div class="s"><span>Restschuld heute</span><b>${eur(p.restAktuell)}</b></div>
-        <div class="s"><span>getilgt</span><b>${eur(p.getilgtBisher)}</b></div>
-        <div class="s"><span>Zinsen gesamt</span><b>${eur(p.zinsGesamt)}</b></div>
-        <div class="s"><span>Laufzeit</span><b>${p.jahre.toLocaleString("de-DE")} J.</b></div>
+      ${zustand}
+      ${rate}
+      <div class="eq-werte" style="margin-bottom:22px">
+        ${wert("Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
+        ${wert("Getilgt bisher", eur(k.getilgt), prozent(k.anteil, 0) + " von " + eur(k.summe))}
+        ${wert("Zinssatz", prozent(kr.zinsPa || 0, null), "im Jahr")}
+        ${wert("Erste Rate", esc(monatLang(p.startKey)))}
+        ${endeWert(k)}
+        ${wert("Zinsen gesamt", eur(p.zinsGesamt), k.tilgtNie ? "" : "davon noch " + eur(k.zinsOffen) + " offen")}
+        ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
+        ${mitSonder ? wert("Sondertilgung gesamt", eur(p.sonderGesamt), "über die ganze Laufzeit") : ""}
       </div>
-      <div class="card-t" style="font-size:14px;margin-bottom:10px">Kostenverteilung</div>
+      <div class="card-t eq-zwischen">Verlauf der Restschuld</div>
+      ${kreditKurve(kr, k)}
+      <div class="card-t eq-zwischen">Was der Kredit insgesamt kostet</div>
       ${miniBars([
-        { label: "Darlehen", value: Number(kr.summe) || 0, color: "var(--eq-reihe-1)" },
-        { label: "Zinskosten", value: p.zinsGesamt, color: "var(--eq-reihe-2)" }
+        { label: "Darlehen", value: k.summe, color: "var(--eq-reihe-1)" },
+        { label: "Zinsen", value: p.zinsGesamt, color: "var(--eq-reihe-2)" }
       ])}
-      <div class="note" style="margin-top:8px">${zinsAnteil.toFixed(1)} % der Gesamtkosten sind Zinsen.</div>
-      <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgung je Jahr</div>
-      <table class="tbl"><thead><tr><th>Jahr</th><th>Zins</th><th>Tilgung</th><th>Restschuld</th></tr></thead>
-      <tbody>${trs}</tbody></table>
-      <button class="ef-open" id="efEdit">Bearbeiten</button>`;
-    const sh = openSheet(kr.name || "Kredit", eur(kr.summe) + " · " + (kr.zinsPa || 0).toLocaleString("de-DE") + " % · " + eur(kr.abtragMonat) + "/Monat", body);
-    const kstream = (D.streams || []).find(x => FE.creditsOf(x).some(c => c._id === kr._id));
+      <div class="note" style="margin-top:8px">${k.tilgtNie ? "Die Zinsen sind hier nur für 50 Jahre gerechnet." : "Zusammen " + eur(k.summe + p.zinsGesamt) + ". Davon sind " + prozent(zinsQuote, 1) + " Zinsen."}</div>
+      <div class="card-t eq-zwischen">Tilgungsplan je Jahr</div>
+      <div class="tbl-wrap"><table class="tbl eq-plan"><thead><tr><th>Jahr</th><th>Zins</th><th>Tilgung</th>${mitSonder ? "<th>Sonder\u00ADtilgung</th>" : ""}<th>Rest\u00ADschuld</th></tr></thead>
+      <tbody>${trs}</tbody></table></div>
+      <div class="note" style="margin-top:8px">Alle Beträge in Euro, je Jahr zusammengezählt. Restschuld am Jahresende.</div>
+      <button type="button" class="ef-open" id="efEdit">Bearbeiten</button>`;
+    const sh = openSheet(kr.name || "Kredit", kstream ? kstream.name : "", body);
     sh.querySelector("#efEdit").onclick = () => openCreditEdit(kstream, kr, false);
   }
 
@@ -5979,7 +6180,7 @@
       const body = `
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
         ${kv("Einnahmen gesamt", eur(t.ist))}
-        ${kv("− Tilgung alle Kredite", "−" + eur(c.debtMonth))}
+        ${kv("− Kreditraten, alle Kredite", "−" + eur(c.debtMonth))}
         ${kv("Netto-Cashflow", eur(c.nettoMonth))}
         <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgungsanteil je Kredit</div>
         ${miniBars((() => {
@@ -5990,7 +6191,7 @@
           })));
           return out;
         })())}
-        <div class="note" style="margin-top:12px">Die Tilgung ist kein Verlust – sie baut Eigenkapital auf. Aktuell fließen ${eur(c.debtMonth)}/Monat in die Entschuldung.</div>
+        <div class="note" style="margin-top:12px">Ein Teil jeder Rate ist Tilgung – sie ist kein Verlust, sondern baut Eigenkapital auf. Der Rest sind Zinsen.</div>
         <div class="card-t" style="font-size:14px;margin:20px 0 6px">Zeitraum</div>
         ${kv("je Monat", eur(c.nettoMonth))}
         ${kv("je Jahr", eur(c.nettoMonth * 12))}
@@ -6034,7 +6235,7 @@
         <div class="stat-strip" style="margin-bottom:18px">
           <div class="s"><span>Restschuld</span><b>${eur(c.debtRest)}</b></div>
           <div class="s"><span>getilgt</span><b style="color:var(--mint-2)">${eur(c.paidSoFar)}</b></div>
-          <div class="s"><span>Tilgungsquote</span><b>${quote.toFixed(1)} %</b></div>
+          <div class="s"><span>davon getilgt</span><b>${quote.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</b></div>
           <div class="s"><span>Rate/Monat</span><b>${eur(c.debtMonth)}</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Restschuld je Kredit</div>
@@ -6043,7 +6244,7 @@
         <div class="tbl-wrap"><table class="tbl">
           <thead><tr><th>Kredit</th><th>Ursprung</th><th>Rest</th><th>Zins</th><th>Laufzeit</th></tr></thead>
           <tbody>${trs}</tbody></table></div>
-        <div class="note" style="margin-top:12px">Tilgung ${eur(c.debtMonth * 12)}/Jahr. Die Restschuld sinkt mit jeder Rate, der Tilgungsanteil steigt dabei kontinuierlich.</div>`;
+        <div class="note" style="margin-top:12px">Kreditraten im Jahr: ${eur(c.debtMonth * 12)}. Die Restschuld sinkt mit jeder Rate, der Anteil der Tilgung wächst dabei.</div>`;
       return openSheet("Restschuld", "Alle Kredite im Portfolio", body);
     }
   }
@@ -6122,21 +6323,22 @@
     const body = `
       ${efTitel("Grunddaten")}
       ${ef("Bezeichnung", "name", kr ? kr.name : "", "text", { pflicht: true, platzhalter: "z. B. KfW-Darlehen" })}
-      ${ef("Darlehenssumme", "summe", kr ? kr.summe : "", "number", { pflicht: true })}
-      ${ef("Zinssatz % p. a.", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true })}
-      ${ef("Rate je Monat", "rate_monat", kr ? kr.abtragMonat : "", "number", { pflicht: true })}
+      ${ef("Darlehenssumme", "summe", kr ? kr.summe : "", "number", { pflicht: true, einheit: "€", min: 0 })}
+      ${ef("Zinssatz", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true, einheit: "% im Jahr", min: 0, max: 100 })}
+      ${ef("Rate im Monat", "rate_monat", kr ? kr.abtragMonat : "", "number",
+        { pflicht: true, einheit: "€", min: 0, hinweis: "Zins und Tilgung zusammen – so, wie die Bank die Rate abbucht" })}
       ${ef("Erste Rate am", "start", kr ? (kr.start || "") : "", "date",
-        { hinweis: "Bestimmt den Tilgungsverlauf" })}
-      ${efTitel("Kontostand")}
+        { hinweis: "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
+      ${efTitel("Kontostand der Bank")}
       ${ef("Restschuld laut Bank", "rest_stand_betrag", kr && kr.restStand ? kr.restStand.betrag : "", "number",
-        { hinweis: "Maßgeblich für die Anzeige – überschreibt die Modellrechnung" })}
+        { einheit: "€", min: 0, hinweis: "Trägst du sie ein, zeigt ESTRIQ diesen Stand und rechnet von dort weiter. Leer lassen, wenn ESTRIQ selbst rechnen soll." })}
       ${ef("Stand vom", "rest_stand_datum", kr && kr.restStand ? kr.restStand.datum : "", "date")}
       ${efTitel("Sondertilgung")}
       ${ef("Betrag je Zahlung", "st_betrag", st ? st.betrag : "", "number",
-        { hinweis: "Leer lassen, wenn keine Sondertilgung vereinbart ist" })}
-      ${ef("Monate", "st_monate", st ? (st.monate || []).join(", ") : "", "text",
-        { platzhalter: "z. B. 12  oder  6, 12", hinweis: "Monatsnummern durch Komma getrennt" })}
-      ${efAktionen({ loeschen: neu ? null : "Löschen" })}`;
+        { einheit: "€", min: 0, hinweis: "Leer lassen, wenn keine Sondertilgung vereinbart ist" })}
+      ${ef("In welchen Monaten", "st_monate", st ? (st.monate || []).join(", ") : "", "text",
+        { platzhalter: "z. B. 6, 12", hinweis: "Monate als Zahl, mit Komma getrennt. 6, 12 heißt: jedes Jahr im Juni und im Dezember." })}
+      ${efAktionen({ loeschen: neu ? null : "Kredit löschen" })}`;
 
     const sheet = openSheet(neu ? "Neuer Kredit" : "Kredit bearbeiten",
       (neu ? "" : (kr.name + " · ")) + s.name, body);
