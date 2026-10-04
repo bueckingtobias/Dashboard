@@ -144,6 +144,50 @@ async function loescheObjekt(id) {
   if (error) throw error;
 }
 
+// ---------- Projekte ----------
+// Ein Projekt ist ein Objekt der Art "projekt". Die Art setzt nur das Anlegen; danach ändert sie
+// ausschließlich die Datenbank-Funktion projekt_uebernehmen. Beim Speichern wird art nie mitgeschickt.
+function ohneArt(werte) {
+  const o = { ...(werte || {}) };
+  delete o.art; delete o.org_id;
+  return o;
+}
+// Legt ein Projekt an und gibt seine Kennung zurück
+async function neuesProjekt(werte) {
+  const org = await meineOrgId();
+  const { data, error } = await window.sb.from('objekte')
+    .insert({ ...ohneLeere(ohneArt(werte)), art: 'projekt', org_id: org })
+    .select('id').single();
+  if (error) throw error;
+  return data && data.id;
+}
+// Name, Ort, Notiz und andere Stammdaten eines Projekts
+async function speichereProjekt(id, werte) {
+  const { error } = await window.sb.from('objekte').update(ohneArt(werte)).eq('id', id);
+  if (error) throw error;
+}
+// Planungsdaten (Spalte projekt) und die daraus berechnete Gesamtinvestition
+async function speichereProjektPlan(id, plan, invest) {
+  const paket = { projekt: plan };
+  if (invest !== undefined) paket.invest = invest;
+  const { error } = await window.sb.from('objekte').update(paket).eq('id', id);
+  if (error) throw error;
+}
+// Kopie eines Projekts mit Planungsdaten, Einheiten und Krediten. Gibt die Kennung der Kopie zurück.
+async function dupliziereProjekt(werte, einheiten, kredite) {
+  const id = await neuesProjekt(werte);
+  for (const e of (einheiten || [])) await neueEinheit(id, e);
+  for (const k of (kredite || [])) await neuerKredit(id, k);
+  return id;
+}
+// Macht aus dem Projekt ein Mietobjekt. Antwort der Datenbank:
+// ok | kein_zugriff | nicht_gefunden | kein_projekt | gesperrt | objekte | einheiten
+async function projektUebernehmen(id) {
+  const { data, error } = await window.sb.rpc('projekt_uebernehmen', { p_objekt: id });
+  if (error) throw error;
+  return data;
+}
+
 // ---------- Termine ----------
 async function speichereTermin(id, werte) {
   const { error } = await window.sb.from('termine').update(werte).eq('id', id);
@@ -217,5 +261,10 @@ window.loescheRechnung = loescheRechnung;
 
 window.meineOrgId = meineOrgId;
 window.nachSpeichern = nachSpeichern;
+window.neuesProjekt = neuesProjekt;
+window.speichereProjekt = speichereProjekt;
+window.speichereProjektPlan = speichereProjektPlan;
+window.dupliziereProjekt = dupliziereProjekt;
+window.projektUebernehmen = projektUebernehmen;
 window.mietEingangSetzen = mietEingangSetzen;
 window.fehlerText = fehlerText;
