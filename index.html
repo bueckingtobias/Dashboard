@@ -1850,6 +1850,73 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .eq-nk-fest,.eq-nk-fest:hover{cursor:default;border-color:var(--stroke)}
 .eq-kv-u{display:block;font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
 
+/* ---------- Projekte (Phase 7) ---------- */
+/* Bereich auf der Tools-Seite: Karten wie bei den Objekten, dazu das Urteil in Wort und Farbe */
+.eq-projekte{grid-template-columns:repeat(3,minmax(0,1fr))}
+.eq-pkarte .eq-obj-n{overflow-wrap:break-word}
+.eq-pstat{margin-left:auto}
+/* Die drei Zahlen stehen als Zeilen: links die Bezeichnung, rechts der Wert – so passt es in jede Spaltenbreite */
+.eq-pkarte .eq-obj-fuss{grid-template-columns:minmax(0,1fr);gap:var(--eq-a2)}
+.eq-pkarte .eq-obj-fuss>div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--eq-a3)}
+.eq-pkarte .eq-obj-fuss b{margin:0}
+.eq-abschnitt .eq-btn{flex:0 0 auto;white-space:nowrap}
+.eq-purteil{display:flex;flex-wrap:wrap;align-items:center;gap:var(--eq-a2);min-height:26px;font-size:var(--eq-t-2);color:var(--soft)}
+.eq-marke.eq-aus{color:var(--softer)}
+.eq-minus{color:var(--danger)}
+.eq-pkarte-knopf{align-self:flex-start}
+.eq-verworfen{display:flex;justify-content:center}
+.eq-umschalter{min-height:44px;padding:10px 16px;border:none;border-radius:var(--r-sm);background:transparent;color:var(--soft);font-family:var(--fbody);font-size:var(--eq-t-2);
+  cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+@media(hover:hover){.eq-umschalter:hover{color:var(--text)}}
+
+/* Kopf der Projektseite: Rückweg, Status zum Antippen, Hauptknopf und Menü */
+.eq-pkopf{display:flex;flex-wrap:wrap;align-items:center;gap:var(--eq-a3)}
+.eq-zurueck,.eq-pstatus{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 14px;border-radius:99px;border:1px solid var(--stroke-2);
+  background:transparent;color:var(--text);font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:600;cursor:pointer;white-space:nowrap}
+.eq-zurueck{border-color:transparent;padding-left:6px;color:var(--soft)}
+.eq-zurueck span{font-size:var(--eq-t-5);line-height:1}
+.eq-pstatus-l{font-weight:400;color:var(--soft)}
+.eq-pstatus-p{font-size:var(--eq-t-1);color:var(--soft)}
+.eq-pstatus.eq-aus{color:var(--soft)}
+.eq-pkopf-r{display:flex;align-items:center;gap:var(--eq-a2);margin-left:auto}
+@media(hover:hover){.eq-zurueck:hover{color:var(--text)}.eq-pstatus:hover{border-color:var(--mint)}}
+
+/* Urteil: Statuswort über der Hauptzahl, darunter – wenn sie zutrifft – eine zweite Zeile */
+.eq-haupt-marke{margin-bottom:var(--eq-a3)}
+.eq-haupt-zweite{position:relative;padding-left:16px;margin-top:var(--eq-a2);font-size:var(--eq-t-2);color:var(--soft);line-height:1.4}
+.eq-haupt-zweite::before{content:"";position:absolute;left:0;top:.5em;width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.eq-kpi-plan{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* Karten „Kauf" und „Laufende Kosten": Zeilen mit Betrag, darüber ein Balken der Anteile */
+.eq-anteile{display:flex;gap:2px;height:12px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin-bottom:var(--eq-a3)}
+.eq-anteile i{display:block;height:100%;min-width:3px}
+.eq-kauf .kv{align-items:center}
+.eq-kauf-n{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px var(--eq-a2);min-width:0}
+.eq-kauf-n small{font-size:var(--eq-t-1);color:var(--softer)}
+.eq-punkt{flex:0 0 auto;align-self:center;width:10px;height:10px;border-radius:3px}
+.kv.eq-summe{margin-top:-1px;border-top:1px solid var(--stroke-2);border-bottom:none;font-size:var(--eq-t-3)}
+.kv.eq-summe span{color:var(--text);font-weight:600}
+.kv.eq-summe b{font-size:var(--eq-t-4)}
+
+/* Einheiten im Projekt: geplante Miete statt Mieteingang, darunter die Summen */
+.eq-geplant .eq-tab-kopf,.eq-geplant .eq-tab-z{grid-template-columns:minmax(0,1.6fr) minmax(0,.7fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,1.3fr)}
+.eq-geplant .eq-c-m{display:none}
+.eq-tab-summe{margin-top:var(--eq-a4);padding-top:var(--eq-a4);border-top:1px solid var(--stroke-2)}
+.eq-schalter-karte{padding:6px var(--eq-a5)}
+
+/* Notiz, Link zum Inserat, Texte in den Fenstern */
+.eq-notiz{font-size:var(--eq-t-3);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:var(--eq-a3);-webkit-user-select:text;user-select:text}
+.eq-link{display:inline-block;padding:11px 0;margin:-11px 0;color:var(--text);text-decoration:underline;text-decoration-color:var(--mint);text-underline-offset:3px}
+.eq-absatz{margin:0 0 var(--eq-a4);font-size:var(--eq-t-3);line-height:1.55;color:var(--soft)}
+.eq-punkte{margin:0 0 var(--eq-a5);padding-left:20px;font-size:var(--eq-t-3);line-height:1.55}
+.eq-punkte li{margin-bottom:var(--eq-a2)}
+.eq-as-l{display:block;margin:var(--eq-a3) 0 6px}
+.eq-live{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px var(--eq-a3);align-items:baseline;margin-top:var(--eq-a4);padding:14px var(--eq-a4);
+  border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke)}
+.eq-live span{font-size:var(--eq-t-2);color:var(--soft)}
+.eq-live b{font-family:var(--fdisp);font-size:var(--eq-t-5);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.eq-live small{grid-column:1 / -1;font-size:var(--eq-t-1);color:var(--softer);line-height:1.4}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -2030,6 +2097,23 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .nk-erg-z{font-size:32px}
 
   /* Tabellen werden am Handy zu Zeilen mit Beschriftung */
+}
+
+/* Projekte: Karten in 3, 2 oder 1 Spalte; Einheiten im Projekt als Liste; Kopf am Handy zweizeilig */
+@media(max-width:1199px){
+  .eq-projekte{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:899px){
+  .eq-geplant .eq-tab-z{grid-template-columns:minmax(0,1fr) auto}
+  .eq-geplant .eq-c-m{display:block}
+  .eq-geplant .eq-c-s{display:block;grid-column:2;grid-row:2;justify-self:end}
+}
+@media(max-width:599px){
+  .eq-projekte{grid-template-columns:minmax(0,1fr)}
+  .eq-pkopf-r{margin-left:0;flex:1 1 100%}
+  .eq-pkopf-r .eq-btn{flex:1 1 auto}
+  .eq-abschnitt .eq-btn{min-height:44px;padding:10px 14px;font-size:var(--eq-t-2)}
+  .eq-schalter-karte{padding:4px 16px}
 }
 
 /* Bewegung reduzieren: Einstellung am Gerät wird respektiert (unverändert) */
@@ -2878,10 +2962,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=56"></script>
-<script src="./data-save.js?v=56"></script>
-<script src="./finance-engine.js?v=56"></script>
-<script src="./app.js?v=56"></script>
+<script src="./data-loader.js?v=57"></script>
+<script src="./data-save.js?v=57"></script>
+<script src="./finance-engine.js?v=57"></script>
+<script src="./app.js?v=57"></script>
 
 <script>
 /* =====================================================================
