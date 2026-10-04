@@ -1369,11 +1369,8 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .tile-loc{font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
 .tile-num{font-family:var(--fdisp);font-weight:600;font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .tile-num small{font-size:var(--eq-t-2);color:var(--soft);font-weight:500}
-.stat-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--stroke);
-  border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--stroke)}
-.stat-strip .s{background:var(--surface-2);padding:var(--eq-a4) 18px;min-width:0}
-.stat-strip .s span{font-size:var(--eq-t-1);color:var(--soft);display:block}
-.stat-strip .s b{font-family:var(--fdisp);font-weight:600;font-size:20px;margin-top:5px;display:block;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+/* Werte-Raster als eigener Block in einem Fenster (ersetzt seit Phase 10 die alte Leiste .stat-strip) */
+.eq-werte-block{margin-bottom:18px;padding:var(--eq-a4);border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke)}
 
 /* Begrüßung und Suche */
 .hello.has-ava{display:flex;align-items:center;gap:var(--eq-a4)}
@@ -1444,19 +1441,24 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .cal-hint{font-size:var(--eq-t-1);color:var(--softer);margin-top:14px;padding-top:14px;border-top:1px solid var(--stroke)}
 .cal-detail .cal-hint{margin-top:0;padding-top:0;border-top:none}
 .w-now{display:flex;align-items:center;gap:var(--eq-a4);margin-bottom:18px}
-.w-now-ic{font-size:44px;line-height:1}
+.w-now-ic{line-height:1;color:var(--mint)}
+.w-now-ic .eq-wetter-ic{width:48px;height:48px}
+/* Wettersymbole sind gezeichnet und nehmen die Schriftfarbe an */
+.eq-wetter-ic{display:inline-block;width:1.3em;height:1.3em;vertical-align:-.28em;flex:0 0 auto}
 .w-now-t{font-family:var(--fdisp);font-size:36px;font-weight:600;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .w-now-d{font-size:var(--eq-t-1);color:var(--soft);margin-top:4px}
 .w-days{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .w-day{background:var(--eq-mulde);border:1px solid var(--stroke);border-radius:12px;padding:11px 4px;text-align:center}
 .w-dow{display:block;font-size:var(--eq-t-1);color:var(--soft);text-transform:capitalize}
-.w-ic{display:block;font-size:20px;margin:6px 0}
+.w-ic{display:block;margin:6px 0;color:var(--soft)}
+.w-ic .eq-wetter-ic{width:24px;height:24px;vertical-align:middle}
 .w-t b{font-family:var(--fdisp);font-size:var(--eq-t-1);font-weight:600}
 .w-t i{font-style:normal;font-size:var(--eq-t-1);color:var(--softer);margin-left:4px}
 .hours{display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
 .hour{flex:0 0 auto;width:62px;text-align:center;background:var(--eq-mulde);border:1px solid var(--stroke);border-radius:12px;padding:10px 4px}
 .hour .hh,.hour .hr{font-size:var(--eq-t-1);color:var(--softer)}
-.hour .hi{font-size:17px;margin:5px 0}
+.hour .hi{margin:5px 0;color:var(--soft)}
+.hour .hi .eq-wetter-ic{width:22px;height:22px;vertical-align:middle}
 .hour .ht{font-family:var(--fdisp);font-size:var(--eq-t-1);font-weight:600}
 .hour .hr{color:var(--soft);margin-top:2px}
 
@@ -1695,7 +1697,8 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .nu-ava.offen{background:transparent;border:1px dashed var(--stroke-2);color:var(--softer)}
 .nu-tx{flex:1 1 0;min-width:0}
 .nu-n{font-size:var(--eq-t-3);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nu-m{font-size:var(--eq-t-1);color:var(--softer);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nu-m{font-size:var(--eq-t-1);color:var(--softer);margin-top:2px;line-height:1.4;overflow-wrap:anywhere}
+.nu-firma{margin-top:var(--eq-a4)}
 .nu-rolle{flex:0 0 auto;font-size:var(--eq-t-1);color:var(--soft)}
 .nu-akt{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:8px}
 .nu-frage{flex:1 0 100%;font-size:var(--eq-t-2);line-height:1.5;color:var(--soft)}
@@ -1917,6 +1920,82 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .eq-live b{font-family:var(--fdisp);font-size:var(--eq-t-5);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
 .eq-live small{grid-column:1 / -1;font-size:var(--eq-t-1);color:var(--softer);line-height:1.4}
 
+/* ---------- Projekte, Teil 2 (Phase 8) ---------- */
+.eq-verworfen{flex-wrap:wrap;align-items:center;gap:var(--eq-a2) var(--eq-a4)}
+/* Stresstest: je Fall eine Zeile, rechts die Zahl und das Wort dazu */
+.eq-stress-z{display:flex;align-items:center;justify-content:space-between;gap:var(--eq-a3) var(--eq-a4);padding:12px 0;border-bottom:1px solid var(--stroke)}
+.eq-stress-z:last-child{border-bottom:none}
+.eq-stress-plan{border-bottom-color:var(--stroke-2)}
+.eq-stress-n{min-width:0;font-size:var(--eq-t-3);font-weight:600;line-height:1.3}
+.eq-stress-n small{display:block;font-size:var(--eq-t-1);font-weight:400;color:var(--softer);line-height:1.4;margin-top:2px}
+.eq-stress-w{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}
+.eq-stress-w b{font-family:var(--fdisp);font-size:var(--eq-t-4);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-stress-w .eq-marke{white-space:nowrap}
+.eq-stress-san span{font-size:var(--eq-t-1);color:var(--soft);white-space:nowrap}
+.eq-stress-san b{margin-left:6px;color:var(--text)}
+
+/* Liste zum Abhaken (Prüfliste, Auswahl für den Vergleich): Kästchen mit Häkchen, die ganze Zeile ist der Knopf */
+.eq-pl{display:grid;gap:2px}
+.eq-pl-z{display:flex;align-items:flex-start;gap:var(--eq-a3);width:calc(100% + 16px);min-height:48px;margin:0 -8px;padding:11px 8px;border:none;border-radius:var(--r-sm);
+  background:transparent;color:var(--text);font-family:var(--fbody);font-size:var(--eq-t-3);line-height:1.4;text-align:left;cursor:pointer}
+.eq-pl-k{flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;margin-top:-1px;border-radius:7px;border:1.5px solid var(--eq-linie-feld);
+  font-size:var(--eq-t-2);font-weight:700;line-height:1;color:transparent}
+.eq-pl-k::after{content:"✓"}
+.eq-pl-z.an .eq-pl-k{background:var(--mint);border-color:var(--mint);color:var(--on-accent)}
+.eq-pl-z.an .eq-pl-t{color:var(--soft)}
+.eq-pl-t{min-width:0}
+.eq-pl-t small{display:block;font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
+@media(hover:hover){.eq-pl-z:hover{background:var(--surface-2)}}
+
+/* Vergleich: links die Kennzahl (bleibt beim Wischen stehen), daneben je Projekt eine Spalte */
+.sheet.eq-breit{width:min(820px,100%)}
+.eq-vgl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.eq-vgl{table-layout:auto;font-size:var(--eq-t-2)}
+.eq-vgl th{min-width:112px;padding-bottom:10px;vertical-align:bottom;white-space:normal;font-size:var(--eq-t-2);line-height:1.25;color:var(--text)}
+.eq-vgl th small{display:block;font-size:var(--eq-t-1);font-weight:400;color:var(--softer);margin-top:2px}
+.eq-vgl td{padding:11px 0 11px 12px;font-weight:600}
+.eq-vgl td small{display:block;font-size:var(--eq-t-1);font-weight:400;color:var(--softer);margin-top:3px;white-space:normal}
+.eq-vgl th:first-child,.eq-vgl td:first-child{position:sticky;left:0;z-index:1;width:auto;min-width:118px;max-width:150px;padding-right:8px;overflow:visible;white-space:normal;
+  background:var(--panel-solid);color:var(--soft);font-weight:400;line-height:1.3}
+.eq-best-z{display:inline-block;margin-right:6px;color:var(--ok);font-weight:700}
+.eq-vgl-knoepfe{display:flex;flex-wrap:wrap;gap:var(--eq-a2);margin-top:var(--eq-a4)}
+.eq-vgl-knoepfe .add-btn{flex:1 1 180px}
+.eq-nur-leser{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* Rechner: Umschalter zwischen zwei Eingabewegen (Tilgung in Prozent oder Rate im Monat) */
+.eq-wahl{display:flex;gap:4px;padding:4px;margin-bottom:var(--eq-a3);border-radius:14px;background:var(--eq-mulde);border:1px solid var(--stroke)}
+.eq-wahl-k{flex:1 1 0;min-height:44px;padding:8px 10px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--soft);
+  font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:600;cursor:pointer}
+.eq-wahl-k.on{background:var(--panel-solid);border-color:var(--stroke-2);color:var(--text)}
+
+/* ---------- Rechner und Tools-Seite (Phase 9) ---------- */
+/* Tools-Seite: Suche über den Themenwelten, je Themenwelt drei Rechner und „Alle anzeigen" */
+.tl-filter[hidden]{display:none}
+/* Im Suchfeld zeigt der Rahmen des Feldes den Fokus, nicht zusätzlich die Eingabe darin */
+#app .search-box input:focus-visible{outline:none}
+.eq-tl-liste{display:flex;flex-direction:column;gap:var(--gap)}
+.eq-tl-kopf{display:flex;align-items:baseline;gap:var(--eq-a2);font-size:var(--eq-t-1);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--softer);margin-bottom:10px}
+.eq-tl-kopf span{letter-spacing:0;font-weight:400}
+.eq-tl-gross{margin:var(--eq-a2) 0 calc(-1 * var(--eq-a2));font-family:var(--eq-f-titel);font-size:var(--eq-t-4);letter-spacing:-.01em;text-transform:none;color:var(--text)}
+.tw-card .eq-verworfen{margin-top:var(--eq-a3)}
+.eq-tl-wissen .card-b{padding-top:6px}
+
+/* Rechner-Fenster: auf breiten Fenstern zwei Felder nebeneinander; Auswahl und Umschalter über die ganze Breite */
+.rc-felder{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--eq-a4);align-items:end}
+.rc-breit{grid-column:1 / -1}
+.rc-eine{grid-template-columns:minmax(0,1fr)}
+.rc-bruecke{margin-top:var(--eq-a4)}
+.rc-bruecke .wi-hinweis{margin-top:8px;text-align:center}
+
+/* Verweise von einer Karte zu passenden Rechnern: klein, aber gut zu treffen */
+.eq-verweise{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--eq-a3);margin-top:var(--eq-a3);padding-top:var(--eq-a2);border-top:1px solid var(--stroke)}
+.eq-verweise>span{font-size:var(--eq-t-1);color:var(--softer)}
+.eq-verweis{min-height:44px;padding:8px 2px;border:none;background:transparent;color:var(--soft);font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:600;cursor:pointer;
+  text-decoration:underline;text-decoration-color:var(--mint);text-underline-offset:3px}
+@media(hover:hover){.eq-verweis:hover{color:var(--text)}}
+.eq-fin-zeile .eq-verweise{margin-top:var(--eq-a4)}
+.eq-as-wahl{margin-top:var(--eq-a3)}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -2083,14 +2162,11 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .donut-row{gap:16px}
   .w-days{gap:6px}
   .w-day{padding:9px 2px}
-  /* Kalender: Tage bleiben ab 375 Pixel Breite mindestens 44 breit */
-  .cal-grid{gap:3px}
-  .cal-card .card-b{padding-left:8px;padding-right:8px}
+  /* Kalender: Tage sind auch bei 360 Pixel Breite 44 breit */
+  .cal-grid{gap:2px}
+  .cal-card .card-b{padding-left:2px;padding-right:2px}
   .cal-card .cal-detail,.cal-card .cal-hint{padding-left:8px;padding-right:8px}
   .cal-cell{border-radius:9px}
-  .stat-strip{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  .stat-strip .s{padding:14px 12px}
-  .stat-strip .s b{font-size:16px}
   .tarif-grid{grid-template-columns:minmax(0,1fr);gap:20px}
   .rc-ziel-t{flex:1 1 100%}
   .tw-r{padding:14px}
@@ -2114,6 +2190,11 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .eq-pkopf-r .eq-btn{flex:1 1 auto}
   .eq-abschnitt .eq-btn{min-height:44px;padding:10px 14px;font-size:var(--eq-t-2)}
   .eq-schalter-karte{padding:4px 16px}
+}
+
+/* Rechner am Handy: ein Feld je Zeile */
+@media(max-width:599px){
+  .rc-felder{grid-template-columns:minmax(0,1fr)}
 }
 
 /* Bewegung reduzieren: Einstellung am Gerät wird respektiert (unverändert) */
@@ -2962,10 +3043,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=57"></script>
-<script src="./data-save.js?v=57"></script>
-<script src="./finance-engine.js?v=57"></script>
-<script src="./app.js?v=57"></script>
+<script src="./data-loader.js?v=60"></script>
+<script src="./data-save.js?v=60"></script>
+<script src="./finance-engine.js?v=60"></script>
+<script src="./app.js?v=60"></script>
 
 <script>
 /* =====================================================================
