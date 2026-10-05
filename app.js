@@ -1515,7 +1515,9 @@
   // knoepfe, zuRate(a), zuProzent(a) }. Gewählt ist er, wenn antworten["wahl:" + feld.id] === "1".
   // Für lange, geführte Abläufe: kapitel (steht vor „Schritt x von n"), live(a) (Satz unter den Feldern, rechnet bei
   // jeder Eingabe mit), vorschlaege:[{ text, werte(a) }] (füllen die Felder). opt.abkuerzung: Verweis, der ab dem
-  // zweiten Schritt den Rest überspringt und gleich speichert.
+  // zweiten Schritt den Rest überspringt und gleich speichert (Text oder Funktion der Antworten).
+  // vorab: Schritt vor dem eigentlichen Ablauf (zählt nicht mit, etwa die Wahl „Schnell oder Ausführlich").
+  // nur(antworten) === false nimmt einen Schritt ganz heraus – er zählt dann auch bei „Schritt x von n" nicht mit.
   // aufFertig(antworten) wird am Ende aufgerufen.
   function openAssistent(titel, schritte, aufFertig, opt) {
     opt = opt || {};
@@ -1523,12 +1525,14 @@
     let idx = 0;
     const sheet = openSheet(titel, "", `<div id="asBody"></div>`);
     const bodyEl = sheet.querySelector("#asBody");
-    const gilt = (i) => !schritte[i].wenn || schritte[i].wenn(antworten) !== false;
+    const zaehlt = (i) => !schritte[i].vorab && (!schritte[i].nur || schritte[i].nur(antworten) !== false);
+    const gilt = (i) => (schritte[i].vorab || zaehlt(i)) && (!schritte[i].wenn || schritte[i].wenn(antworten) !== false);
+    const gezaehlt = () => schritte.map((_, i) => i).filter(zaehlt);
     const naechster = (i) => { for (let k = i + 1; k < schritte.length; k++) if (gilt(k)) return k; return -1; };
     const voriger = (i) => { for (let k = i - 1; k >= 0; k--) if (gilt(k)) return k; return -1; };
 
     function punkte() {
-      return `<div class="wc-steps">${schritte.map((_, i) =>
+      return `<div class="wc-steps">${gezaehlt().map(i =>
         `<span class="${i < idx ? "done" : i === idx ? "on" : ""}"></span>`).join("")}</div>`;
     }
     function feldHtml(feld, i, mitLabel) {
@@ -1559,10 +1563,12 @@
       const hinweis = typeof f.hinweis === "function" ? f.hinweis(antworten) : f.hinweis;
       const letzter = naechster(idx) < 0;
       const zurueck = voriger(idx);
+      const liste = gezaehlt(), nr = liste.indexOf(idx) + 1;
+      const kurz = typeof opt.abkuerzung === "function" ? opt.abkuerzung(antworten) : opt.abkuerzung;
       bodyEl.innerHTML = `
         <div class="wc-hero" style="padding-bottom:16px">
-          ${punkte()}
-          <div class="wc-badge">${f.kapitel ? esc(f.kapitel) + " · " : ""}Schritt ${idx + 1} von ${schritte.length}</div>
+          ${f.vorab ? "" : `${punkte()}
+          <div class="wc-badge">${f.kapitel ? esc(f.kapitel) + " · " : ""}Schritt ${nr} von ${liste.length}</div>`}
           <div class="wc-t" style="font-size:19px">${esc(f.frage)}</div>
           ${hinweis ? `<div class="wc-d">${esc(hinweis)}</div>` : ""}
         </div>
@@ -1579,7 +1585,7 @@
           ${f.alternative && !istWahl ? `<button class="wc-cta" id="asAlternative" style="margin-top:10px">${esc(f.alternative.text)}</button>` : ""}
           ${zurueck >= 0 ? `<button class="wc-cta" id="asZurueck" style="margin-top:10px">Zurück</button>` : ""}
           ${f.ueberspringbar ? `<div class="wc-skip"><a href="#" id="asSkip">Überspringen</a></div>` : ""}
-          ${opt.abkuerzung && idx > 0 && !letzter ? `<div class="wc-skip"><a href="#" id="asAbkuerzung">${esc(opt.abkuerzung)}</a></div>` : ""}
+          ${kurz && nr > 1 && !letzter ? `<div class="wc-skip"><a href="#" id="asAbkuerzung">${esc(kurz)}</a></div>` : ""}
         </div>`;
 
       const eingaben = Array.from(bodyEl.querySelectorAll("[data-as]"));
@@ -1661,7 +1667,7 @@
       }
     }
     function weiter() {
-      sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
+      if (!schritte[idx].vorab) sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
       const n = naechster(idx);
       if (n >= 0) { idx = n; zeige(); return; }
       speichern();   // letzter Schritt
@@ -1676,6 +1682,7 @@
   // Geführtes Anlegen eines Projekts (Abschnitt 12.8, seit Phase 11 ausführlicher): eine Frage pro Schritt, in sechs
   // Kapiteln – Objekt, Kauf, Miete, Lage, Finanzierung, laufende Kosten. Alles außer dem Namen lässt sich überspringen,
   // und ab dem zweiten Schritt führt „Rest überspringen und anlegen" sofort zum Projekt.
+  // Vorab wählt man den Weg: „Schnell" stellt nur die sechs Fragen aus SCHNELL, „Ausführlich" alle zwanzig.
   // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt }
   function assistentProjekt(vor) {
     if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
@@ -1728,7 +1735,13 @@
       return "Das sind " + eur2(k / f) + " je m². Zum Vergleich: " + ref.map(r => r.text + " " + eur2(r.wert)).join(", ") + ".";
     };
     const refSatz = (a) => mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp }).map(r => r.text + " " + eur2(r.wert)).join(", ");
+    const SCHNELL = ["name", "ort", "kaufpreis", "flaeche", "eigenkapital", "zins"];
     const schritte = [
+      { id: "modus", vorab: true, frage: "Wie möchtest du das Projekt anlegen?",
+        hinweis: "Beide Wege führen zum selben Projekt. Was du jetzt weglässt, trägst du später auf der Projektseite nach.",
+        optionen: [
+          { v: "schnell", t: "Schnell", d: "6 Fragen: Name, Ort, Kaufpreis, Miete und Finanzierung. Für alles andere gelten Annahmen." },
+          { v: "voll", t: "Ausführlich", d: "20 Fragen: dazu Kaufnebenkosten, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }] },
       // ----- Das Objekt -----
       { id: "name", kapitel: K.o, frage: "Wie soll das Projekt heißen?",
         hinweis: "Zum Beispiel die Adresse aus dem Inserat.",
@@ -1805,7 +1818,8 @@
     ).concat([
       // ----- Die Finanzierung -----
       { kapitel: K.f, frage: "Wie viel willst du finanzieren?",
-        hinweis: (a) => { const z = zahlenAus(a); return "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."; },
+        hinweis: (a) => { const z = zahlenAus(a); return "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
+          + (a.modus === "schnell" ? " Für Notar (2 %) und Makler (3,57 %) gelten Annahmen." : ""); },
         felder: [{ id: "eigenkapital", label: "Eigenkapital", typ: "number", einheit: "€", platzhalter: "z. B. 60000",
           wahl: { id: "darlehen", label: "Darlehen", typ: "number", einheit: "€", platzhalter: "z. B. 200000", knoepfe: ["Eigenkapital", "Darlehen"],
             zuRate: (a) => investAus(a) - (asZahl(a.eigenkapital) || 0),
@@ -1855,6 +1869,8 @@
           return "Das sind zusammen " + eur2(f * (asZahl(a.instand_m2) || 0) + k * (asZahl(a.ausfall_pct) || 0) / 100) + " im Monat."; },
         ueberspringbar: true }
     ]);
+    // Im schnellen Weg zählen nur die Schritte aus SCHNELL
+    schritte.forEach(f => { if (!f.vorab && !SCHNELL.includes(f.id || f.felder[0].id)) f.nur = (a) => a.modus !== "schnell"; });
     openAssistent("Projekt anlegen", schritte, async (a) => {
       const name = (a.name || "").trim() || "Projekt";
       const heute = new Date().toISOString();
@@ -1887,7 +1903,7 @@
       showToast(fehlt.length
         ? "Projekt angelegt. Nicht gespeichert: " + fehlt.join(" und ") + ". Trag das bitte auf der Projektseite nach."
         : "Projekt angelegt. Oben steht das Urteil, darunter die Bewertung im Einzelnen.");
-    }, { abkuerzung: "Rest überspringen und anlegen" });
+    }, { abkuerzung: (a) => a.modus === "schnell" ? "" : "Rest überspringen und anlegen" });
   }
 
   // Geführtes Anlegen eines Mietobjekts
@@ -6996,7 +7012,7 @@
 
   // Karte eines Kredits: Restschuld, Fortschritt, Rate mit Zins und Tilgung, Ende, Verlauf
   // geplant: Darlehen eines Projekts. Solange der Beginn offen ist, gibt es noch keine Restschuld von heute.
-  function creditCard(kr, geplant) {
+  function creditCard(kr, geplant, bindung) {
     const k = kreditStand(kr);
     const st = kr.sondertilgung || null;
     const offen = !!geplant && !kr.start;
@@ -7018,6 +7034,7 @@
         ${endeWert(k)}
         ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
         ${wert("Zinsen bis zum Ende", k.tilgtNie ? "—" : eur(k.zinsOffen), k.tilgtNie ? "" : "noch zu zahlen")}
+        ${bindung ? wert("Restschuld nach " + mehrzahl(bindung.jahre, "Jahr", "Jahren"), eur(bindung.rest), bindung.annahme ? "Annahme: 10 Jahre Zinsbindung" : "am Ende der Zinsbindung") : ""}
       </div>
       ${kreditKurve(kr, k)}
     </div>`);
@@ -7070,13 +7087,13 @@
         ${wert("Rate im Monat", eur2(z.RATE), "Zins und Tilgung")}
         ${wert("Eigenkapital", eur(z.EK), z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : "Gesamtinvestition − Darlehen")}
         ${wert("Tilgung im 1. Jahr", eur2(z.tilgung1), "so viel Schuld baust du ab")}
-        ${wert("Restschuld nach " + mehrzahl(zb.jahre, "Jahr", "Jahren"), eur(zb.rest), zb.annahme ? "Annahme: 10 Jahre Zinsbindung. Ändern kannst du sie im Kredit." : "am Ende der Zinsbindung")}
+        ${kredite.length > 1 ? wert("Restschuld nach der Zinsbindung", eur(zb.rest), "alle Darlehen zusammen, " + (zb.min === zb.max ? "nach " + mehrzahl(zb.min, "Jahr", "Jahren") : "nach " + zahlKurz(zb.min) + " bis " + zahlKurz(zb.max) + " Jahren")) : ""}
       </div>${rechnerVerweise(verweise)}</div>`));
       rechnerVerweiseBinden(teile[teile.length - 1], verweise);
     } else if (kredite.length > 1) teile.push(finanzKarte(kredite));
     const raster = el(`<div class="grid${kredite.length > 1 ? " eq-kredite" : ""}"></div>`);
     kredite.forEach(kr => {
-      const c = creditCard(kr, s.istProjekt);
+      const c = creditCard(kr, s.istProjekt, s.istProjekt ? zinsbindungVon(s).je[kr._id] : null);
       c.classList.add("clickable");
       c.setAttribute("role", "button"); c.setAttribute("tabindex", "0");
       c.onclick = () => openCreditSheet(kr);
@@ -7813,6 +7830,9 @@
     const name = p.name + " (Variante)";
     const plan = { v: 1, ...(p.planRoh || {}), pruefliste: [], angelegt_am: jetzt, geaendert_am: jetzt };
     delete plan.uebernommen_am;
+    const zb = zinsbindungVon(p);
+    delete plan.zinsbindung;
+    if (zb.min != null && zb.min === zb.max && Object.values(zb.je).some(x => !x.annahme)) plan.zinsbindung_jahre = zb.min;
     if (plan.status === "verworfen") plan.status = "pruefung";
     // Die Angebote der Handwerker werden nicht kopiert. Damit die Kopie gleich rechnet, wird ihre Summe zum festen Budget.
     if (z.plan.sanierung_auto) { plan.sanierung_auto = false; plan.sanierung = rund2(z.SAN); }
@@ -7900,8 +7920,8 @@
     const punkte = werte.reduce((a, v) => a + (v || 0), 0);
     const o = { werte, beantwortet, punkte, offen: beantwortet < LAGE_FRAGEN.length, stufe: "", wort: "" };
     if (o.offen) { o.wort = beantwortet ? "Noch nicht vollständig" : "Noch nicht eingestuft"; return o; }
-    if (punkte >= 5) { o.stufe = "gut"; o.wort = "Gute Lage"; o.satz = "Gute Lagen lassen sich leichter vermieten."; }
-    else if (punkte >= 3) { o.stufe = "mittel"; o.wort = "Mittlere Lage"; o.satz = "Die Vermietung kann etwas länger dauern."; }
+    if (punkte >= 4) { o.stufe = "gut"; o.wort = "Gute Lage"; o.satz = "Gute Lagen lassen sich leichter vermieten."; }
+    else if (punkte >= 2) { o.stufe = "mittel"; o.wort = "Mittlere Lage"; o.satz = "Die Vermietung kann etwas länger dauern."; }
     else { o.stufe = "achtung"; o.wort = "Einfache Lage"; o.satz = "Rechne mit mehr Leerstand und einer längeren Suche nach Mietern."; }
     return o;
   }
@@ -7916,13 +7936,32 @@
     return liste;
   }
 
-  // Zinsbindung in Jahren (Annahme: 10) und die Restschuld aller Darlehen an ihrem Ende
+  // Zinsbindung je Darlehen: eigener Wert (Planungsdaten zinsbindung[Kennung des Kredits]), sonst der Wert aus dem
+  // Ablauf (zinsbindung_jahre), sonst die Annahme von 10 Jahren. Dazu die Restschuld am Ende der Bindung.
   const ZINSBINDUNG_ANNAHME = 10;
   function zinsbindungVon(p) {
-    const roh = Number(p.planRoh && p.planRoh.zinsbindung_jahre);
-    const jahre = roh > 0 ? roh : ZINSBINDUNG_ANNAHME;
-    const rest = FE.creditsOf(p).reduce((a, k) => a + rcRestschuld(Number(k.summe) || 0, Number(k.zinsPa) || 0, Number(k.abtragMonat) || 0, Math.round(jahre * 12)), 0);
-    return { jahre, annahme: !(roh > 0), rest };
+    const roh = (p && p.planRoh) || {}, karte = roh.zinsbindung || {};
+    const vorgabe = Number(roh.zinsbindung_jahre) > 0 ? Number(roh.zinsbindung_jahre) : null;
+    const je = {}, jahre = [];
+    let rest = 0;
+    FE.creditsOf(p).forEach(k => {
+      const eigen = Number(karte[k._id]) > 0 ? Number(karte[k._id]) : null;
+      const j = eigen || vorgabe || ZINSBINDUNG_ANNAHME;
+      const r = rcRestschuld(Number(k.summe) || 0, Number(k.zinsPa) || 0, Number(k.abtragMonat) || 0, Math.round(j * 12));
+      je[k._id] = { jahre: j, eigen, annahme: !eigen && !vorgabe, rest: r };
+      jahre.push(j); rest += r;
+    });
+    return { je, rest, vorgabe, min: jahre.length ? Math.min(...jahre) : null, max: jahre.length ? Math.max(...jahre) : null };
+  }
+  // Kennung eines gerade angelegten Kredits: der eine, den es am Objekt vorher noch nicht gab
+  async function neueKreditId(s) {
+    const bekannt = new Set(FE.creditsOf(s).map(k => k._id));
+    try {
+      const { data, error } = await window.sb.from("kredite").select("id").eq("objekt_id", s._id);
+      if (error || !Array.isArray(data)) return null;
+      const neu = data.filter(x => !bekannt.has(x.id));
+      return neu.length === 1 ? neu[0].id : null;
+    } catch (_) { return null; }
   }
 
   // Die vier Fälle des Stresstests – für die Karte und für die Bewertung
@@ -7954,9 +7993,9 @@
     if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", "Braucht Kaufpreis und Mieten.");
     else {
       const f = "Der Kaufpreis ist das " + einKomma(z.faktor) + "-Fache der Jahreskaltmiete. Faustregel: ";
-      if (z.faktor <= 20) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 20-Fachen gilt als günstig.");
-      else if (z.faktor <= 25) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 20- und dem 25-Fachen ist üblich.");
-      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Über dem 25-Fachen ist teuer. In gefragten Städten ist das aber nicht ungewöhnlich.");
+      if (z.faktor <= 22) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.");
+      else if (z.faktor <= 28) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.");
+      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. In gefragten Städten ist das aber nicht ungewöhnlich.");
     }
 
     // 3. bis 5. Finanzierung: Zins gegen Ertrag, Eigenkapital, Tilgung
@@ -7967,27 +8006,30 @@
       if (z.brutto == null || !(z.KM > 0)) punkt("zins", "Miete und Kreditzins", "offen", "Braucht Kaufpreis und Mieten.");
       else {
         const s = "Die Miete bringt " + prozent2(z.brutto) + " im Jahr, der Kredit kostet " + prozent2(z.hoechsterZins) + " Zins.";
-        if (z.brutto < z.hoechsterZins) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet mehr, als die Miete bringt.");
-        else if (z.brutto < z.hoechsterZins + 1) punkt("zins", "Miete und Kreditzins", "achtung", s + " Der Abstand ist knapp.");
+        if (z.brutto < z.hoechsterZins - 1) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet deutlich mehr, als die Miete bringt.");
+        else if (z.brutto < z.hoechsterZins) punkt("zins", "Miete und Kreditzins", "achtung", s + " Der Kredit kostet etwas mehr, als die Miete bringt.");
+        else if (z.brutto < z.hoechsterZins + 0.5) punkt("zins", "Miete und Kreditzins", "mittel", s + " Der Abstand ist knapp.");
         else punkt("zins", "Miete und Kreditzins", "gut", s);
       }
       if (z.zuVielFinanziert) punkt("eigenkapital", "Eigenkapital", "kritisch", "Die Darlehen sind höher als die Gesamtinvestition. Prüf die Darlehenssummen.");
       else if (!(z.KP > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht den Kaufpreis.");
       else if (z.EK + 0.5 >= z.KNK) punkt("eigenkapital", "Eigenkapital", "gut", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + ".");
+      else if (z.EK >= z.KNK / 2) punkt("eigenkapital", "Eigenkapital", "mittel", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " zum Teil. Viele Banken wollen, dass du sie ganz selbst zahlst.");
       else punkt("eigenkapital", "Eigenkapital", "achtung", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " nicht. Banken verlangen dafür meist einen höheren Zins.");
       const t = z.DAR > 0 ? z.tilgung1 / z.DAR * 100 : 0;
       const ts = "Im ersten Jahr tilgst du " + prozent2(t) + " des Darlehens.";
-      if (t >= 2) punkt("tilgung", "Tilgung", "gut", ts);
-      else if (t >= 1) punkt("tilgung", "Tilgung", "achtung", ts + " Faustregel: mindestens 2 % – sonst dauert es sehr lange, bis du schuldenfrei bist.");
-      else punkt("tilgung", "Tilgung", "kritisch", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.");
+      if (t >= 1.5) punkt("tilgung", "Tilgung", "gut", ts);
+      else if (t >= 1) punkt("tilgung", "Tilgung", "mittel", ts + " Üblich sind etwa 2 % – mit weniger dauert es lange, bis du schuldenfrei bist.");
+      else punkt("tilgung", "Tilgung", "achtung", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.");
     }
 
     // 6. Stresstest
     if (u.offen) punkt("stress", "Stresstest", "offen", "Braucht Kaufpreis und Mieten.");
-    else if (z.cashflow < 0) punkt("stress", "Stresstest", "kritisch", "Trägt sich schon nach Plan nicht – für Überraschungen ist kein Platz.");
+    else if (z.cashflow < 0) punkt("stress", "Stresstest", u.stufe === "achtung" ? "achtung" : "kritisch", "Trägt sich schon nach Plan " + (u.stufe === "achtung" ? "knapp " : "") + "nicht – für Überraschungen ist kein Platz.");
     else {
       const faelle = stressFaelle(z), nicht = faelle.filter(f => projektZahlen(p, f.fall).cashflow < 0).length;
       if (!nicht) punkt("stress", "Stresstest", "gut", "Trägt sich auch bei höherem Zins, weniger Miete und Leerstand.");
+      else if (nicht === 1) punkt("stress", "Stresstest", "mittel", "Trägt sich nach Plan und in " + (faelle.length - 1) + " von " + faelle.length + " Stressfällen. Eng wird es erst, wenn mehr zusammenkommt.");
       else punkt("stress", "Stresstest", "achtung", "Trägt sich nach Plan, aber in " + nicht + " von " + faelle.length + " Stressfällen nicht.");
     }
 
@@ -8001,13 +8043,13 @@
     if (z.kmM2 == null || !(z.KM > 0)) punkt("miete", "Miete im Vergleich", "offen", "Trag bei den Einheiten Fläche und Kaltmiete ein.");
     else if (eigene) {
       const ab = (z.kmM2 / eigene - 1) * 100, s = "Du planst " + eur2(z.kmM2) + " je m², ortsüblich sind " + eur2(eigene) + ".";
-      if (ab > 20) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.");
-      else if (ab > 10) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.");
+      if (ab > 30) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.");
+      else if (ab > 15) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.");
       else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.");
       else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an der ortsüblichen Miete.");
     } else {
       const ref = mietReferenz(roh)[0], s = "Du planst " + eur2(z.kmM2) + " je m². " + ref.text + ": " + eur2(ref.wert) + ".";
-      if (z.kmM2 > ref.wert * 1.5) punkt("miete", "Miete im Vergleich", "achtung", s + " Deine Miete liegt deutlich darüber. Prüf im Mietspiegel, ob sie zum Ort passt.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
+      if (z.kmM2 > ref.wert * 1.75) punkt("miete", "Miete im Vergleich", "achtung", s + " Deine Miete liegt deutlich darüber. Prüf im Mietspiegel, ob sie zum Ort passt.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
       else punkt("miete", "Miete im Vergleich", "offen", s + " Trag die ortsübliche Miete aus dem Mietspiegel ein, dann vergleicht ESTRIQ genauer.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
     }
 
@@ -8016,8 +8058,8 @@
     if (!zu) punkt("zustand", "Zustand", "offen", "Noch nicht eingetragen.", "Zustand eintragen", () => openProjektEdit(p));
     else if (zu[0] === "gut") punkt("zustand", "Zustand", "gut", zu[1] + ". " + zu[2] + ".");
     else if (zu[0] === "mittel") punkt("zustand", "Zustand", "mittel", zu[1] + ". " + zu[2] + ".");
-    else if (z.SAN > 0) punkt("zustand", "Zustand", "achtung", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.");
-    else punkt("zustand", "Zustand", "kritisch", "Sanierungsbedürftig, aber noch ohne Sanierungsbudget. Trag ein, was die Arbeiten kosten.", "Budget eintragen", () => openKaufdaten(p));
+    else if (z.SAN > 0) punkt("zustand", "Zustand", "mittel", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.");
+    else punkt("zustand", "Zustand", "achtung", "Sanierungsbedürftig, aber noch ohne Sanierungsbudget. Trag ein, was die Arbeiten kosten.", "Budget eintragen", () => openKaufdaten(p));
 
     // 10. Prüfliste
     const bekannt = new Set(PRUEFLISTE.map(x => x[0]));
@@ -8879,8 +8921,8 @@
         { pflicht: true, einheit: "€", min: 0, hinweis: "Zins und Tilgung zusammen – so, wie die Bank die Rate abbucht" })}
       ${ef("Erste Rate am", "start", kr ? (kr.start || "") : "", "date",
         { hinweis: plan ? "Kannst du leer lassen, solange der Beginn offen ist" : "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
-      ${plan ? ef("Zinsbindung", "zinsbindung_jahre", (s.planRoh && s.planRoh.zinsbindung_jahre) || "", "number", { step: "1", einheit: "Jahre", min: 1, max: 40, platzhalter: "10",
-        hinweis: "So lange ist der Zins fest. Gilt für alle Darlehen dieses Projekts. ESTRIQ zeigt dir, was danach noch offen ist." }) : ""}
+      ${plan ? ef("Zinsbindung", "zinsbindung_jahre", (kr && zinsbindungVon(s).je[kr._id] && !zinsbindungVon(s).je[kr._id].annahme ? zinsbindungVon(s).je[kr._id].jahre : "") || (neu ? zinsbindungVon(s).vorgabe || "" : ""), "number", { step: "1", einheit: "Jahre", min: 1, max: 40, platzhalter: "10",
+        hinweis: "So lange ist der Zins für dieses Darlehen fest. ESTRIQ zeigt dir, was danach noch offen ist. Ohne Angabe rechnet ESTRIQ mit 10 Jahren." }) : ""}
       ${plan ? "" : `${efTitel("Kontostand der Bank")}
       ${ef("Restschuld laut Bank", "rest_stand_betrag", kr && kr.restStand ? kr.restStand.betrag : "", "number",
         { einheit: "€", min: 0, hinweis: "Trägst du sie ein, zeigt ESTRIQ diesen Stand und rechnet von dort weiter. Leer lassen, wenn ESTRIQ selbst rechnen soll." })}
@@ -8926,11 +8968,23 @@
       async (w) => {
         if (neu) await neuerKredit(s._id, bauen(w)); else await speichereKredit(kr._id, bauen(w));
         if (!plan) return;
-        // Die Zinsbindung gehört zu den Planungsdaten des Projekts – nur speichern, wenn sie sich geändert hat
+        // Die Zinsbindung steht je Darlehen in den Planungsdaten des Projekts – nur speichern, wenn sie sich geändert hat
         const jahre = zahl(w.zinsbindung_jahre) > 0 ? zahl(w.zinsbindung_jahre) : null;
-        if (jahre !== ((s.planRoh && s.planRoh.zinsbindung_jahre) || null)) await planSpeichern(s, { zinsbindung_jahre: jahre });
+        const zb = zinsbindungVon(s), id = neu ? await neueKreditId(s) : kr._id;
+        if (!id) return;
+        const bisher = zb.je[id] ? (zb.je[id].eigen || zb.vorgabe) : zb.vorgabe;
+        if (jahre === (bisher || null)) return;
+        const karte = { ...((s.planRoh && s.planRoh.zinsbindung) || {}) };
+        if (jahre == null) delete karte[id]; else karte[id] = jahre;
+        await planSpeichern(s, { zinsbindung: karte });
       },
-      neu ? null : async () => await loescheKredit(kr._id),
+      neu ? null : async () => {
+        await loescheKredit(kr._id);
+        const karte = { ...((s.planRoh && s.planRoh.zinsbindung) || {}) };
+        if (!plan || karte[kr._id] == null) return;
+        delete karte[kr._id];
+        try { await planSpeichern(s, { zinsbindung: karte }); } catch (_) {}   // der Kredit ist gelöscht; der Rest ist nur Aufräumen
+      },
       "Kredit endgültig löschen?");
   }
 
