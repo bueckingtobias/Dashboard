@@ -901,13 +901,11 @@ body{margin:0;font-family:var(--fbody);color:var(--text);overflow:hidden;overscr
 .card{position:relative;background:var(--panel-solid);border:1px solid var(--stroke);border-radius:var(--r);
   box-shadow:var(--eq-schatten-1);overflow:hidden;transition:border-color var(--eq-kurz) var(--eq-kurve)}
 .card.pad{padding:var(--eq-a5)}
-.card-glow{display:none}
 .card-h{padding:22px var(--eq-a5) 0;display:flex;justify-content:space-between;align-items:flex-start;gap:var(--eq-a3)}
 .card-h>div:first-child{min-width:0}
 .card-t{font-family:var(--eq-f-titel);font-weight:600;font-size:var(--eq-t-5);line-height:1.2;letter-spacing:-.015em;margin:0}
 .card-s{font-size:var(--eq-t-2);color:var(--soft);margin-top:4px;line-height:1.4}
 .card-b{padding:18px var(--eq-a5) var(--eq-a5)}
-.add-card{border-style:dashed;border-color:var(--stroke-2);background:transparent;box-shadow:none}
 .note{font-size:var(--eq-t-2);color:var(--soft);line-height:1.5}
 
 /* Antippbare Flächen */
@@ -1035,14 +1033,14 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .opt-schalter.an span{transform:translateX(20px);background:var(--on-accent)}
 
 /* Statusmarke: Wort, feine Linie, Statusfarbe. Nie nur Farbe. */
-.badge,.pillet,.gwr-tag,.lock-badge,.nu-du,.up-badge,.wc-badge,.wi-tag,.eq-marke{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;
+.lock-badge,.nu-du,.up-badge,.wc-badge,.wi-tag,.eq-marke{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;
   border-radius:99px;border:1px solid var(--stroke-2);background:transparent;color:var(--soft);font-family:var(--fbody);
   font-size:var(--eq-t-1);font-weight:600;line-height:1.35;letter-spacing:0;text-transform:none;white-space:nowrap;vertical-align:middle}
-.b-on,.gwr-tag.ok,.eq-marke.gut{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
-.b-off,.pillet.invest,.eq-marke.achtung{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
-.gwr-tag.offen,.eq-marke.kritisch{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
-.pillet.on,.lock-badge,.nu-du,.up-badge,.wc-badge,.wi-tag{color:var(--mint-2);border-color:color-mix(in srgb,var(--mint) 50%,transparent)}
-.b-on::before,.b-off::before,.gwr-tag::before,.eq-marke.gut::before,.eq-marke.achtung::before,.eq-marke.kritisch::before{content:"";
+.eq-marke.gut{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.eq-marke.achtung{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.eq-marke.kritisch{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
+.lock-badge,.nu-du,.up-badge,.wc-badge,.wi-tag{color:var(--mint-2);border-color:color-mix(in srgb,var(--mint) 50%,transparent)}
+.eq-marke.gut::before,.eq-marke.achtung::before,.eq-marke.kritisch::before{content:"";
   width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
 .lock-badge,.nu-du{margin-left:6px}
 
@@ -1051,8 +1049,6 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .drow:last-child{border-bottom:none}
 .drow-l{display:flex;align-items:center;gap:var(--eq-a3);flex:1 1 auto;min-width:0}
 .drow-l>div:last-child{min-width:0}
-.drow-badge{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;
-  background:var(--surface-2);font-family:var(--fdisp);font-weight:600;font-size:var(--eq-t-2);color:var(--text)}
 .drow-name{font-weight:600;font-size:var(--eq-t-3);overflow-wrap:anywhere}
 .drow-sub{font-size:var(--eq-t-1);color:var(--softer);overflow-wrap:anywhere}
 .drow-val{text-align:right;flex:0 0 auto}
@@ -1256,7 +1252,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .tw-r-ziele i:hover{border-color:var(--mint)}
 .tw-r-pfeil{flex:0 0 auto;color:var(--softer);font-size:18px;line-height:1;margin-top:10px}
 .tw-wissen{margin-top:var(--eq-a4);padding-top:var(--eq-a4);border-top:1px solid var(--stroke)}
-.tw-w-kopf,.rc-ziel-l,.rc-a-l{font-size:var(--eq-t-1);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--softer);margin-bottom:10px}
+.rc-ziel-l,.rc-a-l{font-size:var(--eq-t-1);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--softer);margin-bottom:10px}
 .tw-w{display:flex;align-items:center;gap:13px;width:100%;min-height:56px;text-align:left;cursor:pointer;background:transparent;border:none;
   border-radius:12px;padding:8px 12px;color:var(--text);font-family:var(--fbody);transition:background var(--eq-kurz) ease;margin-bottom:2px}
 .tw-w:hover{background:var(--surface-2)}
@@ -1515,16 +1511,16 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 
 /* Onboarding und geführte Eingabe */
 .wc-logo{height:26px;margin:0 auto 20px}
-.wc-steps{display:flex;justify-content:center;gap:7px;margin-bottom:var(--eq-a4)}
-.wc-steps span{width:28px;height:4px;border-radius:2px;background:var(--stroke-2)}
-.wc-steps span.on{background:var(--mint);width:34px}
+.wc-steps{display:flex;justify-content:center;gap:5px;margin-bottom:var(--eq-a4)}
+.wc-steps span{flex:0 1 28px;min-width:3px;height:4px;border-radius:2px;background:var(--stroke-2)}
+.wc-steps span.on{background:var(--mint);flex-basis:34px}
 .wc-steps span.done{background:color-mix(in srgb,var(--mint) 55%,transparent)}
 .wc-skip{text-align:center;margin-top:8px}
 .frage-opts{display:flex;flex-direction:column;gap:10px}
 .frage-opt{width:100%;min-height:56px;text-align:left;cursor:pointer;background:var(--eq-mulde);border:1px solid var(--stroke-2);border-radius:14px;
   padding:14px 18px;font-size:var(--eq-t-3);font-weight:500;color:var(--text);font-family:var(--fbody);
   transition:border-color var(--eq-kurz) ease,background var(--eq-kurz) ease}
-.frage-opt:hover{border-color:var(--mint);background:var(--surface-2)}
+@media(hover:hover){.frage-opt:hover{border-color:var(--mint);background:var(--surface-2)}}
 .as-feld{position:relative;display:flex;align-items:center}
 .as-feld .as-i{font-size:18px;min-height:56px;padding:14px 18px;font-family:var(--fdisp);font-weight:500}
 .as-einheit{position:absolute;right:18px;font-size:var(--eq-t-2);color:var(--softer);pointer-events:none;font-weight:500}
@@ -1638,10 +1634,6 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 
 /* Handwerker: Zahlung gegen Fortschritt */
 .nk-t-row:hover{background:var(--surface-2)}
-.gw-bar-blk{margin-bottom:18px}
-.gw-bar-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:7px}
-.gw-bar-top span{font-size:var(--eq-t-2);color:var(--soft)}
-.gw-bar-top b{font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;font-variant-numeric:tabular-nums}
 .gw-bar{height:9px;border-radius:99px;background:var(--surface-2);overflow:hidden}
 .gw-bar i{display:block;height:100%;border-radius:99px;min-width:3px}
 .gw-bar i.ueber{background:var(--danger)}
@@ -1995,6 +1987,49 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 @media(hover:hover){.eq-verweis:hover{color:var(--text)}}
 .eq-fin-zeile .eq-verweise{margin-top:var(--eq-a4)}
 .eq-as-wahl{margin-top:var(--eq-a3)}
+
+/* ---------- Phase 11: geführtes Anlegen, Bewertung im Einzelnen, Lage und Vergleichsmiete ---------- */
+/* Antwort mit Erklärung darunter; die gewählte Antwort trägt einen Haken (nicht nur Farbe) */
+.frage-opt small{display:block;margin-top:3px;font-size:var(--eq-t-1);font-weight:400;color:var(--soft);line-height:1.4}
+.frage-opt.on{border-color:var(--mint);background:var(--surface-2)}
+.frage-opt.on{position:relative;padding-right:46px}
+.frage-opt.on::after{content:"✓";position:absolute;right:18px;top:14px;font-weight:700;color:var(--mint-2)}
+/* Vorschläge unter einem Feld: füllen das Feld, bestätigt wird mit „Weiter" */
+.eq-vorschlaege{display:flex;flex-wrap:wrap;gap:var(--eq-a2);margin-top:var(--eq-a3)}
+.eq-vorschlag{min-height:44px;padding:8px 14px;border:1px solid var(--stroke-2);border-radius:99px;background:transparent;color:var(--text);
+  font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:500;cursor:pointer;transition:border-color var(--eq-kurz) ease,background var(--eq-kurz) ease}
+@media(hover:hover){.eq-vorschlag:hover{border-color:var(--mint);background:var(--surface-2)}}
+.eq-vorschlag:active{transform:scale(.985)}
+/* Satz, der mitrechnet */
+.eq-as-live{margin-top:var(--eq-a3);padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--stroke);border-left:3px solid var(--mint);background:var(--eq-mulde);
+  font-size:var(--eq-t-2);line-height:1.5;color:var(--text);font-variant-numeric:tabular-nums}
+.eq-as-live[hidden]{display:none}
+
+/* Bewertung im Einzelnen: Zeile mit Titel, Satz und dem Wort der Stufe */
+.eq-bw-z{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--eq-a3) var(--eq-a4);padding:12px 0;border-bottom:1px solid var(--stroke)}
+.eq-bw-z:first-child{padding-top:0}
+.eq-bw-z:last-child{border-bottom:none;padding-bottom:0}
+.eq-bw-n{min-width:0}
+.eq-bw-t{font-size:var(--eq-t-3);font-weight:600;line-height:1.3}
+.eq-bw-s{font-size:var(--eq-t-2);color:var(--soft);line-height:1.5;margin-top:2px;max-width:68ch}
+.eq-bw-z .eq-marke{flex:0 0 auto;margin-top:1px;white-space:nowrap}
+.eq-bw-z .eq-verweis{margin-top:2px}
+
+/* Lage: Einstufung als Wort mit einem Satz daneben */
+.eq-lage-kopf{display:flex;flex-wrap:wrap;align-items:center;gap:var(--eq-a2) var(--eq-a3);margin-bottom:var(--eq-a2);font-size:var(--eq-t-2);color:var(--soft);line-height:1.5}
+.eq-lage-kopf .eq-marke{flex:0 0 auto;white-space:nowrap}
+/* Vergleichsmiete: Name, Betrag und ein Balken je Zeile. Eigene Werte tragen die Akzentfarbe – und stehen oben. */
+.eq-ref{display:grid;gap:var(--eq-a3)}
+.eq-ref-z{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:6px var(--eq-a4)}
+.eq-ref-n{font-size:var(--eq-t-2);color:var(--soft);line-height:1.35}
+.eq-ref-n small{display:block;font-size:var(--eq-t-1);color:var(--softer)}
+.eq-ref-z b{font-family:var(--fdisp);font-size:var(--eq-t-3);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-ref-b{grid-column:1 / -1;height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.eq-ref-b i{display:block;height:100%;border-radius:99px;background:var(--eq-reihe-4)}
+.eq-ref-eigen .eq-ref-n{color:var(--text);font-weight:600}
+.eq-ref-eigen .eq-ref-b i{background:var(--eq-reihe-1)}
+.eq-ref-passt .eq-ref-n small{color:var(--soft);font-weight:600}
+.eq-ref-passt .eq-ref-b i{background:var(--eq-reihe-2)}
 
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
@@ -3043,10 +3078,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=60"></script>
-<script src="./data-save.js?v=60"></script>
-<script src="./finance-engine.js?v=60"></script>
-<script src="./app.js?v=60"></script>
+<script src="./data-loader.js?v=61"></script>
+<script src="./data-save.js?v=61"></script>
+<script src="./finance-engine.js?v=61"></script>
+<script src="./app.js?v=61"></script>
 
 <script>
 /* =====================================================================
