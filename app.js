@@ -10,8 +10,10 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
-  const eur = n => (Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-  const eur2 = n => (Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Negative Zahlen tragen das echte Minuszeichen (−), keinen Bindestrich
+  const echtMinus = s => s.replace("-", "\u2212");
+  const eur = n => echtMinus((Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
+  const eur2 = n => echtMinus((Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const el = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
   const monthShort = m => { const d = new Date(m + "-01"); return d.toLocaleDateString("de-DE", { month: "short" }); };
 
@@ -1071,7 +1073,7 @@
     </div>`;
     const sheet = openSheet("Nutzer einladen", firma || "", body);
     const wurzel = sheet.querySelector("#einlBody");
-    sheet.querySelector("#einlAb").onclick = zurueck;
+    sheet.querySelector("#einlAb").onclick = () => { if (sheet._geaendert) sheetZu(sheet, zurueck); else zurueck(); };
     const SAETZE = {
       kein_recht: "Nur der Inhaber kann Nutzer einladen.",
       email_ungueltig: "Bitte gib eine gültige E-Mail-Adresse ein.",
@@ -1505,14 +1507,18 @@
   /* ---------- GEFÜHRTE EINGABE (ASSISTENT) ---------- */
 
   // Zeigt eine Frage pro Schritt. schritte = [{ id, frage, hinweis, typ, platzhalter,
-  // einheit, pflicht, optionen:[{t,v}], vorgabe, ueberspringbar }]
+  // einheit, pflicht, optionen:[{t,v,d}], vorgabe, ueberspringbar }]
   // Für Fragen mit zwei Angaben: felder:[{ id, label, typ, einheit, platzhalter, vorgabe, auswahl:[{t,v}] }].
-  // hinweis darf eine Funktion der bisherigen Antworten sein. alternative:{ text, werte } ist ein zweiter Knopf,
-  // der feste Antworten setzt. wenn(antworten) === false überspringt den Schritt.
+  // hinweis und vorgabe dürfen Funktionen der bisherigen Antworten sein. alternative:{ text, werte } ist ein zweiter
+  // Knopf, der feste Antworten setzt. wenn(antworten) === false überspringt den Schritt.
   // Ein Feld kann wahl tragen (zweiter Eingabeweg, etwa Rate statt Tilgung): { id, label, typ, einheit, platzhalter,
   // knoepfe, zuRate(a), zuProzent(a) }. Gewählt ist er, wenn antworten["wahl:" + feld.id] === "1".
+  // Für lange, geführte Abläufe: kapitel (steht vor „Schritt x von n"), live(a) (Satz unter den Feldern, rechnet bei
+  // jeder Eingabe mit), vorschlaege:[{ text, werte(a) }] (füllen die Felder). opt.abkuerzung: Verweis, der ab dem
+  // zweiten Schritt den Rest überspringt und gleich speichert.
   // aufFertig(antworten) wird am Ende aufgerufen.
-  function openAssistent(titel, schritte, aufFertig) {
+  function openAssistent(titel, schritte, aufFertig, opt) {
+    opt = opt || {};
     const antworten = {};
     let idx = 0;
     const sheet = openSheet(titel, "", `<div id="asBody"></div>`);
@@ -1528,7 +1534,8 @@
     function feldHtml(feld, i, mitLabel) {
       const zweit = !!feld.wahl && antworten["wahl:" + feld.id] === "1";
       const x = zweit ? feld.wahl : feld;
-      const wert = antworten[x.id] != null ? antworten[x.id] : (x.vorgabe != null ? x.vorgabe : "");
+      const vorgabe = typeof x.vorgabe === "function" ? x.vorgabe(antworten) : x.vorgabe;
+      const wert = antworten[x.id] != null ? antworten[x.id] : (vorgabe != null ? vorgabe : "");
       const kennung = i === 0 ? "asInput" : "asInput" + (i + 1);
       const eingabe = x.auswahl
         ? `<select class="ef-i as-i" id="${kennung}" data-as="${esc(x.id)}">${x.auswahl.map(o =>
@@ -1555,29 +1562,39 @@
       bodyEl.innerHTML = `
         <div class="wc-hero" style="padding-bottom:16px">
           ${punkte()}
-          <div class="wc-badge">Schritt ${idx + 1} von ${schritte.length}</div>
+          <div class="wc-badge">${f.kapitel ? esc(f.kapitel) + " · " : ""}Schritt ${idx + 1} von ${schritte.length}</div>
           <div class="wc-t" style="font-size:19px">${esc(f.frage)}</div>
           ${hinweis ? `<div class="wc-d">${esc(hinweis)}</div>` : ""}
         </div>
         ${istWahl
           ? `<div class="frage-opts">${f.optionen.map(o =>
-              `<button class="frage-opt" data-v="${esc(o.v)}">${esc(o.t)}</button>`).join("")}</div>`
+              `<button class="frage-opt${antworten[f.id] != null && String(antworten[f.id]) === String(o.v) ? " on" : ""}" data-v="${esc(o.v)}">${esc(o.t)}${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("")}</div>`
           : `${felder.map((x, i) => feldHtml(x, i, !!f.felder)).join("")}
+             ${f.vorschlaege ? `<div class="eq-vorschlaege" role="group" aria-label="Vorschläge">${f.vorschlaege.map((v, i) =>
+               `<button type="button" class="eq-vorschlag" data-vs="${i}">${esc(v.text)}</button>`).join("")}</div>` : ""}
+             ${f.live ? `<div class="eq-as-live" id="asLive" role="status"></div>` : ""}
              <div class="ef-msg" id="asMsg"></div>`}
         <div class="as-nav">
           ${istWahl ? "" : `<button class="wc-cta prem" id="asWeiter">${esc(f.weiterText || (letzter ? "Fertig" : "Weiter"))}</button>`}
           ${f.alternative && !istWahl ? `<button class="wc-cta" id="asAlternative" style="margin-top:10px">${esc(f.alternative.text)}</button>` : ""}
           ${zurueck >= 0 ? `<button class="wc-cta" id="asZurueck" style="margin-top:10px">Zurück</button>` : ""}
-          ${f.ueberspringbar && !istWahl ? `<div class="wc-skip"><a href="#" id="asSkip">Überspringen</a></div>` : ""}
+          ${f.ueberspringbar ? `<div class="wc-skip"><a href="#" id="asSkip">Überspringen</a></div>` : ""}
+          ${opt.abkuerzung && idx > 0 && !letzter ? `<div class="wc-skip"><a href="#" id="asAbkuerzung">${esc(opt.abkuerzung)}</a></div>` : ""}
         </div>`;
 
+      const eingaben = Array.from(bodyEl.querySelectorAll("[data-as]"));
+      // Antworten mit dem, was gerade in den Feldern steht – für Hinweise, die mitrechnen
+      const mitEingaben = () => { const a = { ...antworten }; eingaben.forEach(n => { a[n.dataset.as] = (n.value || "").trim(); }); return a; };
       if (istWahl) {
         bodyEl.querySelectorAll(".frage-opt").forEach(b => b.onclick = () => {
           antworten[f.id] = b.dataset.v; weiter();
         });
+        const sk = bodyEl.querySelector("#asSkip");
+        if (sk) sk.onclick = (e) => { e.preventDefault(); antworten[f.id] = ""; weiter(); };
       } else {
-        const eingaben = Array.from(bodyEl.querySelectorAll("[data-as]"));
         setTimeout(() => { try { eingaben[0].focus(); } catch (_) {} }, 120);
+        const live = bodyEl.querySelector("#asLive");
+        const liveZeigen = () => { if (live) { const t = f.live(mitEingaben()) || ""; live.textContent = t; live.hidden = !t; } };
         const abschicken = () => {
           const werte = eingaben.map(n => (n.value || "").trim());
           if (f.pflicht && !werte[0]) {
@@ -1590,6 +1607,8 @@
         };
         bodyEl.querySelector("#asWeiter").onclick = abschicken;
         eingaben.forEach((n, i) => {
+          n.addEventListener("input", liveZeigen);
+          n.addEventListener("change", liveZeigen);
           if (n.tagName !== "SELECT") n.onkeydown = (e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
@@ -1601,28 +1620,35 @@
         bodyEl.querySelectorAll("[data-aswahl]").forEach(b => b.onclick = () => {
           const feld = felder.find(x => x.id === b.dataset.aswahl), zweit = b.dataset.modus === "1";
           if (!feld || zweit === (antworten["wahl:" + feld.id] === "1")) return;
-          eingaben.forEach(n => { antworten[n.dataset.as] = (n.value || "").trim(); });
-          const neu = zweit ? feld.wahl.zuRate(antworten) : feld.wahl.zuProzent(antworten);
+          Object.assign(antworten, mitEingaben());
+          const quelle = antworten[zweit ? feld.id : feld.wahl.id];
+          const neu = quelle === "" || quelle == null ? NaN : (zweit ? feld.wahl.zuRate(antworten) : feld.wahl.zuProzent(antworten));
           antworten["wahl:" + feld.id] = zweit ? "1" : "0";
-          antworten[zweit ? feld.wahl.id : feld.id] = isFinite(neu) && neu > 0 ? String(rund2(neu)) : "";
+          antworten[zweit ? feld.wahl.id : feld.id] = isFinite(neu) && neu >= 0 ? String(rund2(neu)) : "";
           antworten[zweit ? feld.id : feld.wahl.id] = "";
+          zeige();
+        });
+        // Vorschläge füllen die Felder; „Weiter" bestätigt wie sonst auch
+        bodyEl.querySelectorAll("[data-vs]").forEach(b => b.onclick = () => {
+          Object.assign(antworten, mitEingaben(), f.vorschlaege[Number(b.dataset.vs)].werte(mitEingaben()));
           zeige();
         });
         const sk = bodyEl.querySelector("#asSkip");
         if (sk) sk.onclick = (e) => { e.preventDefault(); eingaben.forEach(n => { antworten[n.dataset.as] = ""; }); weiter(); };
         const alt = bodyEl.querySelector("#asAlternative");
         if (alt) alt.onclick = () => { Object.assign(antworten, f.alternative.werte); weiter(); };
+        liveZeigen();
       }
       const zb = bodyEl.querySelector("#asZurueck");
       if (zb) zb.onclick = () => { idx = zurueck; zeige(); };
+      // Abkürzung: Was im Schritt schon steht, zählt mit; alle weiteren Schritte bleiben leer
+      const ab = bodyEl.querySelector("#asAbkuerzung");
+      if (ab) ab.onclick = (e) => { e.preventDefault(); if (!istWahl) Object.assign(antworten, mitEingaben()); speichern(); };
     }
 
-    async function weiter() {
-      sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
-      const n = naechster(idx);
-      if (n >= 0) { idx = n; zeige(); return; }
-      // Letzter Schritt: speichern
+    async function speichern() {
       const zuletzt = idx;
+      sheet._geaendert = true;
       bodyEl.innerHTML = `<div class="wc-hero"><div class="wc-t" style="font-size:18px">Wird gespeichert…</div></div>`;
       try {
         await aufFertig(antworten);
@@ -1634,6 +1660,12 @@
         bodyEl.querySelector("#asNochmal").onclick = () => { idx = zuletzt; zeige(); };
       }
     }
+    function weiter() {
+      sheet._geaendert = true;   // ab hier gibt es Antworten, die beim Schließen verloren gingen
+      const n = naechster(idx);
+      if (n >= 0) { idx = n; zeige(); return; }
+      speichern();   // letzter Schritt
+    }
     zeige();
     return sheet;
   }
@@ -1641,54 +1673,152 @@
   // Zahl aus einer Antwort des Assistenten: leer bleibt leer, Komma zählt wie Punkt
   const asZahl = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v === "" || v == null || !isFinite(n) ? null : n; };
 
-  // Geführtes Anlegen eines Projekts (Abschnitt 12.8): eine Frage pro Schritt, alles außer dem Namen lässt sich überspringen.
+  // Geführtes Anlegen eines Projekts (Abschnitt 12.8, seit Phase 11 ausführlicher): eine Frage pro Schritt, in sechs
+  // Kapiteln – Objekt, Kauf, Miete, Lage, Finanzierung, laufende Kosten. Alles außer dem Namen lässt sich überspringen,
+  // und ab dem zweiten Schritt führt „Rest überspringen und anlegen" sofort zum Projekt.
   // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt }
   function assistentProjekt(vor) {
     if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
     vor = vor || {};
+    const K = { o: "Das Objekt", k: "Der Kauf", m: "Die Miete", l: "Die Lage", f: "Die Finanzierung", c: "Laufende Kosten" };
     // Planungsdaten aus den bisherigen Antworten – daraus ergibt sich die Gesamtinvestition
     const planAus = (a) => {
       const plan = { v: 1, status: "pruefung" };
-      const kp = asZahl(a.kaufpreis), makler = asZahl(a.makler_pct);
-      if (kp != null && kp >= 0) plan.kaufpreis = kp;
+      const zahl = (feld) => { const v = asZahl(a[feld]); if (v != null && v >= 0) plan[feld] = v; };
+      zahl("kaufpreis");
       if (a.bundesland) { plan.bundesland = a.bundesland; plan.grest_pct = grestVon(a.bundesland); }
-      if (makler != null && makler >= 0) plan.makler_pct = makler;
+      ["grest_pct", "notar_pct", "makler_pct", "kaufkosten_sonst", "sanierung", "instand_m2", "ausfall_pct"].forEach(zahl);
+      // Ohne eigene Angabe richtet sich die Instandhaltung nach dem Zustand
+      if (plan.instand_m2 == null && a.zustand) plan.instand_m2 = instandVorgabe(a);
+      if (a.verwaltung === "selbst") plan.verwaltung_einheit = 0;
+      else if (a.verwaltung === "verwaltung") plan.verwaltung_einheit = 25;
+      if (a.gemeindetyp) plan.gemeindetyp = a.gemeindetyp;
+      if (a.zustand) plan.zustand = a.zustand;
+      const baujahr = asZahl(a.baujahr);
+      if (baujahr >= 1000 && baujahr <= 2200) plan.baujahr = Math.round(baujahr);
+      const ortsueblich = asZahl(a.vergleichsmiete);
+      if (ortsueblich > 0) plan.vergleichsmiete_m2 = ortsueblich;
+      const lage = {};
+      LAGE_FRAGEN.forEach(f => { const v = a["lage_" + f.id]; if (v !== undefined && v !== "") lage[f.id] = Number(v); });
+      if (Object.keys(lage).length) plan.lage = lage;
+      const bindung = asZahl(a.zinsbindung);
+      if (bindung > 0) plan.zinsbindung_jahre = bindung;
       return plan;
     };
-    const investAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] }).INV;
+    const zahlenAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] });
+    const investAus = (a) => zahlenAus(a).INV;
+    const instandVorgabe = (a) => { const x = ZUSTAND.find(y => y[0] === a.zustand); return x ? x[3] : 1; };
     const hatPreis = (a) => (asZahl(a.kaufpreis) || 0) > 0;
-    const darlehenAus = (a) => Math.max(0, investAus(a) - (asZahl(a.eigenkapital) || 0));
+    const hatEinheit = (a) => asZahl(a.flaeche) != null || asZahl(a.kalt) != null;
+    // Eigenkapital: direkt eingegeben oder aus dem gewünschten Darlehen berechnet
+    const mitDarlehen = (a) => a["wahl:eigenkapital"] === "1";
+    const finanzAngabe = (a) => { const v = mitDarlehen(a) ? a.darlehen : a.eigenkapital; return v != null && v !== ""; };
+    const eigenkapitalAus = (a) => mitDarlehen(a) ? Math.max(0, investAus(a) - (asZahl(a.darlehen) || 0)) : (asZahl(a.eigenkapital) || 0);
+    const darlehenAus = (a) => Math.max(0, investAus(a) - eigenkapitalAus(a));
+    const hatDarlehen = (a) => hatPreis(a) && finanzAngabe(a) && darlehenAus(a) > 0;
+    const rateAus = (a) => {
+      const zins = asZahl(a.zins), tilgung = asZahl(a.tilgung);
+      return a["wahl:tilgung"] === "1" ? asZahl(a.rate) : (zins != null && tilgung != null ? darlehenAus(a) * (zins + tilgung) / 1200 : null);
+    };
+    // Geplante Miete je m² neben den Vergleichswerten aus der Statistik
+    const vergleichSatz = (a) => {
+      const f = asZahl(a.flaeche), k = asZahl(a.kalt);
+      if (!(f > 0) || !(k > 0)) return "";
+      const ref = mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp });
+      return "Das sind " + eur2(k / f) + " je m². Zum Vergleich: " + ref.map(r => r.text + " " + eur2(r.wert)).join(", ") + ".";
+    };
+    const refSatz = (a) => mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp }).map(r => r.text + " " + eur2(r.wert)).join(", ");
     const schritte = [
-      { id: "name", frage: "Wie soll das Projekt heißen?",
+      // ----- Das Objekt -----
+      { id: "name", kapitel: K.o, frage: "Wie soll das Projekt heißen?",
         hinweis: "Zum Beispiel die Adresse aus dem Inserat.",
         typ: "text", pflicht: true, platzhalter: "z. B. Bergstraße 12" },
-      { frage: "Wo liegt das Objekt?",
+      { kapitel: K.o, frage: "Wo liegt das Objekt?",
         hinweis: "Das Bundesland bestimmt die Grunderwerbsteuer.",
         felder: [
           { id: "ort", label: "Ort", typ: "text", platzhalter: "z. B. Bremen" },
           { id: "bundesland", label: "Bundesland", auswahl: [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] }))) }
         ], ueberspringbar: true },
-      { id: "kaufpreis", frage: "Was soll es kosten?",
-        hinweis: "Der Kaufpreis ohne Nebenkosten. Die rechnet ESTRIQ dazu.",
+      { id: "gemeindetyp", kapitel: K.o, frage: "Ist das eine Stadt oder ein Dorf?",
+        hinweis: "Damit zeigt dir ESTRIQ die passende Vergleichsmiete.",
+        optionen: GEMEINDETYP.map(g => ({ v: g[0], t: g[1], d: g[2] })), ueberspringbar: true },
+      { id: "baujahr", kapitel: K.o, frage: "Wann wurde es gebaut?",
+        hinweis: "Das Baujahr steht im Inserat oder im Energieausweis. Du brauchst es später für die Abschreibung.",
+        typ: "number", platzhalter: "z. B. 1978", ueberspringbar: true },
+      { id: "zustand", kapitel: K.o, frage: "In welchem Zustand ist es?",
+        hinweis: "Dein Eindruck reicht. Danach richtet sich, womit ESTRIQ für Reparaturen rechnet.",
+        optionen: ZUSTAND.map(x => ({ v: x[0], t: x[1], d: x[2] })), ueberspringbar: true },
+      // ----- Der Kauf -----
+      { id: "kaufpreis", kapitel: K.k, frage: "Was soll es kosten?",
+        hinweis: "Der Kaufpreis ohne Nebenkosten. Die fragt ESTRIQ gleich einzeln ab.",
         typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000",
         vorgabe: vor.kaufpreis > 0 ? vor.kaufpreis : undefined },
-      { frage: "Kaufst du über einen Makler?",
+      { kapitel: K.k, frage: "Welche Nebenkosten kommen beim Kauf sicher dazu?",
+        hinweis: (a) => (a.bundesland
+          ? "Die Grunderwerbsteuer für " + bundeslandName(a.bundesland) + " ist vorbelegt. " + GREST_STAND
+          : "Die Grunderwerbsteuer hängt vom Bundesland ab und liegt zwischen 3,5 und 6,5 %.") + " 2 % für Notar und Grundbuch sind eine Annahme.",
+        felder: [
+          { id: "grest_pct", label: "Grunderwerbsteuer", typ: "number", einheit: "%", vorgabe: (a) => { const g = grestVon(a.bundesland); return g != null ? g : ""; }, platzhalter: "z. B. 5" },
+          { id: "notar_pct", label: "Notar und Grundbuch", typ: "number", einheit: "%", vorgabe: 2 }
+        ],
+        live: (a) => { const kp = asZahl(a.kaufpreis) || 0; return "Grunderwerbsteuer " + eur(kp * (asZahl(a.grest_pct) || 0) / 100) + ", Notar und Grundbuch " + eur(kp * (asZahl(a.notar_pct) || 0) / 100) + "."; },
+        ueberspringbar: true, wenn: hatPreis },
+      { kapitel: K.k, frage: "Kaufst du über einen Makler?",
         hinweis: "Mit Makler: Trag die Courtage ein. 3,57 % ist eine Annahme – der genaue Satz steht im Inserat.",
         felder: [{ id: "makler_pct", label: "Courtage", typ: "number", einheit: "%", vorgabe: 3.57, platzhalter: "3,57" }],
+        live: (a) => hatPreis(a) ? "Das sind " + eur((asZahl(a.kaufpreis) || 0) * (asZahl(a.makler_pct) || 0) / 100) + "." : "",
         weiterText: "Ja, mit Courtage",
         alternative: { text: "Nein, ohne Makler", werte: { makler_pct: "0" } }, ueberspringbar: true },
-      { frage: "Wie groß ist es, und was bringt es an Kaltmiete?",
-        hinweis: "Weitere Einheiten trägst du gleich auf der Projektseite ein.",
+      { kapitel: K.k, frage: "Kommt noch etwas dazu?",
+        hinweis: "Weitere Kaufkosten sind zum Beispiel ein Gutachter oder Kosten der Finanzierung. Die Sanierung ist alles, was du nach dem Kauf in das Objekt steckst.",
+        felder: [
+          { id: "kaufkosten_sonst", label: "Weitere Kaufkosten", typ: "number", einheit: "€", platzhalter: "0" },
+          { id: "sanierung", label: "Sanierung nach dem Kauf", typ: "number", einheit: "€", platzhalter: "0" }
+        ],
+        live: (a) => { const z = zahlenAus(a); return "Gesamtinvestition: " + eur(z.INV) + ". Kaufpreis " + eur(z.KP) + ", Kaufnebenkosten " + eur(z.KNK) + ", Sanierung " + eur(z.SAN) + "."; },
+        ueberspringbar: true, wenn: hatPreis },
+      // ----- Die Miete -----
+      { kapitel: K.m, frage: "Wie groß ist es, und was bringt es an Kaltmiete?",
+        hinweis: "Nimm die Miete, die heute gezahlt wird. Weitere Einheiten trägst du gleich auf der Projektseite ein.",
         felder: [
           { id: "flaeche", label: "Fläche", typ: "number", einheit: "m²", platzhalter: "z. B. 72" },
           { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650",
             vorgabe: vor.kalt > 0 ? vor.kalt : undefined }
-        ], ueberspringbar: true },
-      { id: "eigenkapital", frage: "Wie viel Eigenkapital bringst du mit?",
-        hinweis: (a) => "Du brauchst insgesamt " + eur(investAus(a)) + ".",
-        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 60000",
-        wenn: hatPreis },
-      { frage: "Zu welchen Bedingungen finanzierst du den Rest?",
+        ], live: vergleichSatz, ueberspringbar: true },
+      { id: "vergleichsmiete", kapitel: K.m, frage: "Kennst du die ortsübliche Miete?",
+        hinweis: (a) => "Sie steht im Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + refSatz(a) + " je m². " + MIETE_STAND,
+        typ: "number", einheit: "€ je m²", platzhalter: "z. B. 8,50", ueberspringbar: true,
+        live: (a) => { const f = asZahl(a.flaeche), k = asZahl(a.kalt), o = asZahl(a.vergleichsmiete);
+          if (!(f > 0) || !(k > 0) || !(o > 0)) return "";
+          const ab = (k / f / o - 1) * 100;
+          return Math.abs(ab) < 0.5 ? "Deine geplante Miete entspricht der ortsüblichen Miete."
+            : "Deine geplante Miete von " + eur2(k / f) + " je m² liegt " + prozent(Math.abs(ab), 0) + " " + (ab > 0 ? "über" : "unter") + " der ortsüblichen Miete."; },
+        wenn: (a) => asZahl(a.flaeche) > 0 && asZahl(a.kalt) > 0 },
+      { id: "vermietet", kapitel: K.m, frage: "Ist die Einheit schon vermietet?",
+        hinweis: "Die Miete rechnet ESTRIQ in beiden Fällen mit – als geplante Miete.",
+        optionen: [{ v: "vermietet", t: "Ja, sie ist vermietet" }, { v: "frei", t: "Nein, sie steht leer" }],
+        ueberspringbar: true, wenn: hatEinheit }
+    ].concat(
+      // ----- Die Lage: drei Fragen, aus denen ESTRIQ die Lage einstuft -----
+      LAGE_FRAGEN.map(f => ({ id: "lage_" + f.id, kapitel: K.l, frage: f.frage, hinweis: f.hinweis || "",
+        optionen: f.optionen.map(o => ({ v: String(o[0]), t: o[1], d: o[2] })), ueberspringbar: true }))
+    ).concat([
+      // ----- Die Finanzierung -----
+      { kapitel: K.f, frage: "Wie viel willst du finanzieren?",
+        hinweis: (a) => { const z = zahlenAus(a); return "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."; },
+        felder: [{ id: "eigenkapital", label: "Eigenkapital", typ: "number", einheit: "€", platzhalter: "z. B. 60000",
+          wahl: { id: "darlehen", label: "Darlehen", typ: "number", einheit: "€", platzhalter: "z. B. 200000", knoepfe: ["Eigenkapital", "Darlehen"],
+            zuRate: (a) => investAus(a) - (asZahl(a.eigenkapital) || 0),
+            zuProzent: (a) => investAus(a) - (asZahl(a.darlehen) || 0) } }],
+        vorschlaege: [
+          { text: "Nur die Nebenkosten selbst zahlen", werte: (a) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(zahlenAus(a).KNK)) }) },
+          { text: "20 % Eigenkapital", werte: (a) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(investAus(a) * 0.2)) }) },
+          { text: "Alles finanzieren", werte: () => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: "0" }) }
+        ],
+        live: (a) => { if (!finanzAngabe(a)) return ""; const inv = investAus(a), d = darlehenAus(a);
+          return "Du finanzierst " + eur(d) + " und bringst " + eur(eigenkapitalAus(a)) + " selbst mit. Die Bank trägt " + prozent(inv > 0 ? d / inv * 100 : 0, 0) + " der Gesamtinvestition."; },
+        ueberspringbar: true, wenn: hatPreis },
+      { kapitel: K.f, frage: "Zu welchen Bedingungen finanzierst du?",
         hinweis: (a) => "Du finanzierst " + eur(darlehenAus(a)) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen.",
         felder: [
           { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: 3.5 },
@@ -1696,9 +1826,35 @@
             wahl: { id: "rate", label: "Rate im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 1050", knoepfe: ["Tilgung in %", "Rate im Monat"],
               zuRate: (a) => darlehenAus(a) * ((asZahl(a.zins) || 0) + (asZahl(a.tilgung) || 0)) / 1200,
               zuProzent: (a) => darlehenAus(a) > 0 ? (asZahl(a.rate) || 0) * 1200 / darlehenAus(a) - (asZahl(a.zins) || 0) : 0 } }
-        ], ueberspringbar: true,
-        wenn: (a) => hatPreis(a) && a.eigenkapital !== "" && investAus(a) - (asZahl(a.eigenkapital) || 0) > 0 }
-    ];
+        ],
+        live: (a) => { const r = rateAus(a); if (!(r > 0)) return "";
+          return a["wahl:tilgung"] === "1"
+            ? "Das entspricht " + prozent2(r * 1200 / darlehenAus(a) - (asZahl(a.zins) || 0)) + " Anfangstilgung."
+            : "Deine Rate: " + eur2(r) + " im Monat."; },
+        ueberspringbar: true, wenn: hatDarlehen },
+      { id: "zinsbindung", kapitel: K.f, frage: "Wie lange ist der Zins fest?",
+        hinweis: "Die Zinsbindung steht im Angebot der Bank. Danach brauchst du eine Anschlussfinanzierung – zum Zins, der dann gilt.",
+        typ: "number", einheit: "Jahre", vorgabe: 10, ueberspringbar: true,
+        live: (a) => { const r = rateAus(a), j = asZahl(a.zinsbindung), zins = asZahl(a.zins);
+          return r > 0 && j > 0 && zins != null ? "Restschuld nach " + zahlKurz(j) + (j === 1 ? " Jahr: " : " Jahren: ") + eur(rcRestschuld(darlehenAus(a), zins, r, j * 12)) + "." : ""; },
+        wenn: (a) => hatDarlehen(a) && rateAus(a) > 0 },
+      // ----- Laufende Kosten -----
+      { id: "verwaltung", kapitel: K.c, frage: "Wer verwaltet das Objekt?",
+        hinweis: "Verwaltung kostet Geld, das du nicht auf die Mieter umlegen kannst.",
+        optionen: [{ v: "selbst", t: "Ich selbst", d: "Dann rechnet ESTRIQ ohne Verwaltungskosten" },
+          { v: "verwaltung", t: "Eine Hausverwaltung", d: "Annahme: 25 € je Einheit im Monat" }],
+        ueberspringbar: true },
+      { kapitel: K.c, frage: "Womit rechnest du für Reparaturen und Mietausfall?",
+        hinweis: (a) => "Beides sind Annahmen: " + zahlKurz(instandVorgabe(a)) + " € je m² im Monat für Reparaturen" + (a.zustand && a.zustand !== "mittel" ? " (passend zum Zustand)" : "") + ", 3 % der Kaltmiete für Mietausfall."
+          + (lageVon(planAus(a)).stufe === "achtung" ? " Du hast die Lage als einfach eingestuft. Dort stehen Wohnungen eher leer – rechne lieber vorsichtiger." : ""),
+        felder: [
+          { id: "instand_m2", label: "Instandhaltung", typ: "number", einheit: "€ je m²", vorgabe: instandVorgabe },
+          { id: "ausfall_pct", label: "Mietausfall", typ: "number", einheit: "%", vorgabe: 3 }
+        ],
+        live: (a) => { const f = asZahl(a.flaeche) || 0, k = asZahl(a.kalt) || 0; if (!(f > 0) && !(k > 0)) return "";
+          return "Das sind zusammen " + eur2(f * (asZahl(a.instand_m2) || 0) + k * (asZahl(a.ausfall_pct) || 0) / 100) + " im Monat."; },
+        ueberspringbar: true }
+    ]);
     openAssistent("Projekt anlegen", schritte, async (a) => {
       const name = (a.name || "").trim() || "Projekt";
       const heute = new Date().toISOString();
@@ -1713,16 +1869,12 @@
       const flaeche = asZahl(a.flaeche), kalt = asZahl(a.kalt);
       if (flaeche != null || kalt != null) {
         try {
-          await neueEinheit(neu.id, { bezeichnung: "Einheit 1", flaeche, status: "vermietet", kalt_fix: kalt, nk_fix: null,
+          await neueEinheit(neu.id, { bezeichnung: "Einheit 1", flaeche, status: a.vermietet === "frei" ? "frei" : "vermietet", kalt_fix: kalt, nk_fix: null,
             zahltag: 1, mieter: "", einzug: null, vertrag: {} });
         } catch (_) { fehlt.push("die Einheit"); }
       }
-      const zins = asZahl(a.zins), tilgung = asZahl(a.tilgung);
-      const summe = rund2(Math.max(0, INV - (asZahl(a.eigenkapital) || 0)));
-      // Rate: entweder direkt eingegeben oder aus Zins und Tilgung berechnet
-      const rate = a["wahl:tilgung"] === "1" ? asZahl(a.rate)
-        : (zins != null && tilgung != null ? summe * (zins + tilgung) / 100 / 12 : null);
-      if (hatPreis(a) && a.eigenkapital != null && a.eigenkapital !== "" && zins != null && rate != null && rate > 0 && summe > 0) {
+      const zins = asZahl(a.zins), summe = rund2(darlehenAus(a)), rate = rateAus(a);
+      if (hatDarlehen(a) && zins != null && rate != null && rate > 0 && summe > 0) {
         try {
           await neuerKredit(neu.id, { name: "Darlehen", summe, zins_pa: zins, rate_monat: rund2(rate),
             start: null, rest_stand_betrag: null, rest_stand_datum: null, sondertilgung: null });
@@ -1734,8 +1886,8 @@
       geheZu("projekt:" + neu.slug);
       showToast(fehlt.length
         ? "Projekt angelegt. Nicht gespeichert: " + fehlt.join(" und ") + ". Trag das bitte auf der Projektseite nach."
-        : "Projekt angelegt.");
-    });
+        : "Projekt angelegt. Oben steht das Urteil, darunter die Bewertung im Einzelnen.");
+    }, { abkuerzung: "Rest überspringen und anlegen" });
   }
 
   // Geführtes Anlegen eines Mietobjekts
@@ -2992,7 +3144,7 @@
   // Die Abrechnung als geführter Ablauf: 1 Kosten erfassen · 2 Verteilung prüfen · 3 Ergebnis je Einheit.
   // Die Kontrollzeile bleibt in jedem Schritt sichtbar: Summe der Anteile = umlagefähige Summe.
   function openNkAbrechnung(s, jahr, startSchritt) {
-    const sheet = openSheet("Nebenkostenabrechnung", s.name, `<div id="nkBody"><div class="note">Wird geladen…</div></div>`);
+    const sheet = openSheet(s.istProjekt ? "Erwartete Nebenkosten" : "Nebenkostenabrechnung", s.name, `<div id="nkBody"><div class="note">Wird geladen…</div></div>`);
     const body = sheet.querySelector("#nkBody");
     let schritt = startSchritt || 0;   // 0 = beim ersten Zeichnen selbst wählen
     const SCHRITTE = ["Kosten erfassen", "Verteilung prüfen", "Ergebnis je Einheit"];
@@ -3088,7 +3240,7 @@
       body.innerHTML = `
         <div class="nk-jahr">
           <button type="button" class="cal-btn" id="nkPrev" aria-label="Jahr zurück">‹</button>
-          <span>Abrechnungsjahr <b>${jahr}</b></span>
+          <span>${s.istProjekt ? "Jahr" : "Abrechnungsjahr"} <b>${jahr}</b></span>
           <button type="button" class="cal-btn" id="nkNext" aria-label="Jahr vor">›</button>
         </div>
         <div class="eq-schritte" role="tablist" aria-label="Ablauf der Abrechnung">
@@ -3671,6 +3823,8 @@
     zeilen: namen.map((l, i) => ({ l, v: "—", gross: i === 0 })),
     fazit: "Trag " + was + " ein. Dann rechnet ESTRIQ."
   });
+  // Dauer in Worten: „12 Jahre 3 Monate", „1 Jahr", „0 Monate"
+  const rcDauer = (mon) => { const j = Math.floor(mon / 12), m = mon % 12; return [j ? mehrzahl(j, "Jahr", "Jahre") : "", m || !j ? mehrzahl(m, "Monat", "Monate") : ""].filter(Boolean).join(" "); };
   // Restschuld nach m Monaten bei fester Rate (Zins in Prozent im Jahr), nie unter null
   function rcRestschuld(summe, zins, rate, m) {
     const i = zins / 1200;
@@ -3896,9 +4050,9 @@
         const sparMon = Math.max(0, ohne.mon - mit.mon), sparZins = Math.max(0, ohne.zins - mit.zins);
         return {
           zeilen: [
-            { l: "Ohne Sondertilgung", v: Math.floor(ohne.mon / 12) + " J " + (ohne.mon % 12) + " M" },
-            { l: "Mit Sondertilgung", v: Math.floor(mit.mon / 12) + " J " + (mit.mon % 12) + " M", gross: true },
-            { l: "Schneller schuldenfrei", v: Math.floor(sparMon / 12) + " J " + (sparMon % 12) + " M", gross: true },
+            { l: "Ohne Sondertilgung", v: rcDauer(ohne.mon) },
+            { l: "Mit Sondertilgung", v: rcDauer(mit.mon), gross: true },
+            { l: "Schneller schuldenfrei", v: rcDauer(sparMon), gross: true },
             { l: "Gesparte Zinsen", v: eur(sparZins), gross: true }
           ],
           vergleich: { a: ohne.mon, b: mit.mon, la: "ohne Sondertilgung", lb: "mit Sondertilgung", einheit: "Monate" },
@@ -5382,7 +5536,7 @@
   }
   // Schließen durch den Nutzer (X, Fläche daneben, Escape):
   // Bei ungespeicherten Änderungen erst fragen. closeSheet() selbst fragt nie.
-  function sheetZu(bd) {
+  function sheetZu(bd, dann) {
     if (!bd || !bd._geaendert) { closeSheet(); return; }
     const sheet = bd.querySelector(".sheet");
     if (sheet.querySelector(".eq-frage")) return;
@@ -5392,7 +5546,7 @@
       <button type="button" class="eq-btn" data-frage="bleiben">Weiter bearbeiten</button>
     </div>`);
     sheet.appendChild(frage);
-    frage.querySelector('[data-frage="weg"]').onclick = () => closeSheet();
+    frage.querySelector('[data-frage="weg"]').onclick = () => { if (dann) dann(); else closeSheet(); };
     frage.querySelector('[data-frage="bleiben"]').onclick = () => frage.remove();
     if (feinerZeiger()) { try { frage.querySelector('[data-frage="bleiben"]').focus(); } catch (_) {} }
   }
@@ -5518,6 +5672,9 @@
     return !erstes;
   }
 
+  // Antwortet der Server lange nicht, erscheint dieser Satz. Abgebrochen wird nicht – sonst könnte doppelt gespeichert werden.
+  const FORMULAR_FRIST = 12000;
+  const FORMULAR_WARTET = "Das dauert länger als sonst. Warte noch einen Moment. Kommt nichts, schließ das Fenster und sieh nach, ob gespeichert wurde.";
   // Speichern-Knopf verdrahten, inkl. Fehleranzeige
   function efBind(sheet, speichernFn, loeschenFn, loeschFrage, nachErfolg, nachLoeschen) {
     const msg = sheet.querySelector("#efMsg");
@@ -5527,13 +5684,16 @@
       if (!efPflichtOk(sheet)) { msg.textContent = "Bitte prüfe die markierten Felder."; msg.className = "ef-msg bad"; return; }
       msg.textContent = "Speichere…"; msg.className = "ef-msg";
       btn.disabled = true;
+      const uhr = setTimeout(() => { msg.textContent = FORMULAR_WARTET; }, FORMULAR_FRIST);
       try { await speichernFn(efWerte(sheet)); }
       catch (e) {
+        clearTimeout(uhr);
         msg.textContent = window.fehlerText(e);
         msg.className = "ef-msg bad";
         btn.disabled = false;
         return;
       }
+      clearTimeout(uhr);
       closeSheet();
       try { await window.nachSpeichern(); }
       catch (_) { showToast(NEULADEN_HINWEIS); return; }
@@ -5556,13 +5716,16 @@
       }
       msg.textContent = "Lösche…"; msg.className = "ef-msg";
       del.disabled = true;
+      const uhr = setTimeout(() => { msg.textContent = FORMULAR_WARTET; }, FORMULAR_FRIST);
       try { await loeschenFn(); }
       catch (e) {
+        clearTimeout(uhr);
         msg.textContent = window.fehlerText(e);
         msg.className = "ef-msg bad";
         del.disabled = false;
         return;
       }
+      clearTimeout(uhr);
       closeSheet();
       try { await window.nachSpeichern(); }
       catch (_) { showToast(NEULADEN_HINWEIS); return; }
@@ -6688,7 +6851,7 @@
   // Alle Beträge kommen aus FE.creditPlan (Rechenkern). Hier wird nur zusammengestellt und beschriftet.
 
   const monatLang = (key) => new Date(key + "-01").toLocaleDateString("de-DE", { month: "long", year: "numeric" });
-  const prozent = (n, stellen) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: stellen || 0, maximumFractionDigits: stellen == null ? 3 : stellen }) + " %";
+  const prozent = (n, stellen) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: stellen || 0, maximumFractionDigits: stellen == null ? 3 : stellen })) + " %";
   const MONATSNAMEN = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
   // „in 14 Jahren und 8 Monaten"
@@ -6896,16 +7059,18 @@
     const teile = [abschnittKopf("Finanzierung", mehrzahl(kredite.length, "Kredit", "Kredite") + " · Karte antippen für den Tilgungsplan",
       { id: "addCredit", text: "+ Kredit", tun: anlegen })];
     if (s.istProjekt) {
-      const z = projektZahlen(s), kw = projektKreditwerte(s, z);
+      const z = projektZahlen(s), kw = projektKreditwerte(s, z), zb = zinsbindungVon(s);
       const verweise = [
         { text: "Eigenkapitalrendite", id: "hebel", start: { invest: rund2(z.INV), ek: rund2(z.EK), miete: rund2(z.KM), bewirt: z.KM > 0 ? rund2(z.BK / z.KM * 100) : null, zins: kw.zins, tilgung: kw.tilgung } },
-        { text: "Angebote vergleichen", id: "angebote", start: { summe: rund2(z.DAR), zinsA: kw.zins, tilgA: kw.tilgung } }
+        { text: "Angebote vergleichen", id: "angebote", start: { summe: rund2(z.DAR), zinsA: kw.zins, tilgA: kw.tilgung } },
+        { text: "Anschlussfinanzierung", id: "anschluss", start: { rest: rund2(zb.rest), altZins: kw.zins, tilgung: kw.tilgung } }
       ];
       teile.push(el(`<div class="card pad eq-fin-zeile"><div class="eq-werte">
         ${wert("Darlehen", eur(z.DAR), mehrzahl(z.kredite, "Kredit", "Kredite"))}
         ${wert("Rate im Monat", eur2(z.RATE), "Zins und Tilgung")}
         ${wert("Eigenkapital", eur(z.EK), z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : "Gesamtinvestition − Darlehen")}
         ${wert("Tilgung im 1. Jahr", eur2(z.tilgung1), "so viel Schuld baust du ab")}
+        ${wert("Restschuld nach " + mehrzahl(zb.jahre, "Jahr", "Jahren"), eur(zb.rest), zb.annahme ? "Annahme: 10 Jahre Zinsbindung. Ändern kannst du sie im Kredit." : "am Ende der Zinsbindung")}
       </div>${rechnerVerweise(verweise)}</div>`));
       rechnerVerweiseBinden(teile[teile.length - 1], verweise);
     } else if (kredite.length > 1) teile.push(finanzKarte(kredite));
@@ -6993,8 +7158,8 @@
 
   const zahlOder = (v, vorgabe) => { const n = Number(v); return v === null || v === undefined || v === "" || !isFinite(n) ? vorgabe : n; };
   const rund2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-  const prozent2 = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %";
-  const zahl2 = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const prozent2 = (n) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + " %";
+  const zahl2 = (n) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
   // Planungsdaten mit allen Vorgaben. Die Grunderwerbsteuer kommt aus dem Bundesland, solange sie nicht eigens gesetzt ist.
   function planVon(p) {
@@ -7064,6 +7229,7 @@
     if (z.kredite && z.brutto != null && z.brutto < z.hoechsterZins) zweite.push("Die Miete bringt weniger, als der Kredit kostet.");
     if (z.zuVielFinanziert) zweite.push("Die Finanzierung ist höher als die Investition.");
     if (!z.kredite) zweite.push("Noch ohne Finanzierung gerechnet.");
+    if (lageVon(z.plan).stufe === "achtung") zweite.push("Einfache Lage: Rechne mit mehr Leerstand.");
     if (!(z.KP > 0) || !(z.kmVoll > 0))
       return { stufe: "", wort: "Noch kein Urteil", kurz: "noch kein Urteil", satz: "Trag Kaufpreis und Mieten ein, dann siehst du hier, ob sich das Objekt trägt.", zweite: [], offen: true };
     const betrag = eur2(Math.abs(z.cashflow));
@@ -7474,13 +7640,7 @@
           <div class="card-s">Was passiert, wenn es anders kommt?</div></div></div>
         <div class="card-b"><div class="eq-leer">Trag Kaufpreis und Mieten ein. Dann rechnet ESTRIQ hier durch, was bei höherem Zins, weniger Miete oder Leerstand übrig bleibt.</div></div></div>`);
     }
-    const mehrRate = z.DAR * 2 / 100 / 12;
-    const faelle = [
-      { name: "Zins +2 Punkte", was: z.kredite ? "Die Raten steigen um " + eur2(mehrRate) + " im Monat" : "Ohne Darlehen ändert sich nichts", fall: { rateZusatz: mehrRate } },
-      { name: "Miete −10 %", was: eur(z.kmVoll * 0.9) + " Kaltmiete statt " + eur(z.kmVoll), fall: { mieteFaktor: 0.9 } },
-      { name: "2 Monate Leerstand", was: "Im Jahr fehlen zwei Monatsmieten", fall: { mieteFaktor: 10 / 12 } },
-      { name: "Alles zusammen", was: "Höherer Zins, weniger Miete und Leerstand", fall: { mieteFaktor: 0.9 * 10 / 12, rateZusatz: mehrRate } }
-    ];
+    const faelle = stressFaelle(z);
     const zeile = (name, was, cf, klasse) => `<div class="eq-stress-z${klasse || ""}">
         <div class="eq-stress-n">${esc(name)}<small>${esc(was)}</small></div>
         <div class="eq-stress-w"><b${cf < 0 ? ' class="eq-minus"' : ""}>${eur2(cf)}</b>
@@ -7636,6 +7796,8 @@
         <thead><tr><th scope="col"><span class="eq-nur-leser">Kennzahl</span></th>${liste.map(p => `<th scope="col">${esc(p.name)}<small>${esc(p.ort || "")}</small></th>`).join("")}</tr></thead>
         <tbody>${reihen}
           <tr><td>Urteil</td>${urteile.map(u => `<td>${u.offen ? "—" : `<span class="eq-marke ${u.stufe}">${esc(u.wort)}</span><small>${esc(u.kurz)}</small>`}</td>`).join("")}</tr>
+          <tr><td>Bewertung</td>${liste.map((p, i) => { const pk = projektBewertung(p, zahlen[i]), s = bewertungSatz(pk); return `<td><span>${s.gut} von ${pk.length}</span><small>Punkte dafür</small></td>`; }).join("")}</tr>
+          <tr><td>Lage</td>${liste.map(p => { const lg = lageVon(p.planRoh); return `<td>${lg.offen ? "—" : esc(lg.wort)}</td>`; }).join("")}</tr>
         </tbody></table></div>
       <div class="note" style="margin-top:12px">Das Häkchen ✓ steht beim besten Wert der Zeile.${liste.length > 2 ? `<span class="eq-nur-schmal"> In der Tabelle kannst du zur Seite wischen.</span>` : ""}</div>
       <div class="eq-vgl-knoepfe">${liste.map((p, i) => `<button type="button" class="add-btn" data-zu="${i}">${esc(p.name)} öffnen</button>`).join("")}</div>`);
@@ -7687,6 +7849,286 @@
       : "Variante angelegt. Rechne hier anders – das Original bleibt, wie es ist.");
   }
 
+  /* ---------- Projekte, Teil 3 (Phase 11): Lage, Vergleichsmiete und die Bewertung im Einzelnen ---------- */
+
+  // Durchschnittliche Nettokaltmiete je m² in laufenden Mietverträgen, je Bundesland.
+  // Quelle: Zensus 2022 (Stichtag 15. Mai 2022), Statistische Ämter des Bundes und der Länder.
+  // Bei neuen Zahlen nur hier anpassen – und MIETE_STAND gleich mit.
+  const MIETE_LAND = {
+    BW: 8.13, BY: 8.74, BE: 7.67, BB: 6.21, HB: 7.34, HH: 9.16, HE: 8.21, MV: 5.91,
+    NI: 6.56, NW: 6.82, RP: 6.75, SL: 6.12, SN: 5.72, ST: 5.38, SH: 7.41, TH: 5.65
+  };
+  const MIETE_BUND = 7.28;
+  // Größe der Gemeinde mit der bundesweiten Durchschnittsmiete je m². Quelle: Statistisches Bundesamt,
+  // Mikrozensus 2022 (Mieten nach Gemeindetyp). Eine amtliche Tabelle je Bundesland UND Gemeindetyp gibt es nicht –
+  // deshalb stehen beide Werte nebeneinander, statt einen daraus zu schätzen.
+  // [Kennung, Name, Erklärung, Miete je m², Name in der Mehrzahl]
+  const GEMEINDETYP = [
+    ["gross", "Großstadt", "über 100.000 Einwohner", 8.1, "Großstädte"],
+    ["mittel", "Mittelgroße Stadt", "20.000 bis 100.000 Einwohner", 6.9, "Mittelgroße Städte"],
+    ["klein", "Kleinstadt oder Dorf", "unter 20.000 Einwohner", 6.4, "Kleinstädte und Dörfer"]
+  ];
+  const MIETE_STAND = "Das sind laufende Mietverträge, Stand 2022. Neue Verträge sind meist teurer.";
+
+  // Zustand des Objekts mit der Annahme für die Instandhaltung in € je m² im Monat
+  const ZUSTAND = [
+    ["gut", "Saniert oder neu", "In den nächsten Jahren steht nichts Großes an", 0.8],
+    ["mittel", "Gepflegt", "Kleinere Arbeiten stehen an", 1],
+    ["schlecht", "Sanierungsbedürftig", "Dach, Heizung oder Fenster müssen bald gemacht werden", 1.5]
+  ];
+  const zustandVon = (plan) => ZUSTAND.find(x => x[0] === (plan && plan.zustand)) || null;
+
+  // Drei Fragen zur Lage. Jede Antwort zählt 2, 1 oder 0 Punkte.
+  const LAGE_FRAGEN = [
+    { id: "oepnv", titel: "Bus und Bahn", frage: "Wie gut ist die Anbindung an Bus und Bahn?",
+      hinweis: "Gemeint ist der Weg zur nächsten Haltestelle – und wie oft dort etwas fährt.",
+      optionen: [[2, "Gut", "Haltestelle in wenigen Minuten zu Fuß, es fährt oft"], [1, "Mittel", "Haltestelle erreichbar, es fährt aber selten"], [0, "Schlecht", "Ohne Auto geht es kaum"]] },
+    { id: "einkauf", titel: "Einkaufen", frage: "Wie weit ist es zum nächsten Lebensmittelladen?",
+      hinweis: "Gemeint ist ein Supermarkt oder Discounter für den täglichen Einkauf.",
+      optionen: [[2, "Zu Fuß erreichbar", "höchstens etwa 10 Minuten"], [1, "Mit Rad oder Bus", "ein paar Kilometer entfernt"], [0, "Nur mit dem Auto", "im Ort gibt es keinen Laden"]] },
+    { id: "umfeld", titel: "Umfeld", frage: "Was gibt es sonst in der Nähe?",
+      hinweis: "Zum Beispiel Ärzte, Schulen, Kita und Arbeitsplätze.",
+      optionen: [[2, "Fast alles", "Ärzte, Schulen und Arbeitsplätze sind nah"], [1, "Einiges", "für manches muss man fahren"], [0, "Wenig", "für fast alles muss man fahren"]] }
+  ];
+  const LAGE_MAX = LAGE_FRAGEN.length * 2;
+
+  // Einstufung der Lage aus den drei Antworten. Solange eine fehlt, gibt es keine Einstufung.
+  function lageVon(plan) {
+    const lage = (plan && plan.lage) || {};
+    const werte = LAGE_FRAGEN.map(f => { const v = Number(lage[f.id]); return lage[f.id] != null && lage[f.id] !== "" && (v === 0 || v === 1 || v === 2) ? v : null; });
+    const beantwortet = werte.filter(v => v != null).length;
+    const punkte = werte.reduce((a, v) => a + (v || 0), 0);
+    const o = { werte, beantwortet, punkte, offen: beantwortet < LAGE_FRAGEN.length, stufe: "", wort: "" };
+    if (o.offen) { o.wort = beantwortet ? "Noch nicht vollständig" : "Noch nicht eingestuft"; return o; }
+    if (punkte >= 5) { o.stufe = "gut"; o.wort = "Gute Lage"; o.satz = "Gute Lagen lassen sich leichter vermieten."; }
+    else if (punkte >= 3) { o.stufe = "mittel"; o.wort = "Mittlere Lage"; o.satz = "Die Vermietung kann etwas länger dauern."; }
+    else { o.stufe = "achtung"; o.wort = "Einfache Lage"; o.satz = "Rechne mit mehr Leerstand und einer längeren Suche nach Mietern."; }
+    return o;
+  }
+
+  // Vergleichswerte je m² aus der Statistik: der Durchschnitt des Bundeslands und der bundesweite Wert für die
+  // Größe der Gemeinde. Ohne beide Angaben bleibt der Durchschnitt für Deutschland.
+  function mietReferenz(plan) {
+    const liste = [], land = plan && plan.bundesland, typ = GEMEINDETYP.find(g => g[0] === (plan && plan.gemeindetyp));
+    if (MIETE_LAND[land]) liste.push({ text: "Durchschnitt in " + bundeslandName(land), wert: MIETE_LAND[land], art: "land" });
+    if (typ) liste.push({ text: typ[4] + " in Deutschland", wert: typ[3], art: "typ" });
+    if (!liste.length) liste.push({ text: "Durchschnitt in Deutschland", wert: MIETE_BUND, art: "bund" });
+    return liste;
+  }
+
+  // Zinsbindung in Jahren (Annahme: 10) und die Restschuld aller Darlehen an ihrem Ende
+  const ZINSBINDUNG_ANNAHME = 10;
+  function zinsbindungVon(p) {
+    const roh = Number(p.planRoh && p.planRoh.zinsbindung_jahre);
+    const jahre = roh > 0 ? roh : ZINSBINDUNG_ANNAHME;
+    const rest = FE.creditsOf(p).reduce((a, k) => a + rcRestschuld(Number(k.summe) || 0, Number(k.zinsPa) || 0, Number(k.abtragMonat) || 0, Math.round(jahre * 12)), 0);
+    return { jahre, annahme: !(roh > 0), rest };
+  }
+
+  // Die vier Fälle des Stresstests – für die Karte und für die Bewertung
+  function stressFaelle(z) {
+    const mehrRate = z.DAR * 2 / 100 / 12;
+    return [
+      { name: "Zins +2 Punkte", was: z.kredite ? "Die Raten steigen um " + eur2(mehrRate) + " im Monat" : "Ohne Darlehen ändert sich nichts", fall: { rateZusatz: mehrRate } },
+      { name: "Miete −10 %", was: eur(z.kmVoll * 0.9) + " Kaltmiete statt " + eur(z.kmVoll), fall: { mieteFaktor: 0.9 } },
+      { name: "2 Monate Leerstand", was: "Im Jahr fehlen zwei Monatsmieten", fall: { mieteFaktor: 10 / 12 } },
+      { name: "Alles zusammen", was: "Höherer Zins, weniger Miete und Leerstand", fall: { mieteFaktor: 0.9 * 10 / 12, rateZusatz: mehrRate } }
+    ];
+  }
+
+  const BEWERTUNG_WORT = { gut: "Gut", mittel: "Mittel", achtung: "Achtung", kritisch: "Kritisch", offen: "Offen" };
+  const einKomma = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  // Die Bewertung im Einzelnen: jeder Punkt mit Stufe, Wort und einem Satz. Faustregeln sind als solche benannt.
+  // Punkte, die noch Angaben brauchen, tragen tun und tunText – damit kommt man direkt zum passenden Fenster.
+  function projektBewertung(p, z) {
+    const u = projektUrteil(z), roh = p.planRoh || {};
+    const punkte = [];
+    const punkt = (id, titel, stufe, satz, tunText, tun) => punkte.push({ id, titel, stufe, wort: BEWERTUNG_WORT[stufe], satz, tunText, tun });
+
+    // 1. Trägt es sich?
+    if (u.offen) punkt("tragen", "Trägt es sich?", "offen", "Trag Kaufpreis und Mieten ein, dann rechnet ESTRIQ.", "Kaufdaten eintragen", () => openKaufdaten(p));
+    else punkt("tragen", "Trägt es sich?", u.stufe, u.satz);
+
+    // 2. Kaufpreis im Verhältnis zur Miete
+    if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", "Braucht Kaufpreis und Mieten.");
+    else {
+      const f = "Der Kaufpreis ist das " + einKomma(z.faktor) + "-Fache der Jahreskaltmiete. Faustregel: ";
+      if (z.faktor <= 20) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 20-Fachen gilt als günstig.");
+      else if (z.faktor <= 25) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 20- und dem 25-Fachen ist üblich.");
+      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Über dem 25-Fachen ist teuer. In gefragten Städten ist das aber nicht ungewöhnlich.");
+    }
+
+    // 3. bis 5. Finanzierung: Zins gegen Ertrag, Eigenkapital, Tilgung
+    if (!z.kredite) {
+      punkt("finanzierung", "Finanzierung", "offen", "Noch kein Darlehen eingetragen. ESTRIQ rechnet so, als würdest du alles selbst bezahlen.",
+        "Darlehen eintragen", () => openCreditEdit(p, null, true));
+    } else {
+      if (z.brutto == null || !(z.KM > 0)) punkt("zins", "Miete und Kreditzins", "offen", "Braucht Kaufpreis und Mieten.");
+      else {
+        const s = "Die Miete bringt " + prozent2(z.brutto) + " im Jahr, der Kredit kostet " + prozent2(z.hoechsterZins) + " Zins.";
+        if (z.brutto < z.hoechsterZins) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet mehr, als die Miete bringt.");
+        else if (z.brutto < z.hoechsterZins + 1) punkt("zins", "Miete und Kreditzins", "achtung", s + " Der Abstand ist knapp.");
+        else punkt("zins", "Miete und Kreditzins", "gut", s);
+      }
+      if (z.zuVielFinanziert) punkt("eigenkapital", "Eigenkapital", "kritisch", "Die Darlehen sind höher als die Gesamtinvestition. Prüf die Darlehenssummen.");
+      else if (!(z.KP > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht den Kaufpreis.");
+      else if (z.EK + 0.5 >= z.KNK) punkt("eigenkapital", "Eigenkapital", "gut", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + ".");
+      else punkt("eigenkapital", "Eigenkapital", "achtung", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " nicht. Banken verlangen dafür meist einen höheren Zins.");
+      const t = z.DAR > 0 ? z.tilgung1 / z.DAR * 100 : 0;
+      const ts = "Im ersten Jahr tilgst du " + prozent2(t) + " des Darlehens.";
+      if (t >= 2) punkt("tilgung", "Tilgung", "gut", ts);
+      else if (t >= 1) punkt("tilgung", "Tilgung", "achtung", ts + " Faustregel: mindestens 2 % – sonst dauert es sehr lange, bis du schuldenfrei bist.");
+      else punkt("tilgung", "Tilgung", "kritisch", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.");
+    }
+
+    // 6. Stresstest
+    if (u.offen) punkt("stress", "Stresstest", "offen", "Braucht Kaufpreis und Mieten.");
+    else if (z.cashflow < 0) punkt("stress", "Stresstest", "kritisch", "Trägt sich schon nach Plan nicht – für Überraschungen ist kein Platz.");
+    else {
+      const faelle = stressFaelle(z), nicht = faelle.filter(f => projektZahlen(p, f.fall).cashflow < 0).length;
+      if (!nicht) punkt("stress", "Stresstest", "gut", "Trägt sich auch bei höherem Zins, weniger Miete und Leerstand.");
+      else punkt("stress", "Stresstest", "achtung", "Trägt sich nach Plan, aber in " + nicht + " von " + faelle.length + " Stressfällen nicht.");
+    }
+
+    // 7. Lage
+    const lg = lageVon(roh);
+    if (lg.offen) punkt("lage", "Lage", "offen", "Mit drei Fragen stufst du die Lage ein.", "Lage einstufen", () => openLageEdit(p));
+    else punkt("lage", "Lage", lg.stufe, lg.wort + " (" + lg.punkte + " von " + LAGE_MAX + " Punkten). " + lg.satz);
+
+    // 8. Geplante Miete im Vergleich
+    const eigene = Number(roh.vergleichsmiete_m2) > 0 ? Number(roh.vergleichsmiete_m2) : null;
+    if (z.kmM2 == null || !(z.KM > 0)) punkt("miete", "Miete im Vergleich", "offen", "Trag bei den Einheiten Fläche und Kaltmiete ein.");
+    else if (eigene) {
+      const ab = (z.kmM2 / eigene - 1) * 100, s = "Du planst " + eur2(z.kmM2) + " je m², ortsüblich sind " + eur2(eigene) + ".";
+      if (ab > 20) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.");
+      else if (ab > 10) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.");
+      else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.");
+      else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an der ortsüblichen Miete.");
+    } else {
+      const ref = mietReferenz(roh)[0], s = "Du planst " + eur2(z.kmM2) + " je m². " + ref.text + ": " + eur2(ref.wert) + ".";
+      if (z.kmM2 > ref.wert * 1.5) punkt("miete", "Miete im Vergleich", "achtung", s + " Deine Miete liegt deutlich darüber. Prüf im Mietspiegel, ob sie zum Ort passt.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
+      else punkt("miete", "Miete im Vergleich", "offen", s + " Trag die ortsübliche Miete aus dem Mietspiegel ein, dann vergleicht ESTRIQ genauer.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
+    }
+
+    // 9. Zustand
+    const zu = zustandVon(roh);
+    if (!zu) punkt("zustand", "Zustand", "offen", "Noch nicht eingetragen.", "Zustand eintragen", () => openProjektEdit(p));
+    else if (zu[0] === "gut") punkt("zustand", "Zustand", "gut", zu[1] + ". " + zu[2] + ".");
+    else if (zu[0] === "mittel") punkt("zustand", "Zustand", "mittel", zu[1] + ". " + zu[2] + ".");
+    else if (z.SAN > 0) punkt("zustand", "Zustand", "achtung", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.");
+    else punkt("zustand", "Zustand", "kritisch", "Sanierungsbedürftig, aber noch ohne Sanierungsbudget. Trag ein, was die Arbeiten kosten.", "Budget eintragen", () => openKaufdaten(p));
+
+    // 10. Prüfliste
+    const bekannt = new Set(PRUEFLISTE.map(x => x[0]));
+    const erledigt = (Array.isArray(roh.pruefliste) ? roh.pruefliste : []).filter(k => bekannt.has(k)).length;
+    if (erledigt >= PRUEFLISTE.length) punkt("pruefliste", "Prüfliste", "gut", "Alle " + PRUEFLISTE.length + " Punkte sind erledigt.");
+    else punkt("pruefliste", "Prüfliste", "offen", erledigt + " von " + PRUEFLISTE.length + " Punkten erledigt. Die Liste steht weiter unten.");
+    return punkte;
+  }
+
+  // Ein Satz als Zusammenfassung: wie viele Punkte dafür sprechen, wie viele Aufmerksamkeit brauchen, wie viele offen sind
+  function bewertungSatz(punkte) {
+    const n = (s) => punkte.filter(x => s.includes(x.stufe)).length;
+    const gut = n(["gut"]), mittel = n(["mittel"]), warn = n(["achtung", "kritisch"]), offen = n(["offen"]);
+    const teile = [gut + " von " + punkte.length + " Punkten " + (gut === 1 ? "spricht" : "sprechen") + " für das Objekt"];
+    if (mittel) teile.push(mittel + " " + (mittel === 1 ? "liegt" : "liegen") + " im Mittelfeld");
+    if (warn) teile.push(warn + " " + (warn === 1 ? "braucht" : "brauchen") + " deine Aufmerksamkeit");
+    if (offen) teile.push(offen + " " + (offen === 1 ? "ist" : "sind") + " noch offen");
+    return { gut, mittel, warn, offen, text: teile.join(", ") + "." };
+  }
+
+  function bewertungKarte(p, z) {
+    const punkte = projektBewertung(p, z), s = bewertungSatz(punkte);
+    const marke = (x) => `<span class="eq-marke${x.stufe === "offen" ? " eq-aus" : x.stufe === "mittel" ? "" : " " + x.stufe}">${esc(x.wort)}</span>`;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Bewertung im Einzelnen</div>
+        <div class="card-s" id="bwSatz">${esc(s.text)}</div></div></div>
+      <div class="card-b">
+        <div class="eq-bw">${punkte.map((x, i) => `<div class="eq-bw-z" data-bw="${x.id}">
+          <div class="eq-bw-n"><div class="eq-bw-t">${esc(x.titel)}</div><div class="eq-bw-s">${esc(x.satz)}</div>
+            ${x.tun ? `<button type="button" class="eq-verweis" data-bwtun="${i}">${esc(x.tunText)}</button>` : ""}</div>
+          ${marke(x)}</div>`).join("")}</div>
+        <div class="note" style="margin-top:12px">Die Bewertung ordnet deine Zahlen ein. Faustregeln passen nicht auf jedes Objekt – die Entscheidung triffst du.</div>
+      </div></div>`);
+    karte.querySelectorAll("[data-bwtun]").forEach(b => b.onclick = () => punkte[Number(b.dataset.bwtun)].tun());
+    return karte;
+  }
+
+  // Lage und Vergleichsmiete: die drei Antworten, die Einstufung und die Miete je m² neben den Werten aus der Statistik
+  function lageKarte(p, z) {
+    const roh = p.planRoh || {}, lg = lageVon(roh);
+    const typ = GEMEINDETYP.find(g => g[0] === roh.gemeindetyp);
+    const eigene = Number(roh.vergleichsmiete_m2) > 0 ? Number(roh.vergleichsmiete_m2) : null;
+    const geplant = z.kmM2 != null && z.KM > 0 ? z.kmM2 : null;
+    const land = MIETE_LAND[roh.bundesland] ? bundeslandName(roh.bundesland) : "";
+    // Reihen des Vergleichs: erst die eigenen Werte, dann die Statistik
+    const reihen = [
+      geplant != null ? { name: "Deine geplante Miete", wert: geplant, eigen: true } : null,
+      eigene ? { name: "Ortsübliche Miete", unter: "deine Angabe", wert: eigene, eigen: true } : null,
+      { name: land ? "Durchschnitt in " + land : "Durchschnitt in Deutschland", wert: land ? MIETE_LAND[roh.bundesland] : MIETE_BUND }
+    ].filter(Boolean).concat(GEMEINDETYP.map(g => ({ name: g[4] + " in Deutschland", unter: typ && typ[0] === g[0] ? "passt zu deinem Objekt" : g[2], wert: g[3], passt: typ && typ[0] === g[0] })));
+    const max = Math.max(...reihen.map(r => r.wert), 0.01);
+    const vergleich = `<div class="eq-ref" role="group" aria-label="Kaltmiete je Quadratmeter im Vergleich">${reihen.map(r => `<div class="eq-ref-z${r.eigen ? " eq-ref-eigen" : ""}${r.passt ? " eq-ref-passt" : ""}">
+        <span class="eq-ref-n">${esc(r.name)}${r.unter ? `<small>${esc(r.unter)}</small>` : ""}</span><b>${eur2(r.wert)}</b>
+        <span class="eq-ref-b" aria-hidden="true"><i style="width:${(r.wert / max * 100).toFixed(1)}%"></i></span></div>`).join("")}</div>`;
+    const vorsicht = !lg.offen && lg.stufe === "achtung" && z.plan.ausfall_pct < 5;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Lage und Vergleichsmiete</div>
+        <div class="card-s">Wie gut das Objekt liegt und was dort an Miete üblich ist</div></div>
+        <button type="button" class="add-btn" id="pLage">${lg.beantwortet || typ || eigene ? "Bearbeiten" : "Lage einstufen"}</button></div>
+      <div class="card-b">
+        ${lg.offen
+          ? `<div class="eq-lage-kopf"><span class="eq-marke eq-aus">${esc(lg.wort)}</span><span>${lg.beantwortet ? lg.beantwortet + " von " + LAGE_FRAGEN.length + " Fragen beantwortet." : "Drei Fragen zu Bus und Bahn, Einkaufen und Umfeld – daraus stuft ESTRIQ die Lage ein."}</span></div>`
+          : `<div class="eq-lage-kopf"><span class="eq-marke${lg.stufe === "mittel" ? "" : " " + lg.stufe}">${esc(lg.wort)}</span><span>${lg.punkte} von ${LAGE_MAX} Punkten. ${esc(lg.satz)}</span></div>`}
+        ${lg.beantwortet ? `<div class="eq-kauf">${LAGE_FRAGEN.map((f, i) => {
+          const o = f.optionen.find(x => x[0] === lg.werte[i]);
+          return `<div class="kv${o ? "" : " muted"}"><span class="eq-kauf-n">${esc(f.titel)}${o ? `<small>${esc(o[2])}</small>` : ""}</span><b>${o ? esc(o[1]) : "—"}</b></div>`; }).join("")}</div>` : ""}
+        ${vorsicht ? `<div class="eq-zustand achtung" style="margin:16px 0 0"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Einfache Lage: lieber vorsichtiger rechnen</div>
+          <div class="eq-zustand-d">Du rechnest mit ${esc(prozent(z.plan.ausfall_pct, null))} Mietausfall. In einfachen Lagen stehen Wohnungen eher leer. 5 % sind eine vorsichtigere Annahme.</div></div>
+          <button type="button" class="eq-btn" id="pLageAusfall">Mit 5 % rechnen</button></div>` : ""}
+        <div class="card-t eq-zwischen">Kaltmiete je m² im Vergleich</div>
+        ${vergleich}
+        <div class="note" style="margin-top:12px">${geplant == null ? "Trag bei den Einheiten Fläche und Kaltmiete ein, dann steht deine geplante Miete daneben. " : ""}Die Durchschnitte kommen aus der amtlichen Statistik (Zensus und Mikrozensus 2022). ${MIETE_STAND} Den genauen Wert für deine Straße nennt der Mietspiegel deiner Gemeinde.</div>
+      </div></div>`);
+    karte.querySelector("#pLage").onclick = () => openLageEdit(p);
+    const b = karte.querySelector("#pLageAusfall");
+    if (b) b.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true;
+      try { await planSpeichern(p, { ausfall_pct: 5 }); await window.nachSpeichern(); }
+      catch (e) { b.disabled = false; showToast(window.fehlerText(e)); return; }
+      showToast("ESTRIQ rechnet jetzt mit 5 % Mietausfall.");
+    };
+    return karte;
+  }
+
+  // Fenster: Größe der Gemeinde, die drei Fragen zur Lage und die ortsübliche Miete
+  function openLageEdit(p) {
+    const roh = p.planRoh || {}, lage = roh.lage || {};
+    const wahl = (v) => v === 0 || v === 1 || v === 2 || v === "0" || v === "1" || v === "2" ? String(v) : "";
+    const ref = mietReferenz(roh).map(r => r.text + " " + eur2(r.wert)).join(", ");
+    const body = `
+      ${efSel("Größe der Gemeinde", "gemeindetyp", roh.gemeindetyp || "",
+        [{ v: "", t: "Bitte wählen" }].concat(GEMEINDETYP.map(g => ({ v: g[0], t: g[1] + " · " + g[2] }))),
+        { hinweis: "Damit zeigt ESTRIQ die passende Vergleichsmiete." })}
+      ${efTitel("Lage")}
+      ${LAGE_FRAGEN.map(f => efSel(f.frage, "lage_" + f.id, wahl(lage[f.id]),
+        [{ v: "", t: "Bitte wählen" }].concat(f.optionen.map(o => ({ v: String(o[0]), t: o[1] + " – " + o[2] }))),
+        { hinweis: f.hinweis })).join("")}
+      ${efTitel("Vergleichsmiete")}
+      ${ef("Ortsübliche Miete", "vergleichsmiete_m2", roh.vergleichsmiete_m2 || "", "number", { einheit: "€ je m²", min: 0, platzhalter: "z. B. 8,50",
+        hinweis: "Aus dem Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + ref + "." })}
+      ${efAktionen()}`;
+    const sheet = openSheet("Lage und Vergleichsmiete", p.name, body);
+    efBind(sheet, async (w) => {
+      const neu = { ...lage };
+      LAGE_FRAGEN.forEach(f => { const v = w["lage_" + f.id]; if (v === "") delete neu[f.id]; else neu[f.id] = Number(v); });
+      await planSpeichern(p, { gemeindetyp: text(w.gemeindetyp), lage: neu, vergleichsmiete_m2: zahl(w.vergleichsmiete_m2) > 0 ? zahl(w.vergleichsmiete_m2) : null });
+    });
+  }
+
   function renderProjekt(host, slug) {
     const p = projekte().find(x => x.id === slug);
     $("#eyebrow").textContent = "Projekt";
@@ -7702,8 +8144,8 @@
     $("#pageTitle").textContent = p.name;
     $("#pageSub").textContent = p.ort || bundeslandName(z.plan.bundesland) || "";
     const teile = [
-      projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), kaufKarte(p, z),
-      einheitenKarte(p), finanzierungBereich(p), kostenKarte(p, z),
+      projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), bewertungKarte(p, z), kaufKarte(p, z),
+      einheitenKarte(p), lageKarte(p, z), finanzierungBereich(p), kostenKarte(p, z),
       (hatModul() || z.plan.sanierung_auto) ? sanierungSchalter(p, z) : null, gewerkeKarte(p),
       nebenkostenKarte(p), stresstestKarte(p, z), prueflisteKarte(p), notizKarte(p, z)
     ];
@@ -7778,13 +8220,15 @@
       ${ef("Name", "name", p.name, "text", { pflicht: true, platzhalter: "z. B. Bergstraße 12" })}
       ${ef("Ort", "ort", p.ort || "")}
       ${ef("Baujahr", "baujahr", plan.baujahr || "", "number", { step: "1", min: 1000, max: 2200, platzhalter: "z. B. 1978" })}
+      ${efSel("Zustand", "zustand", plan.zustand || "", [{ v: "", t: "Bitte wählen" }].concat(ZUSTAND.map(x => ({ v: x[0], t: x[1] + " – " + x[2] }))),
+        { hinweis: "Dein Eindruck reicht. Der Zustand fließt in die Bewertung ein." })}
       ${ef("Link zum Inserat", "inserat", plan.inserat || "", "url", { platzhalter: "https://…" })}
       ${efArea("Notiz", "notiz", p.note || "")}
       ${efAktionen()}`;
     const sheet = openSheet("Projekt bearbeiten", p.name, body);
     efBind(sheet, async (w) => await window.speichereProjekt(p._id, {
       name: text(w.name) || "Projekt", ort: text(w.ort), notiz: text(w.notiz),
-      projekt: { v: 1, ...(p.planRoh || {}), baujahr: w.baujahr ? Math.round(Number(w.baujahr)) : null, inserat: text(w.inserat), geaendert_am: new Date().toISOString() }
+      projekt: { v: 1, ...(p.planRoh || {}), baujahr: w.baujahr ? Math.round(Number(w.baujahr)) : null, zustand: text(w.zustand), inserat: text(w.inserat), geaendert_am: new Date().toISOString() }
     }));
   }
 
@@ -8069,7 +8513,7 @@
       ${zustand}
       ${rate}
       <div class="eq-werte" style="margin-bottom:22px">
-        ${wert("Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
+        ${wert(kstream && kstream.istProjekt && !kr.start ? "Darlehenssumme" : "Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
         ${wert("Getilgt bisher", eur(k.getilgt), prozent(k.anteil, 0) + " von " + eur(k.summe))}
         ${wert("Zinssatz", prozent(kr.zinsPa || 0, null), "im Jahr")}
         ${wert("Erste Rate", esc(monatLang(p.startKey)))}
@@ -8435,6 +8879,8 @@
         { pflicht: true, einheit: "€", min: 0, hinweis: "Zins und Tilgung zusammen – so, wie die Bank die Rate abbucht" })}
       ${ef("Erste Rate am", "start", kr ? (kr.start || "") : "", "date",
         { hinweis: plan ? "Kannst du leer lassen, solange der Beginn offen ist" : "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
+      ${plan ? ef("Zinsbindung", "zinsbindung_jahre", (s.planRoh && s.planRoh.zinsbindung_jahre) || "", "number", { step: "1", einheit: "Jahre", min: 1, max: 40, platzhalter: "10",
+        hinweis: "So lange ist der Zins fest. Gilt für alle Darlehen dieses Projekts. ESTRIQ zeigt dir, was danach noch offen ist." }) : ""}
       ${plan ? "" : `${efTitel("Kontostand der Bank")}
       ${ef("Restschuld laut Bank", "rest_stand_betrag", kr && kr.restStand ? kr.restStand.betrag : "", "number",
         { einheit: "€", min: 0, hinweis: "Trägst du sie ein, zeigt ESTRIQ diesen Stand und rechnet von dort weiter. Leer lassen, wenn ESTRIQ selbst rechnen soll." })}
@@ -8477,7 +8923,13 @@
       return o;
     };
     efBind(sheet,
-      async (w) => neu ? await neuerKredit(s._id, bauen(w)) : await speichereKredit(kr._id, bauen(w)),
+      async (w) => {
+        if (neu) await neuerKredit(s._id, bauen(w)); else await speichereKredit(kr._id, bauen(w));
+        if (!plan) return;
+        // Die Zinsbindung gehört zu den Planungsdaten des Projekts – nur speichern, wenn sie sich geändert hat
+        const jahre = zahl(w.zinsbindung_jahre) > 0 ? zahl(w.zinsbindung_jahre) : null;
+        if (jahre !== ((s.planRoh && s.planRoh.zinsbindung_jahre) || null)) await planSpeichern(s, { zinsbindung_jahre: jahre });
+      },
       neu ? null : async () => await loescheKredit(kr._id),
       "Kredit endgültig löschen?");
   }
