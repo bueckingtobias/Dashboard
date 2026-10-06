@@ -8161,6 +8161,11 @@
   }
 
   const BEWERTUNG_WORT = { gut: "Gut", mittel: "Mittel", achtung: "Achtung", kritisch: "Kritisch", offen: "Offen" };
+  // Skala von Rot über Gelb nach Grün: Jede Stufe hat ihren Abschnitt (0 = ganz links, 1 = ganz rechts).
+  // Innerhalb des Abschnitts verschiebt t (0 bis 1) den Punkt – so liegt „knapp gut" links von „sehr gut".
+  const BEWERTUNG_SKALA = { kritisch: [0.03, 0.22], achtung: [0.25, 0.46], mittel: [0.48, 0.70], gut: [0.72, 0.97] };
+  const k01 = (x) => isFinite(x) ? Math.max(0, Math.min(1, x)) : (x > 0 ? 1 : 0.5);
+  const bewertungStelle = (x) => { const b = BEWERTUNG_SKALA[x.stufe]; return b ? b[0] + (b[1] - b[0]) * k01(x.t == null ? 0.5 : x.t) : null; };
   const einKomma = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   // Die Bewertung im Einzelnen: jeder Punkt mit Stufe, Wort und einem Satz. Faustregeln sind als solche benannt.
@@ -8168,12 +8173,13 @@
   function projektBewertung(p, z) {
     const u = projektUrteil(z), roh = p.planRoh || {};
     const punkte = [];
-    const punkt = (id, titel, stufe, satz, tunText, tun) => punkte.push({ id, titel, stufe, wort: BEWERTUNG_WORT[stufe], satz, tunText, tun });
+    // Gibt den Punkt zurück: Mit .t (0 bis 1) lässt sich die Stelle innerhalb der Stufe verfeinern
+    const punkt = (id, titel, stufe, satz, tunText, tun) => { const o = { id, titel, stufe, wort: BEWERTUNG_WORT[stufe], satz, tunText, tun, t: 0.5 }; punkte.push(o); return o; };
 
     const braucht = z.bestand ? "Braucht Sanierungskosten und Mieten." : "Braucht Kaufpreis und Mieten.";
     // 1. Trägt es sich?
     if (u.offen) punkt("tragen", "Trägt es sich?", "offen", "Trag " + (z.bestand ? "Sanierungskosten" : "Kaufpreis") + " und Mieten ein, dann rechnet ESTRIQ.", z.bestand ? "Kosten eintragen" : "Kaufdaten eintragen", () => openKaufdaten(p));
-    else punkt("tragen", "Trägt es sich?", u.stufe, u.satz);
+    else punkt("tragen", "Trägt es sich?", u.stufe, u.satz).t = z.cashflow >= 0 ? z.cashflow / (0.2 * z.KM) : u.stufe === "achtung" ? 1 + z.cashflow / (0.1 * z.KM) : 1 + (z.cashflow + 0.1 * z.KM) / (0.4 * z.KM);
 
     // 2. Investition im Verhältnis zur Miete – beim Kauf der Kaufpreis, im eigenen Objekt die Sanierung
     if (z.bestand) {
@@ -8181,19 +8187,19 @@
       else if (z.wert) {
         // Mit dem Wert des Hauses: derselbe Maßstab wie beim Kauf
         const fk = (z.INV + z.wert) / (z.KM * 12), f = "Haus und Sanierung zusammen sind das " + einKomma(fk) + "-Fache der Jahreskaltmiete. Faustregel: ";
-        if (fk <= 22) punkt("preis", "Investition und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.");
-        else if (fk <= 28) punkt("preis", "Investition und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.");
-        else punkt("preis", "Investition und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. Dann bringt ein Verkauf vielleicht mehr als die Vermietung.");
+        if (fk <= 22) punkt("preis", "Investition und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.").t = (22 - fk) / 10;
+        else if (fk <= 28) punkt("preis", "Investition und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.").t = (28 - fk) / 6;
+        else punkt("preis", "Investition und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. Dann bringt ein Verkauf vielleicht mehr als die Vermietung.").t = 1 - (fk - 28) / 12;
       } else {
         const f = "Die Investition ist das " + einKomma(z.rueckfluss) + "-Fache der Jahreskaltmiete. Nach etwa " + einKomma(z.rueckfluss) + " Jahren hat die Miete sie eingespielt – vor Kosten und Zinsen. Der Wert des Hauses ist nicht mitgerechnet.";
-        punkt("preis", "Investition und Miete", z.rueckfluss <= 15 ? "gut" : z.rueckfluss <= 22 ? "mittel" : "achtung", f, "Wert des Hauses eintragen", () => openKaufdaten(p));
+        punkt("preis", "Investition und Miete", z.rueckfluss <= 15 ? "gut" : z.rueckfluss <= 22 ? "mittel" : "achtung", f, "Wert des Hauses eintragen", () => openKaufdaten(p)).t = z.rueckfluss <= 15 ? (15 - z.rueckfluss) / 10 : z.rueckfluss <= 22 ? (22 - z.rueckfluss) / 7 : 1 - (z.rueckfluss - 22) / 10;
       }
     } else if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", braucht);
     else {
       const f = "Der Kaufpreis ist das " + einKomma(z.faktor) + "-Fache der Jahreskaltmiete. Faustregel: ";
-      if (z.faktor <= 22) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.");
-      else if (z.faktor <= 28) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.");
-      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. In gefragten Städten ist das aber nicht ungewöhnlich.");
+      if (z.faktor <= 22) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.").t = (22 - z.faktor) / 10;
+      else if (z.faktor <= 28) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.").t = (28 - z.faktor) / 6;
+      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. In gefragten Städten ist das aber nicht ungewöhnlich.").t = 1 - (z.faktor - 28) / 12;
     }
 
     // 3. bis 5. Finanzierung: Zins gegen Ertrag, Eigenkapital, Tilgung
@@ -8204,54 +8210,55 @@
       if (z.brutto == null || !(z.KM > 0)) punkt("zins", "Miete und Kreditzins", "offen", braucht);
       else {
         const s = "Die Miete bringt " + prozent2(z.brutto) + " im Jahr, der Kredit kostet " + prozent2(z.hoechsterZins) + " Zins.";
-        if (z.brutto < z.hoechsterZins - 1) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet deutlich mehr, als die Miete bringt.");
-        else if (z.brutto < z.hoechsterZins) punkt("zins", "Miete und Kreditzins", "achtung", s + " Der Kredit kostet etwas mehr, als die Miete bringt.");
-        else if (z.brutto < z.hoechsterZins + 0.5) punkt("zins", "Miete und Kreditzins", "mittel", s + " Der Abstand ist knapp.");
-        else punkt("zins", "Miete und Kreditzins", "gut", s);
+        const d = z.brutto - z.hoechsterZins;   // Abstand in Prozentpunkten
+        if (z.brutto < z.hoechsterZins - 1) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet deutlich mehr, als die Miete bringt.").t = 1 + (d + 1) / 2;
+        else if (z.brutto < z.hoechsterZins) punkt("zins", "Miete und Kreditzins", "achtung", s + " Der Kredit kostet etwas mehr, als die Miete bringt.").t = d + 1;
+        else if (z.brutto < z.hoechsterZins + 0.5) punkt("zins", "Miete und Kreditzins", "mittel", s + " Der Abstand ist knapp.").t = d / 0.5;
+        else punkt("zins", "Miete und Kreditzins", "gut", s).t = (d - 0.5) / 3;
       }
       if (z.zuVielFinanziert) punkt("eigenkapital", "Eigenkapital", "kritisch", "Die Darlehen sind höher als die Gesamtinvestition. Prüf die Darlehenssummen.");
       else if (z.bestand) {
         // Im eigenen Objekt gibt es keine Kaufnebenkosten. Maßstab ist der Anteil, den du selbst zahlst.
         const anteil = z.INV > 0 ? z.EK / z.INV * 100 : 0;
         if (!(z.INV > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht die Sanierungskosten.");
-        else if (anteil >= 20) punkt("eigenkapital", "Eigenkapital", "gut", "Du zahlst " + eur(z.EK) + " selbst. Das sind " + prozent(anteil, 0) + " der Investition.");
-        else punkt("eigenkapital", "Eigenkapital", "mittel", "Du finanzierst " + prozent(100 - anteil, 0) + " der Investition. Das geht oft, weil das Haus der Bank als Sicherheit dient – sprich früh mit ihr.");
+        else if (anteil >= 20) punkt("eigenkapital", "Eigenkapital", "gut", "Du zahlst " + eur(z.EK) + " selbst. Das sind " + prozent(anteil, 0) + " der Investition.").t = (anteil - 20) / 30;
+        else punkt("eigenkapital", "Eigenkapital", "mittel", "Du finanzierst " + prozent(100 - anteil, 0) + " der Investition. Das geht oft, weil das Haus der Bank als Sicherheit dient – sprich früh mit ihr.").t = anteil / 20;
       }
       else if (!(z.KP > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht den Kaufpreis.");
-      else if (z.EK + 0.5 >= z.KNK) punkt("eigenkapital", "Eigenkapital", "gut", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + ".");
-      else if (z.EK >= z.KNK / 2) punkt("eigenkapital", "Eigenkapital", "mittel", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " zum Teil. Viele Banken wollen, dass du sie ganz selbst zahlst.");
-      else punkt("eigenkapital", "Eigenkapital", "achtung", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " nicht. Banken verlangen dafür meist einen höheren Zins.");
+      else if (z.EK + 0.5 >= z.KNK) punkt("eigenkapital", "Eigenkapital", "gut", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + ".").t = (z.EK / z.KNK - 1) / 2;
+      else if (z.EK >= z.KNK / 2) punkt("eigenkapital", "Eigenkapital", "mittel", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " zum Teil. Viele Banken wollen, dass du sie ganz selbst zahlst.").t = (z.EK / z.KNK - 0.5) / 0.5;
+      else punkt("eigenkapital", "Eigenkapital", "achtung", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " nicht. Banken verlangen dafür meist einen höheren Zins.").t = z.EK / (z.KNK / 2);
       const t = z.DAR > 0 ? z.tilgung1 / z.DAR * 100 : 0;
       const ts = "Im ersten Jahr tilgst du " + prozent2(t) + " des Darlehens.";
-      if (t >= 1.5) punkt("tilgung", "Tilgung", "gut", ts);
-      else if (t >= 1) punkt("tilgung", "Tilgung", "mittel", ts + " Üblich sind etwa 2 % – mit weniger dauert es lange, bis du schuldenfrei bist.");
-      else punkt("tilgung", "Tilgung", "achtung", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.");
+      if (t >= 1.5) punkt("tilgung", "Tilgung", "gut", ts).t = (t - 1.5) / 1.5;
+      else if (t >= 1) punkt("tilgung", "Tilgung", "mittel", ts + " Üblich sind etwa 2 % – mit weniger dauert es lange, bis du schuldenfrei bist.").t = (t - 1) / 0.5;
+      else punkt("tilgung", "Tilgung", "achtung", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.").t = t;
     }
 
     // 6. Stresstest
     if (u.offen) punkt("stress", "Stresstest", "offen", braucht);
     else if (z.cashflow < 0) punkt("stress", "Stresstest", u.stufe === "achtung" ? "achtung" : "kritisch", "Trägt sich schon nach Plan " + (u.stufe === "achtung" ? "knapp " : "") + "nicht – für Überraschungen ist kein Platz.");
     else {
-      const faelle = stressFaelle(z), nicht = faelle.filter(f => projektZahlen(p, f.fall).cashflow < 0).length;
-      if (!nicht) punkt("stress", "Stresstest", "gut", "Trägt sich auch bei höherem Zins, weniger Miete und Leerstand.");
+      const faelle = stressFaelle(z), cfs = faelle.map(f => projektZahlen(p, f.fall).cashflow), nicht = cfs.filter(c => c < 0).length;
+      if (!nicht) punkt("stress", "Stresstest", "gut", "Trägt sich auch bei höherem Zins, weniger Miete und Leerstand.").t = Math.min(...cfs) / (0.2 * z.KM);
       else if (nicht === 1) punkt("stress", "Stresstest", "mittel", "Trägt sich nach Plan und in " + (faelle.length - 1) + " von " + faelle.length + " Stressfällen. Eng wird es erst, wenn mehr zusammenkommt.");
-      else punkt("stress", "Stresstest", "achtung", "Trägt sich nach Plan, aber in " + nicht + " von " + faelle.length + " Stressfällen nicht.");
+      else punkt("stress", "Stresstest", "achtung", "Trägt sich nach Plan, aber in " + nicht + " von " + faelle.length + " Stressfällen nicht.").t = 1 - (nicht - 2) / 2;
     }
 
     // 7. Lage
     const lg = lageVon(roh);
     if (lg.offen) punkt("lage", "Lage", "offen", "Mit drei Fragen stufst du die Lage ein.", "Lage einstufen", () => openLageEdit(p));
-    else punkt("lage", "Lage", lg.stufe, lg.wort + " (" + lg.punkte + " von " + LAGE_MAX + " Punkten). " + lg.satz);
+    else punkt("lage", "Lage", lg.stufe, lg.wort + " (" + lg.punkte + " von " + LAGE_MAX + " Punkten). " + lg.satz).t = lg.stufe === "gut" ? 0.1 + (lg.punkte - 4) * 0.45 : lg.stufe === "mittel" ? 0.25 + (lg.punkte - 2) * 0.5 : 0.2 + lg.punkte * 0.6;
 
     // 8. Geplante Miete im Vergleich
     const eigene = Number(roh.vergleichsmiete_m2) > 0 ? Number(roh.vergleichsmiete_m2) : null;
     if (z.kmM2 == null || !(z.KM > 0)) punkt("miete", "Miete im Vergleich", "offen", "Trag bei den Einheiten Fläche und Kaltmiete ein.");
     else if (eigene) {
       const ab = (z.kmM2 / eigene - 1) * 100, s = "Du planst " + eur2(z.kmM2) + " je m², ortsüblich sind " + eur2(eigene) + ".";
-      if (ab > 30) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.");
-      else if (ab > 15) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.");
-      else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.");
-      else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an der ortsüblichen Miete.");
+      if (ab > 30) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.").t = 1 - (ab - 30) / 30;
+      else if (ab > 15) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.").t = (30 - ab) / 15;
+      else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.").t = 1;
+      else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an der ortsüblichen Miete.").t = 1 - Math.max(0, ab) / 15 * 0.8;
     } else {
       const ref = mietReferenz(roh)[0], s = "Du planst " + eur2(z.kmM2) + " je m². " + ref.text + ": " + eur2(ref.wert) + ".";
       if (z.kmM2 > ref.wert * 1.75) punkt("miete", "Miete im Vergleich", "achtung", s + " Deine Miete liegt deutlich darüber. Prüf im Mietspiegel, ob sie zum Ort passt.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
@@ -8262,24 +8269,24 @@
     const zu = zustandVon(roh);
     if (z.bestand) {
       if (z.plan.sanierung_auto) {
-        if (z.angebote > 0) punkt("kosten", "Sanierungskosten", "gut", "Dein Budget folgt den Angeboten deiner Handwerker: " + eur(z.angebote) + ".");
+        if (z.angebote > 0) punkt("kosten", "Sanierungskosten", "gut", "Dein Budget folgt den Angeboten deiner Handwerker: " + eur(z.angebote) + ".").t = 0.8;
         else punkt("kosten", "Sanierungskosten", "offen", "Noch keine Angebote eingetragen.");
       }
       else if (!(z.SAN > 0)) punkt("kosten", "Sanierungskosten", "offen", "Noch keine Sanierungskosten eingetragen.", "Kosten eintragen", () => openKaufdaten(p));
       else if (!(z.angebote > 0)) punkt("kosten", "Sanierungskosten", "offen", "Du rechnest mit " + eur(z.SAN) + ". Angebote von Handwerkern sind noch nicht eingetragen – hol sie ein, bevor du startest.");
-      else if (z.angebote > z.SAN + 0.5) punkt("kosten", "Sanierungskosten", "achtung", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen über deinem Budget von " + eur(z.SAN) + ".");
-      else punkt("kosten", "Sanierungskosten", "gut", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen in deinem Budget von " + eur(z.SAN) + ".");
+      else if (z.angebote > z.SAN + 0.5) punkt("kosten", "Sanierungskosten", "achtung", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen über deinem Budget von " + eur(z.SAN) + ".").t = 1 - (z.angebote / z.SAN - 1) / 0.3;
+      else punkt("kosten", "Sanierungskosten", "gut", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen in deinem Budget von " + eur(z.SAN) + ".").t = 0.8;
     }
     else if (!zu) punkt("zustand", "Zustand", "offen", "Noch nicht eingetragen.", "Zustand eintragen", () => openProjektEdit(p));
-    else if (zu[0] === "gut") punkt("zustand", "Zustand", "gut", zu[1] + ". " + zu[2] + ".");
-    else if (zu[0] === "mittel") punkt("zustand", "Zustand", "mittel", zu[1] + ". " + zu[2] + ".");
-    else if (z.SAN > 0) punkt("zustand", "Zustand", "mittel", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.");
+    else if (zu[0] === "gut") punkt("zustand", "Zustand", "gut", zu[1] + ". " + zu[2] + ".").t = 0.8;
+    else if (zu[0] === "mittel") punkt("zustand", "Zustand", "mittel", zu[1] + ". " + zu[2] + ".").t = 0.7;
+    else if (z.SAN > 0) punkt("zustand", "Zustand", "mittel", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.").t = 0.15;
     else punkt("zustand", "Zustand", "achtung", "Sanierungsbedürftig, aber noch ohne Sanierungsbudget. Trag ein, was die Arbeiten kosten.", "Budget eintragen", () => openKaufdaten(p));
 
     // 10. Prüfliste
     const liste = prueflisteVon(p), bekannt = new Set(liste.map(x => x[0]));
     const erledigt = (Array.isArray(roh.pruefliste) ? roh.pruefliste : []).filter(k => bekannt.has(k)).length;
-    if (erledigt >= liste.length) punkt("pruefliste", "Prüfliste", "gut", "Alle " + liste.length + " Punkte sind erledigt.");
+    if (erledigt >= liste.length) punkt("pruefliste", "Prüfliste", "gut", "Alle " + liste.length + " Punkte sind erledigt.").t = 1;
     else punkt("pruefliste", "Prüfliste", "offen", erledigt + " von " + liste.length + " Punkten erledigt. Die Liste steht weiter unten.");
     return punkte;
   }
@@ -8295,18 +8302,28 @@
     return { gut, mittel, warn, offen, text: teile.join(", ") + "." };
   }
 
+  // Die Skala eines Punkts: Verlauf von Rot über Gelb nach Grün, darauf ein Punkt an der Stelle der Einstufung.
+  // Die Einstufung steht nicht nur in der Farbe: Sie ergibt sich aus der Stelle des Punkts (links kritisch, rechts gut)
+  // und steht als Wort für Vorleseprogramme dabei. Offene Punkte haben keinen Punkt auf der Skala, nur „noch offen".
+  function bewertungSkala(x) {
+    const stelle = bewertungStelle(x);
+    if (stelle == null) return `<div class="eq-skala eq-skala-offen"><span class="eq-skala-b" aria-hidden="true"></span><span class="eq-skala-o">noch offen</span></div>`;
+    return `<div class="eq-skala" role="img" aria-label="Einstufung: ${esc(x.wort)}. Die Skala reicht von kritisch links bis gut rechts.">
+      <span class="eq-skala-b"><i style="left:calc((100% - 18px) * ${stelle.toFixed(3)})"></i></span></div>`;
+  }
+
   function bewertungKarte(p, z) {
     const punkte = projektBewertung(p, z), s = bewertungSatz(punkte);
-    const marke = (x) => `<span class="eq-marke${x.stufe === "offen" ? " eq-aus" : x.stufe === "mittel" ? "" : " " + x.stufe}">${esc(x.wort)}</span>`;
     const karte = el(`<div class="card">
       <div class="card-h"><div><div class="card-t">Bewertung im Einzelnen</div>
         <div class="card-s" id="bwSatz">${esc(s.text)}</div></div></div>
       <div class="card-b">
-        <div class="eq-bw">${punkte.map((x, i) => `<div class="eq-bw-z" data-bw="${x.id}">
-          <div class="eq-bw-n"><div class="eq-bw-t">${esc(x.titel)}</div><div class="eq-bw-s">${esc(x.satz)}</div>
-            ${x.tun ? `<button type="button" class="eq-verweis" data-bwtun="${i}">${esc(x.tunText)}</button>` : ""}</div>
-          ${marke(x)}</div>`).join("")}</div>
-        <div class="note" style="margin-top:12px">Die Bewertung ordnet deine Zahlen ein. Faustregeln passen nicht auf jedes Objekt – die Entscheidung triffst du.</div>
+        <div class="eq-bw">${punkte.map((x, i) => `<div class="eq-bw-z" data-bw="${x.id}" data-stufe="${x.stufe}">
+          <div class="eq-bw-t">${esc(x.titel)}</div>
+          ${bewertungSkala(x)}
+          <div class="eq-bw-s">${esc(x.satz)}</div>
+          ${x.tun ? `<button type="button" class="eq-verweis" data-bwtun="${i}">${esc(x.tunText)}</button>` : ""}</div>`).join("")}</div>
+        <div class="note" style="margin-top:12px">Der Punkt auf der Skala zeigt die Einstufung: links kritisch, rechts gut. Faustregeln passen nicht auf jedes Objekt – die Entscheidung triffst du.</div>
       </div></div>`);
     karte.querySelectorAll("[data-bwtun]").forEach(b => b.onclick = () => punkte[Number(b.dataset.bwtun)].tun());
     return karte;
