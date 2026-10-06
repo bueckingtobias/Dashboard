@@ -1518,6 +1518,7 @@
   // zweiten Schritt den Rest überspringt und gleich speichert (Text oder Funktion der Antworten).
   // vorab: Schritt vor dem eigentlichen Ablauf (zählt nicht mit, etwa die Wahl „Schnell oder Ausführlich").
   // nur(antworten) === false nimmt einen Schritt ganz heraus – er zählt dann auch bei „Schritt x von n" nicht mit.
+  // frage, kapitel, optionen und vorschlaege dürfen ebenfalls Funktionen der bisherigen Antworten sein.
   // aufFertig(antworten) wird am Ende aufgerufen.
   function openAssistent(titel, schritte, aufFertig, opt) {
     opt = opt || {};
@@ -1528,6 +1529,7 @@
     const zaehlt = (i) => !schritte[i].vorab && (!schritte[i].nur || schritte[i].nur(antworten) !== false);
     const gilt = (i) => (schritte[i].vorab || zaehlt(i)) && (!schritte[i].wenn || schritte[i].wenn(antworten) !== false);
     const gezaehlt = () => schritte.map((_, i) => i).filter(zaehlt);
+    while (idx < schritte.length - 1 && !gilt(idx)) idx++;   // der Ablauf beginnt beim ersten Schritt, der gilt
     const naechster = (i) => { for (let k = i + 1; k < schritte.length; k++) if (gilt(k)) return k; return -1; };
     const voriger = (i) => { for (let k = i - 1; k >= 0; k--) if (gilt(k)) return k; return -1; };
 
@@ -1558,9 +1560,11 @@
 
     function zeige() {
       const f = schritte[idx];
-      const istWahl = !!f.optionen;
+      const wert = (x) => typeof x === "function" ? x(antworten) : x;
+      const optionen = wert(f.optionen), vorschlaege = wert(f.vorschlaege), kapitel = wert(f.kapitel);
+      const istWahl = !!optionen;
       const felder = f.felder || [f];
-      const hinweis = typeof f.hinweis === "function" ? f.hinweis(antworten) : f.hinweis;
+      const hinweis = wert(f.hinweis);
       const letzter = naechster(idx) < 0;
       const zurueck = voriger(idx);
       const liste = gezaehlt(), nr = liste.indexOf(idx) + 1;
@@ -1568,15 +1572,15 @@
       bodyEl.innerHTML = `
         <div class="wc-hero" style="padding-bottom:16px">
           ${f.vorab ? "" : `${punkte()}
-          <div class="wc-badge">${f.kapitel ? esc(f.kapitel) + " · " : ""}Schritt ${nr} von ${liste.length}</div>`}
-          <div class="wc-t" style="font-size:19px">${esc(f.frage)}</div>
+          <div class="wc-badge">${kapitel ? esc(kapitel) + " · " : ""}Schritt ${nr} von ${liste.length}</div>`}
+          <div class="wc-t" style="font-size:19px">${esc(wert(f.frage))}</div>
           ${hinweis ? `<div class="wc-d">${esc(hinweis)}</div>` : ""}
         </div>
         ${istWahl
-          ? `<div class="frage-opts">${f.optionen.map(o =>
+          ? `<div class="frage-opts">${optionen.map(o =>
               `<button class="frage-opt${antworten[f.id] != null && String(antworten[f.id]) === String(o.v) ? " on" : ""}" data-v="${esc(o.v)}">${esc(o.t)}${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("")}</div>`
           : `${felder.map((x, i) => feldHtml(x, i, !!f.felder)).join("")}
-             ${f.vorschlaege ? `<div class="eq-vorschlaege" role="group" aria-label="Vorschläge">${f.vorschlaege.map((v, i) =>
+             ${vorschlaege ? `<div class="eq-vorschlaege" role="group" aria-label="Vorschläge">${vorschlaege.map((v, i) =>
                `<button type="button" class="eq-vorschlag" data-vs="${i}">${esc(v.text)}</button>`).join("")}</div>` : ""}
              ${f.live ? `<div class="eq-as-live" id="asLive" role="status"></div>` : ""}
              <div class="ef-msg" id="asMsg"></div>`}
@@ -1636,7 +1640,7 @@
         });
         // Vorschläge füllen die Felder; „Weiter" bestätigt wie sonst auch
         bodyEl.querySelectorAll("[data-vs]").forEach(b => b.onclick = () => {
-          Object.assign(antworten, mitEingaben(), f.vorschlaege[Number(b.dataset.vs)].werte(mitEingaben()));
+          Object.assign(antworten, mitEingaben(), vorschlaege[Number(b.dataset.vs)].werte(mitEingaben()));
           zeige();
         });
         const sk = bodyEl.querySelector("#asSkip");
@@ -1680,27 +1684,38 @@
   const asZahl = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v === "" || v == null || !isFinite(n) ? null : n; };
 
   // Geführtes Anlegen eines Projekts (Abschnitt 12.8, seit Phase 11 ausführlicher): eine Frage pro Schritt, in sechs
-  // Kapiteln – Objekt, Kauf, Miete, Lage, Finanzierung, laufende Kosten. Alles außer dem Namen lässt sich überspringen,
-  // und ab dem zweiten Schritt führt „Rest überspringen und anlegen" sofort zum Projekt.
-  // Vorab wählt man den Weg: „Schnell" stellt nur die sechs Fragen aus SCHNELL, „Ausführlich" alle zwanzig.
-  // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt }
+  // Kapiteln – Objekt, Kauf oder Sanierung, Miete, Lage, Finanzierung, laufende Kosten. Alles außer dem Namen lässt sich
+  // überspringen, und im ausführlichen Weg führt „Rest überspringen und anlegen" sofort zum Projekt.
+  // Vorab zwei Fragen: das Vorhaben („Ein Objekt kaufen" oder „Ein eigenes Objekt sanieren") und der Weg („Schnell"
+  // oder „Ausführlich"). Jeder Schritt sagt mit weg, zu welchem Vorhaben er gehört (ohne weg: zu beiden), und mit
+  // schnell: true, ob er auch im schnellen Weg gefragt wird.
+  // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt } – dann ist das Vorhaben ein Kauf.
   function assistentProjekt(vor) {
     if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
     vor = vor || {};
-    const K = { o: "Das Objekt", k: "Der Kauf", m: "Die Miete", l: "Die Lage", f: "Die Finanzierung", c: "Laufende Kosten" };
+    const san = (a) => a.vorhaben === "sanierung";
+    const K = { o: "Das Objekt", k: "Der Kauf", s: "Die Sanierung", m: "Die Miete", l: "Die Lage", f: "Die Finanzierung", c: "Laufende Kosten" };
     // Planungsdaten aus den bisherigen Antworten – daraus ergibt sich die Gesamtinvestition
     const planAus = (a) => {
       const plan = { v: 1, status: "pruefung" };
       const zahl = (feld) => { const v = asZahl(a[feld]); if (v != null && v >= 0) plan[feld] = v; };
-      zahl("kaufpreis");
-      if (a.bundesland) { plan.bundesland = a.bundesland; plan.grest_pct = grestVon(a.bundesland); }
-      ["grest_pct", "notar_pct", "makler_pct", "kaufkosten_sonst", "sanierung", "instand_m2", "ausfall_pct"].forEach(zahl);
-      // Ohne eigene Angabe richtet sich die Instandhaltung nach dem Zustand
-      if (plan.instand_m2 == null && a.zustand) plan.instand_m2 = instandVorgabe(a);
+      if (san(a)) {
+        // Sanierung im Bestand: kein Kaufpreis, keine Kaufnebenkosten. Die Sanierung ist die Investition.
+        plan.vorhaben = "sanierung";
+        if (a.bundesland) plan.bundesland = a.bundesland;
+        ["kaufkosten_sonst", "sanierung", "bestandswert", "instand_m2", "ausfall_pct"].forEach(zahl);
+        if (plan.instand_m2 == null) plan.instand_m2 = instandVorgabe(a);
+      } else {
+        zahl("kaufpreis");
+        if (a.bundesland) { plan.bundesland = a.bundesland; plan.grest_pct = grestVon(a.bundesland); }
+        ["grest_pct", "notar_pct", "makler_pct", "kaufkosten_sonst", "sanierung", "instand_m2", "ausfall_pct"].forEach(zahl);
+        // Ohne eigene Angabe richtet sich die Instandhaltung nach dem Zustand
+        if (plan.instand_m2 == null && a.zustand) plan.instand_m2 = instandVorgabe(a);
+        if (a.zustand) plan.zustand = a.zustand;
+      }
       if (a.verwaltung === "selbst") plan.verwaltung_einheit = 0;
       else if (a.verwaltung === "verwaltung") plan.verwaltung_einheit = 25;
       if (a.gemeindetyp) plan.gemeindetyp = a.gemeindetyp;
-      if (a.zustand) plan.zustand = a.zustand;
       const baujahr = asZahl(a.baujahr);
       if (baujahr >= 1000 && baujahr <= 2200) plan.baujahr = Math.round(baujahr);
       const ortsueblich = asZahl(a.vergleichsmiete);
@@ -1714,15 +1729,17 @@
     };
     const zahlenAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] });
     const investAus = (a) => zahlenAus(a).INV;
-    const instandVorgabe = (a) => { const x = ZUSTAND.find(y => y[0] === a.zustand); return x ? x[3] : 1; };
-    const hatPreis = (a) => (asZahl(a.kaufpreis) || 0) > 0;
+    // Nach der Sanierung gilt die Annahme für ein saniertes Objekt, sonst richtet sie sich nach dem Zustand
+    const instandVorgabe = (a) => { const x = ZUSTAND.find(y => y[0] === (san(a) ? "gut" : a.zustand)); return x ? x[3] : 1; };
+    const hatPreis = (a) => !san(a) && (asZahl(a.kaufpreis) || 0) > 0;
+    const hatInvest = (a) => san(a) ? investAus(a) > 0 : hatPreis(a);
     const hatEinheit = (a) => asZahl(a.flaeche) != null || asZahl(a.kalt) != null;
     // Eigenkapital: direkt eingegeben oder aus dem gewünschten Darlehen berechnet
     const mitDarlehen = (a) => a["wahl:eigenkapital"] === "1";
     const finanzAngabe = (a) => { const v = mitDarlehen(a) ? a.darlehen : a.eigenkapital; return v != null && v !== ""; };
     const eigenkapitalAus = (a) => mitDarlehen(a) ? Math.max(0, investAus(a) - (asZahl(a.darlehen) || 0)) : (asZahl(a.eigenkapital) || 0);
     const darlehenAus = (a) => Math.max(0, investAus(a) - eigenkapitalAus(a));
-    const hatDarlehen = (a) => hatPreis(a) && finanzAngabe(a) && darlehenAus(a) > 0;
+    const hatDarlehen = (a) => hatInvest(a) && finanzAngabe(a) && darlehenAus(a) > 0;
     const rateAus = (a) => {
       const zins = asZahl(a.zins), tilgung = asZahl(a.tilgung);
       return a["wahl:tilgung"] === "1" ? asZahl(a.rate) : (zins != null && tilgung != null ? darlehenAus(a) * (zins + tilgung) / 1200 : null);
@@ -1735,19 +1752,29 @@
       return "Das sind " + eur2(k / f) + " je m². Zum Vergleich: " + ref.map(r => r.text + " " + eur2(r.wert)).join(", ") + ".";
     };
     const refSatz = (a) => mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp }).map(r => r.text + " " + eur2(r.wert)).join(", ");
-    const SCHNELL = ["name", "ort", "kaufpreis", "flaeche", "eigenkapital", "zins"];
+    const eigen = (anteil) => (a) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(investAus(a) * anteil)) });
     const schritte = [
+      // ----- Vorab: Vorhaben und Weg -----
+      { id: "vorhaben", vorab: true, frage: "Was hast du vor?",
+        hinweis: "Je nachdem fragt ESTRIQ nach anderen Dingen.",
+        optionen: [
+          { v: "kauf", t: "Ein Objekt kaufen", d: "Du prüfst ein Objekt, bevor du es kaufst. Kaufpreis und Kaufnebenkosten zählen zur Investition." },
+          { v: "sanierung", t: "Ein eigenes Objekt sanieren", d: "Das Objekt gehört dir schon, zum Beispiel geerbt. Die Sanierung ist deine Investition." }],
+        wenn: () => !(vor.kaufpreis > 0) },
       { id: "modus", vorab: true, frage: "Wie möchtest du das Projekt anlegen?",
         hinweis: "Beide Wege führen zum selben Projekt. Was du jetzt weglässt, trägst du später auf der Projektseite nach.",
-        optionen: [
+        optionen: (a) => san(a) ? [
+          { v: "schnell", t: "Schnell", d: "6 Fragen: Name, Ort, Sanierungskosten, Miete und Finanzierung. Für alles andere gelten Annahmen." },
+          { v: "voll", t: "Ausführlich", d: "16 Fragen: dazu weitere Kosten, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }]
+        : [
           { v: "schnell", t: "Schnell", d: "6 Fragen: Name, Ort, Kaufpreis, Miete und Finanzierung. Für alles andere gelten Annahmen." },
           { v: "voll", t: "Ausführlich", d: "20 Fragen: dazu Kaufnebenkosten, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }] },
       // ----- Das Objekt -----
-      { id: "name", kapitel: K.o, frage: "Wie soll das Projekt heißen?",
-        hinweis: "Zum Beispiel die Adresse aus dem Inserat.",
+      { id: "name", schnell: true, kapitel: K.o, frage: "Wie soll das Projekt heißen?",
+        hinweis: (a) => san(a) ? "Zum Beispiel die Adresse des Hauses." : "Zum Beispiel die Adresse aus dem Inserat.",
         typ: "text", pflicht: true, platzhalter: "z. B. Bergstraße 12" },
-      { kapitel: K.o, frage: "Wo liegt das Objekt?",
-        hinweis: "Das Bundesland bestimmt die Grunderwerbsteuer.",
+      { schnell: true, kapitel: K.o, frage: "Wo liegt das Objekt?",
+        hinweis: (a) => san(a) ? "Mit dem Bundesland zeigt dir ESTRIQ die passende Vergleichsmiete." : "Das Bundesland bestimmt die Grunderwerbsteuer.",
         felder: [
           { id: "ort", label: "Ort", typ: "text", platzhalter: "z. B. Bremen" },
           { id: "bundesland", label: "Bundesland", auswahl: [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] }))) }
@@ -1756,17 +1783,18 @@
         hinweis: "Damit zeigt dir ESTRIQ die passende Vergleichsmiete.",
         optionen: GEMEINDETYP.map(g => ({ v: g[0], t: g[1], d: g[2] })), ueberspringbar: true },
       { id: "baujahr", kapitel: K.o, frage: "Wann wurde es gebaut?",
-        hinweis: "Das Baujahr steht im Inserat oder im Energieausweis. Du brauchst es später für die Abschreibung.",
+        hinweis: (a) => san(a) ? "Das Baujahr steht in den Unterlagen zum Haus oder im Energieausweis."
+          : "Das Baujahr steht im Inserat oder im Energieausweis. Du brauchst es später für die Abschreibung.",
         typ: "number", platzhalter: "z. B. 1978", ueberspringbar: true },
-      { id: "zustand", kapitel: K.o, frage: "In welchem Zustand ist es?",
+      { id: "zustand", weg: "kauf", kapitel: K.o, frage: "In welchem Zustand ist es?",
         hinweis: "Dein Eindruck reicht. Danach richtet sich, womit ESTRIQ für Reparaturen rechnet.",
         optionen: ZUSTAND.map(x => ({ v: x[0], t: x[1], d: x[2] })), ueberspringbar: true },
       // ----- Der Kauf -----
-      { id: "kaufpreis", kapitel: K.k, frage: "Was soll es kosten?",
+      { id: "kaufpreis", weg: "kauf", schnell: true, kapitel: K.k, frage: "Was soll es kosten?",
         hinweis: "Der Kaufpreis ohne Nebenkosten. Die fragt ESTRIQ gleich einzeln ab.",
         typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000",
         vorgabe: vor.kaufpreis > 0 ? vor.kaufpreis : undefined },
-      { kapitel: K.k, frage: "Welche Nebenkosten kommen beim Kauf sicher dazu?",
+      { weg: "kauf", kapitel: K.k, frage: "Welche Nebenkosten kommen beim Kauf sicher dazu?",
         hinweis: (a) => (a.bundesland
           ? "Die Grunderwerbsteuer für " + bundeslandName(a.bundesland) + " ist vorbelegt. " + GREST_STAND
           : "Die Grunderwerbsteuer hängt vom Bundesland ab und liegt zwischen 3,5 und 6,5 %.") + " 2 % für Notar und Grundbuch sind eine Annahme.",
@@ -1776,13 +1804,13 @@
         ],
         live: (a) => { const kp = asZahl(a.kaufpreis) || 0; return "Grunderwerbsteuer " + eur(kp * (asZahl(a.grest_pct) || 0) / 100) + ", Notar und Grundbuch " + eur(kp * (asZahl(a.notar_pct) || 0) / 100) + "."; },
         ueberspringbar: true, wenn: hatPreis },
-      { kapitel: K.k, frage: "Kaufst du über einen Makler?",
+      { weg: "kauf", kapitel: K.k, frage: "Kaufst du über einen Makler?",
         hinweis: "Mit Makler: Trag die Courtage ein. 3,57 % ist eine Annahme – der genaue Satz steht im Inserat.",
         felder: [{ id: "makler_pct", label: "Courtage", typ: "number", einheit: "%", vorgabe: 3.57, platzhalter: "3,57" }],
         live: (a) => hatPreis(a) ? "Das sind " + eur((asZahl(a.kaufpreis) || 0) * (asZahl(a.makler_pct) || 0) / 100) + "." : "",
         weiterText: "Ja, mit Courtage",
         alternative: { text: "Nein, ohne Makler", werte: { makler_pct: "0" } }, ueberspringbar: true },
-      { kapitel: K.k, frage: "Kommt noch etwas dazu?",
+      { weg: "kauf", kapitel: K.k, frage: "Kommt noch etwas dazu?",
         hinweis: "Weitere Kaufkosten sind zum Beispiel ein Gutachter oder Kosten der Finanzierung. Die Sanierung ist alles, was du nach dem Kauf in das Objekt steckst.",
         felder: [
           { id: "kaufkosten_sonst", label: "Weitere Kaufkosten", typ: "number", einheit: "€", platzhalter: "0" },
@@ -1790,9 +1818,23 @@
         ],
         live: (a) => { const z = zahlenAus(a); return "Gesamtinvestition: " + eur(z.INV) + ". Kaufpreis " + eur(z.KP) + ", Kaufnebenkosten " + eur(z.KNK) + ", Sanierung " + eur(z.SAN) + "."; },
         ueberspringbar: true, wenn: hatPreis },
+      // ----- Die Sanierung (eigenes Objekt) -----
+      { id: "sanierung", weg: "sanierung", schnell: true, kapitel: K.s, frage: "Was kostet die Sanierung?",
+        hinweis: "Alles, was du in das Objekt steckst: Handwerker, Material und Planung. Eine grobe Schätzung reicht – die Angebote der Handwerker trägst du später einzeln ein.",
+        typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 180000" },
+      { weg: "sanierung", kapitel: K.s, frage: "Kommt noch etwas dazu?",
+        hinweis: "Weitere Kosten sind zum Beispiel Architekt, Genehmigungen oder Gebühren. Der Wert des Hauses ist freiwillig: Er zählt nicht zur Investition, zeigt dir aber die Rendite auf alles, was im Haus steckt.",
+        felder: [
+          { id: "kaufkosten_sonst", label: "Weitere Kosten", typ: "number", einheit: "€", platzhalter: "0" },
+          { id: "bestandswert", label: "Wert des Hauses heute", typ: "number", einheit: "€", platzhalter: "freiwillig" }
+        ],
+        live: (a) => { const z = zahlenAus(a); return "Gesamtinvestition: " + eur(z.INV) + ". Sanierung " + eur(z.SAN) + ", weitere Kosten " + eur(z.KNK) + "."; },
+        ueberspringbar: true },
       // ----- Die Miete -----
-      { kapitel: K.m, frage: "Wie groß ist es, und was bringt es an Kaltmiete?",
-        hinweis: "Nimm die Miete, die heute gezahlt wird. Weitere Einheiten trägst du gleich auf der Projektseite ein.",
+      { schnell: true, kapitel: K.m,
+        frage: (a) => san(a) ? "Wie groß wird die erste Wohnung, und was soll sie an Kaltmiete bringen?" : "Wie groß ist es, und was bringt es an Kaltmiete?",
+        hinweis: (a) => san(a) ? "Plane mit der Miete nach der Sanierung. Weitere Wohnungen trägst du gleich auf der Projektseite ein."
+          : "Nimm die Miete, die heute gezahlt wird. Weitere Einheiten trägst du gleich auf der Projektseite ein.",
         felder: [
           { id: "flaeche", label: "Fläche", typ: "number", einheit: "m²", platzhalter: "z. B. 72" },
           { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650",
@@ -1807,7 +1849,7 @@
           return Math.abs(ab) < 0.5 ? "Deine geplante Miete entspricht der ortsüblichen Miete."
             : "Deine geplante Miete von " + eur2(k / f) + " je m² liegt " + prozent(Math.abs(ab), 0) + " " + (ab > 0 ? "über" : "unter") + " der ortsüblichen Miete."; },
         wenn: (a) => asZahl(a.flaeche) > 0 && asZahl(a.kalt) > 0 },
-      { id: "vermietet", kapitel: K.m, frage: "Ist die Einheit schon vermietet?",
+      { id: "vermietet", weg: "kauf", kapitel: K.m, frage: "Ist die Einheit schon vermietet?",
         hinweis: "Die Miete rechnet ESTRIQ in beiden Fällen mit – als geplante Miete.",
         optionen: [{ v: "vermietet", t: "Ja, sie ist vermietet" }, { v: "frei", t: "Nein, sie steht leer" }],
         ueberspringbar: true, wenn: hatEinheit }
@@ -1817,22 +1859,27 @@
         optionen: f.optionen.map(o => ({ v: String(o[0]), t: o[1], d: o[2] })), ueberspringbar: true }))
     ).concat([
       // ----- Die Finanzierung -----
-      { kapitel: K.f, frage: "Wie viel willst du finanzieren?",
-        hinweis: (a) => { const z = zahlenAus(a); return "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
-          + (a.modus === "schnell" ? " Für Notar (2 %) und Makler (3,57 %) gelten Annahmen." : ""); },
+      { schnell: true, kapitel: K.f, frage: "Wie viel willst du finanzieren?",
+        hinweis: (a) => { const z = zahlenAus(a);
+          return san(a)
+            ? "Du brauchst insgesamt " + eur(z.INV) + " für die Sanierung. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
+            : "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
+              + (a.modus === "schnell" ? " Für Notar (2 %) und Makler (3,57 %) gelten Annahmen." : ""); },
         felder: [{ id: "eigenkapital", label: "Eigenkapital", typ: "number", einheit: "€", platzhalter: "z. B. 60000",
           wahl: { id: "darlehen", label: "Darlehen", typ: "number", einheit: "€", platzhalter: "z. B. 200000", knoepfe: ["Eigenkapital", "Darlehen"],
             zuRate: (a) => investAus(a) - (asZahl(a.eigenkapital) || 0),
             zuProzent: (a) => investAus(a) - (asZahl(a.darlehen) || 0) } }],
-        vorschlaege: [
-          { text: "Nur die Nebenkosten selbst zahlen", werte: (a) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(zahlenAus(a).KNK)) }) },
-          { text: "20 % Eigenkapital", werte: (a) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(investAus(a) * 0.2)) }) },
-          { text: "Alles finanzieren", werte: () => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: "0" }) }
-        ],
+        vorschlaege: (a) => (san(a)
+          ? [{ text: "Die Hälfte selbst zahlen", werte: eigen(0.5) }]
+          : [{ text: "Nur die Nebenkosten selbst zahlen", werte: (b) => ({ "wahl:eigenkapital": "0", darlehen: "", eigenkapital: String(rund2(zahlenAus(b).KNK)) }) }]
+        ).concat([
+          { text: "20 % Eigenkapital", werte: eigen(0.2) },
+          { text: "Alles finanzieren", werte: eigen(0) }
+        ]),
         live: (a) => { if (!finanzAngabe(a)) return ""; const inv = investAus(a), d = darlehenAus(a);
           return "Du finanzierst " + eur(d) + " und bringst " + eur(eigenkapitalAus(a)) + " selbst mit. Die Bank trägt " + prozent(inv > 0 ? d / inv * 100 : 0, 0) + " der Gesamtinvestition."; },
-        ueberspringbar: true, wenn: hatPreis },
-      { kapitel: K.f, frage: "Zu welchen Bedingungen finanzierst du?",
+        ueberspringbar: true, wenn: hatInvest },
+      { schnell: true, kapitel: K.f, frage: "Zu welchen Bedingungen finanzierst du?",
         hinweis: (a) => "Du finanzierst " + eur(darlehenAus(a)) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen.",
         felder: [
           { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: 3.5 },
@@ -1859,7 +1906,8 @@
           { v: "verwaltung", t: "Eine Hausverwaltung", d: "Annahme: 25 € je Einheit im Monat" }],
         ueberspringbar: true },
       { kapitel: K.c, frage: "Womit rechnest du für Reparaturen und Mietausfall?",
-        hinweis: (a) => "Beides sind Annahmen: " + zahlKurz(instandVorgabe(a)) + " € je m² im Monat für Reparaturen" + (a.zustand && a.zustand !== "mittel" ? " (passend zum Zustand)" : "") + ", 3 % der Kaltmiete für Mietausfall."
+        hinweis: (a) => "Beides sind Annahmen: " + zahlKurz(instandVorgabe(a)) + " € je m² im Monat für Reparaturen"
+          + (san(a) ? " (nach der Sanierung)" : a.zustand && a.zustand !== "mittel" ? " (passend zum Zustand)" : "") + ", 3 % der Kaltmiete für Mietausfall."
           + (lageVon(planAus(a)).stufe === "achtung" ? " Du hast die Lage als einfach eingestuft. Dort stehen Wohnungen eher leer – rechne lieber vorsichtiger." : ""),
         felder: [
           { id: "instand_m2", label: "Instandhaltung", typ: "number", einheit: "€ je m²", vorgabe: instandVorgabe },
@@ -1869,8 +1917,8 @@
           return "Das sind zusammen " + eur2(f * (asZahl(a.instand_m2) || 0) + k * (asZahl(a.ausfall_pct) || 0) / 100) + " im Monat."; },
         ueberspringbar: true }
     ]);
-    // Im schnellen Weg zählen nur die Schritte aus SCHNELL
-    schritte.forEach(f => { if (!f.vorab && !SCHNELL.includes(f.id || f.felder[0].id)) f.nur = (a) => a.modus !== "schnell"; });
+    // Ein Schritt zählt, wenn er zum Vorhaben gehört – und im schnellen Weg nur, wenn er als schnell markiert ist
+    schritte.forEach(f => { if (!f.vorab) f.nur = (a) => (!f.weg || f.weg === (san(a) ? "sanierung" : "kauf")) && (a.modus !== "schnell" || !!f.schnell); });
     openAssistent("Projekt anlegen", schritte, async (a) => {
       const name = (a.name || "").trim() || "Projekt";
       const heute = new Date().toISOString();
@@ -1884,15 +1932,16 @@
       const fehlt = [];
       const flaeche = asZahl(a.flaeche), kalt = asZahl(a.kalt);
       if (flaeche != null || kalt != null) {
+        // Im eigenen Objekt ist die Wohnung bis zum Ende der Sanierung leer
         try {
-          await neueEinheit(neu.id, { bezeichnung: "Einheit 1", flaeche, status: a.vermietet === "frei" ? "frei" : "vermietet", kalt_fix: kalt, nk_fix: null,
+          await neueEinheit(neu.id, { bezeichnung: san(a) ? "Wohnung 1" : "Einheit 1", flaeche, status: san(a) || a.vermietet === "frei" ? "frei" : "vermietet", kalt_fix: kalt, nk_fix: null,
             zahltag: 1, mieter: "", einzug: null, vertrag: {} });
         } catch (_) { fehlt.push("die Einheit"); }
       }
       const zins = asZahl(a.zins), summe = rund2(darlehenAus(a)), rate = rateAus(a);
       if (hatDarlehen(a) && zins != null && rate != null && rate > 0 && summe > 0) {
         try {
-          await neuerKredit(neu.id, { name: "Darlehen", summe, zins_pa: zins, rate_monat: rund2(rate),
+          await neuerKredit(neu.id, { name: san(a) ? "Sanierungsdarlehen" : "Darlehen", summe, zins_pa: zins, rate_monat: rund2(rate),
             start: null, rest_stand_betrag: null, rest_stand_datum: null, sondertilgung: null });
         } catch (_) { fehlt.push("das Darlehen"); }
       }
@@ -5246,6 +5295,22 @@
       gut: "Einen festen Zielwert gibt es nicht. Vergleiche mit ähnlichen Objekten in derselben Gegend – in gefragten Lagen sind höhere Faktoren üblich.",
       merke: "Der Faktor kennt weder Zustand noch Kosten. Er taugt für den ersten Blick, nicht für die Entscheidung."
     },
+    rueckfluss: {
+      titel: "Rückfluss",
+      kurz: "Nach wie vielen Jahren die Kaltmiete deine Investition wieder eingespielt hat.",
+      text: "Ein schneller Maßstab für eine Sanierung im eigenen Objekt: Je kürzer, desto schneller ist das Geld zurück. Laufende Kosten und Zinsen sind dabei nicht abgezogen.",
+      formel: "Gesamtinvestition ÷ Jahreskaltmiete",
+      gut: "Einen festen Zielwert gibt es nicht. Vergleiche mit ähnlichen Vorhaben.",
+      merke: "Der Wert des Hauses steckt nicht in dieser Zahl. Trägst du ihn bei der Investition ein, zeigt ESTRIQ zusätzlich die Rendite auf Haus und Sanierung zusammen."
+    },
+    sanierungm2: {
+      titel: "Sanierung und Miete je m²",
+      kurz: "Sanierungskosten und Kaltmiete, jeweils auf einen Quadratmeter gerechnet.",
+      text: "So vergleichst du Angebote und siehst, ob die geplante Miete zur Lage passt.",
+      formel: "Sanierung ÷ Fläche und Kaltmiete ÷ Fläche",
+      gut: "Vergleiche die Miete mit dem Mietspiegel und die Kosten mit den Angeboten deiner Handwerker.",
+      merke: "Stimmt die Fläche nicht, stimmen beide Zahlen nicht."
+    },
     preism2: {
       titel: "Preis je m²",
       kurz: "Kaufpreis und Kaltmiete, jeweils auf einen Quadratmeter gerechnet.",
@@ -7194,6 +7259,8 @@
     plan.kosten_sonst = zahlOder(roh.kosten_sonst, 0);
     plan.ausfall_pct = zahlOder(roh.ausfall_pct, 3);
     plan.status = PROJEKT_STATUS[roh.status] ? roh.status : "pruefung";
+    plan.vorhaben = roh.vorhaben === "sanierung" ? "sanierung" : "kauf";
+    plan.bestandswert = zahlOder(roh.bestandswert, null);
     return plan;
   }
 
@@ -7205,7 +7272,10 @@
     const plan = planVon(p);
     const einheiten = p.einheiten || [];
     const kredite = FE.creditsOf(p);
-    const KP = plan.kaufpreis || 0;
+    // Sanierung im eigenen Objekt: kein Kaufpreis und damit keine Steuer, kein Notar, kein Makler.
+    // Die Investition ist dann die Sanierung plus die weiteren Kosten. Ein gespeicherter Kaufpreis bleibt stehen.
+    const bestand = plan.vorhaben === "sanierung";
+    const KP = bestand ? 0 : (plan.kaufpreis || 0);
     const grest = KP * plan.grest_pct / 100, notar = KP * plan.notar_pct / 100, makler = KP * plan.makler_pct / 100;
     const KNK = grest + notar + makler + plan.kaufkosten_sonst;
     const angebote = gewerkeVon(p).reduce((a, g) => a + g.soll, 0);
@@ -7236,7 +7306,13 @@
       faktor: KM > 0 && KP > 0 ? KP / (KM * 12) : null,
       ekRendite: EK > 0 ? cashflow * 12 / EK * 100 : null,
       kpM2: F > 0 && KP > 0 ? KP / F : null,
-      kmM2: F > 0 ? KM / F : null
+      kmM2: F > 0 ? KM / F : null,
+      // nur für die Sanierung im eigenen Objekt
+      bestand,
+      wert: bestand && plan.bestandswert > 0 ? plan.bestandswert : null,
+      bruttoMitWert: bestand && plan.bestandswert > 0 ? KM * 12 / (INV + plan.bestandswert) * 100 : null,
+      rueckfluss: bestand && KM > 0 && INV > 0 ? INV / (KM * 12) : null,
+      sanM2: F > 0 && SAN > 0 ? SAN / F : null
     };
   }
 
@@ -7247,8 +7323,8 @@
     if (z.zuVielFinanziert) zweite.push("Die Finanzierung ist höher als die Investition.");
     if (!z.kredite) zweite.push("Noch ohne Finanzierung gerechnet.");
     if (lageVon(z.plan).stufe === "achtung") zweite.push("Einfache Lage: Rechne mit mehr Leerstand.");
-    if (!(z.KP > 0) || !(z.kmVoll > 0))
-      return { stufe: "", wort: "Noch kein Urteil", kurz: "noch kein Urteil", satz: "Trag Kaufpreis und Mieten ein, dann siehst du hier, ob sich das Objekt trägt.", zweite: [], offen: true };
+    if (!(z.bestand ? z.INV > 0 : z.KP > 0) || !(z.kmVoll > 0))
+      return { stufe: "", wort: "Noch kein Urteil", kurz: "noch kein Urteil", satz: "Trag " + (z.bestand ? "Sanierungskosten" : "Kaufpreis") + " und Mieten ein, dann siehst du hier, ob sich das Objekt trägt.", zweite: [], offen: true };
     const betrag = eur2(Math.abs(z.cashflow));
     if (z.cashflow >= 0) return { stufe: "gut", wort: "Gut", kurz: "trägt sich", satz: "Trägt sich. Bleiben " + betrag + " im Monat.", zweite };
     if (z.cashflow >= -0.1 * z.KM) return { stufe: "achtung", wort: "Achtung", kurz: "trägt sich knapp nicht", satz: "Trägt sich knapp nicht. Du legst " + betrag + " im Monat drauf.", zweite };
@@ -7319,10 +7395,10 @@
     const karte = el(`<div class="card clickable eq-obj eq-pkarte" data-id="${esc(p.id)}" role="button" tabindex="0">
       <div class="eq-obj-kopf">
         <div class="tile-ic">${svg("home")}</div>
-        <div class="eq-obj-n"><div class="tile-name">${esc(p.name)}</div><div class="tile-loc">${esc(p.ort || "Projekt")}</div></div>
+        <div class="eq-obj-n"><div class="tile-name">${esc(p.name)}</div><div class="tile-loc">${esc(p.ort || "Projekt")}${z.bestand ? " · Sanierung" : ""}</div></div>
       </div>
       <div class="eq-purteil">${u.offen
-        ? `<span class="eq-leise">Noch kein Urteil – es fehlen Kaufpreis oder Mieten</span>`
+        ? `<span class="eq-leise">Noch kein Urteil – es fehlen ${z.bestand ? "Sanierungskosten" : "Kaufpreis"} oder Mieten</span>`
         : `<span class="eq-marke ${u.stufe}">${esc(u.wort)}</span><span>${esc(u.kurz)}</span>`}
         <span class="eq-marke eq-pstat${verworfen ? " eq-aus" : ""}">${esc(PROJEKT_STATUS[z.plan.status])}</span></div>
       <div class="eq-obj-fuss">
@@ -7344,10 +7420,10 @@
     const aktiv = projekteSortiert(alle.filter(p => !istVerworfen(p)));
     const verworfen = projekteSortiert(alle.filter(istVerworfen));
     const teile = [abschnittKopf("Projekte",
-      aktiv.length ? "Objekte, die du prüfst, bevor du sie kaufst" : "",
+      aktiv.length ? "Objekte, die du prüfst, bevor du kaufst oder sanierst" : "",
       aktiv.length ? { id: "addProjekt", text: "Projekt anlegen", tun: () => assistentProjekt(), haupt: true } : null)];
     if (!aktiv.length) {
-      const leer = el(`<div class="card"><div class="eq-leer"><div>Du überlegst, ein Objekt zu kaufen? Leg es als Projekt an und sieh, ob es sich trägt.</div>
+      const leer = el(`<div class="card"><div class="eq-leer"><div>Du überlegst, ein Objekt zu kaufen oder ein eigenes zu sanieren? Leg es als Projekt an und sieh, ob es sich trägt.</div>
         <div><button type="button" class="eq-btn" id="addProjekt">Projekt anlegen</button></div></div></div>`);
       leer.querySelector("#addProjekt").onclick = () => assistentProjekt();
       teile.push(leer);
@@ -7469,7 +7545,7 @@
       unter: u.satz, zweite: u.zweite,
       fakten: [
         { titel: "Eigenkapitalbedarf", wert: z.INV > 0 ? eur(z.EK) : "—",
-          text: z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : z.INV > 0 ? "von " + eur(z.INV) + " Gesamtinvestition" : "Trag zuerst den Kaufpreis ein",
+          text: z.zuVielFinanziert ? "Die Darlehen sind höher als die Gesamtinvestition" : z.INV > 0 ? "von " + eur(z.INV) + " Gesamtinvestition" : z.bestand ? "Trag zuerst die Sanierungskosten ein" : "Trag zuerst den Kaufpreis ein",
           zustand: z.zuVielFinanziert ? "achtung" : "" },
         { titel: "Kaltmiete im Monat", wert: eur(z.KM),
           text: z.N ? mehrzahl(z.N, "Einheit", "Einheiten") + (z.F ? ", " + qm(z.F) : "") : "Noch keine Einheit geplant" },
@@ -7484,15 +7560,20 @@
     const u = projektUrteil(z);
     const oder = (ok, text) => ok ? text : "—";
     const karten = [
-      kpiCard("coins", oder(z.INV > 0, eur(z.INV)), "Gesamt­investition", "Kaufpreis, Nebenkosten, Sanierung", false, null, "invest"),
+      kpiCard("coins", oder(z.INV > 0, eur(z.INV)), "Gesamt­investition", z.bestand ? "Sanierung und weitere Kosten" : "Kaufpreis, Nebenkosten, Sanierung", false, null, "invest"),
       kpiCard("wallet", oder(z.INV > 0, eur(z.EK)), "Eigen­kapital­bedarf", "Gesamtinvestition − Darlehen", false, null, "eigenkapital"),
       kpiCard("trend", oder(z.brutto != null && z.KM > 0, prozent2(z.brutto)), "Brutto­miet­rendite", "Jahreskaltmiete ÷ Gesamtinvestition", false, null, "rendite"),
       kpiCard("trend", oder(z.netto != null && z.KM > 0, prozent2(z.netto)), "Netto­miet­rendite", "nach laufenden Kosten", false, null, "nettomietrendite"),
       kpiCard("wallet", oder(!u.offen, eur2(z.cashflow)), "Cashflow nach Plan", "im Monat, nach Kosten und Raten", !u.offen && z.cashflow >= 0, null, "cashflowplan"),
       kpiCard("chart", oder(!u.offen && z.ekRendite != null, prozent2(z.ekRendite)), "Eigen­kapital­rendite", z.EK > 0 ? "Cashflow im Jahr ÷ Eigenkapital" : "ohne Eigenkapital keine Zahl", false, null, "ekrendite"),
-      kpiCard("chart", oder(z.faktor != null, zahl2(z.faktor)), "Kaufpreis­faktor", "Kaufpreis ÷ Jahreskaltmiete", false, null, "kaufpreisfaktor"),
-      kpiCard("home", oder(z.kpM2 != null, eur2(z.kpM2)), "Kaufpreis je m²", z.F ? "bei " + qm(z.F) : "noch ohne Fläche", false, null, "preism2"),
-      kpiCard("home", oder(z.kmM2 != null && z.KM > 0, eur2(z.kmM2)), "Kaltmiete je m²", "im Monat", false, null, "preism2")
+      // Im eigenen Objekt gibt es keinen Kaufpreis: Rückfluss statt Kaufpreisfaktor, Sanierung je m² statt Kaufpreis je m²
+      z.bestand
+        ? kpiCard("chart", oder(z.rueckfluss != null, einKomma(z.rueckfluss) + " Jahre"), "Rückfluss", "Gesamtinvestition ÷ Jahreskaltmiete", false, null, "rueckfluss")
+        : kpiCard("chart", oder(z.faktor != null, zahl2(z.faktor)), "Kaufpreis­faktor", "Kaufpreis ÷ Jahreskaltmiete", false, null, "kaufpreisfaktor"),
+      z.bestand
+        ? kpiCard("home", oder(z.sanM2 != null, eur2(z.sanM2)), "Sanierung je m²", z.F ? "bei " + qm(z.F) : "noch ohne Fläche", false, null, "sanierungm2")
+        : kpiCard("home", oder(z.kpM2 != null, eur2(z.kpM2)), "Kaufpreis je m²", z.F ? "bei " + qm(z.F) : "noch ohne Fläche", false, null, "preism2"),
+      kpiCard("home", oder(z.kmM2 != null && z.KM > 0, eur2(z.kmM2)), "Kaltmiete je m²", "im Monat", false, null, z.bestand ? "sanierungm2" : "preism2")
     ];
     return el(`<div class="grid g-kpi eq-kpi-plan">${karten.join("")}</div>`);
   }
@@ -7655,7 +7736,7 @@
       return el(`<div class="card">
         <div class="card-h"><div><div class="card-t">Stresstest</div>
           <div class="card-s">Was passiert, wenn es anders kommt?</div></div></div>
-        <div class="card-b"><div class="eq-leer">Trag Kaufpreis und Mieten ein. Dann rechnet ESTRIQ hier durch, was bei höherem Zins, weniger Miete oder Leerstand übrig bleibt.</div></div></div>`);
+        <div class="card-b"><div class="eq-leer">Trag ${z.bestand ? "Sanierungskosten" : "Kaufpreis"} und Mieten ein. Dann rechnet ESTRIQ hier durch, was bei höherem Zins, weniger Miete oder Leerstand übrig bleibt.</div></div></div>`);
     }
     const faelle = stressFaelle(z);
     const zeile = (name, was, cf, klasse) => `<div class="eq-stress-z${klasse || ""}">
@@ -7696,19 +7777,20 @@
     ["versicherung", "Gebäudeversicherung geklärt"]
   ];
   function prueflisteKarte(p) {
-    const bekannt = new Set(PRUEFLISTE.map(x => x[0]));
+    const LISTE = prueflisteVon(p), titel = istSanierung(p) ? "Prüfliste vor dem Start" : "Prüfliste vor dem Kauf";
+    const bekannt = new Set(LISTE.map(x => x[0]));
     const gespeichert = Array.isArray(p.planRoh && p.planRoh.pruefliste) ? p.planRoh.pruefliste : [];
     const erledigt = new Set(gespeichert.filter(k => bekannt.has(k)));
     const karte = el(`<div class="card">
-      <div class="card-h"><div><div class="card-t">Prüfliste vor dem Kauf</div>
+      <div class="card-h"><div><div class="card-t">${titel}</div>
         <div class="card-s" id="plStand" role="status"></div></div></div>
       <div class="card-b">
-        <div class="eq-pl" role="group" aria-label="Prüfliste vor dem Kauf">${PRUEFLISTE.map(x =>
+        <div class="eq-pl" role="group" aria-label="${titel}">${LISTE.map(x =>
           `<button type="button" class="eq-pl-z" role="checkbox" data-pl="${x[0]}"><span class="eq-pl-k" aria-hidden="true"></span><span class="eq-pl-t">${esc(x[1])}</span></button>`).join("")}</div>
         <div class="note" style="margin-top:12px">Die Liste ist eine Gedankenstütze und ersetzt keine Beratung.</div>
       </div></div>`);
     const zeige = () => {
-      karte.querySelector("#plStand").textContent = erledigt.size + " von " + PRUEFLISTE.length + " erledigt";
+      karte.querySelector("#plStand").textContent = erledigt.size + " von " + LISTE.length + " erledigt";
       karte.querySelectorAll("[data-pl]").forEach(b => {
         const an = erledigt.has(b.dataset.pl);
         b.classList.toggle("an", an); b.setAttribute("aria-checked", String(an));
@@ -7723,7 +7805,7 @@
       zeige();
       kette = kette.then(async () => {
         const fremd = (Array.isArray(p.planRoh && p.planRoh.pruefliste) ? p.planRoh.pruefliste : []).filter(x => !bekannt.has(x));
-        const liste = fremd.concat(PRUEFLISTE.map(x => x[0]).filter(x => erledigt.has(x)));
+        const liste = fremd.concat(LISTE.map(x => x[0]).filter(x => erledigt.has(x)));
         try {
           p.planRoh = await planSpeichern(p, { pruefliste: liste });
           p.plan = { ...p.plan, pruefliste: liste };
@@ -7975,6 +8057,109 @@
     ];
   }
 
+  /* ---------- Sanierung im eigenen Objekt (Planungsdaten vorhaben: "sanierung") ---------- */
+  // Kein Kaufpreis, keine Kaufnebenkosten: Die Sanierung und die weiteren Kosten sind die Investition.
+  // Der Wert des Hauses (bestandswert) ist freiwillig und zählt nie zur Investition.
+
+  // Prüfliste vor dem Start einer Sanierung. Eine Gedankenstütze, keine Beratung.
+  const PRUEFLISTE_SANIERUNG = [
+    ["genehmigung", "Geklärt, ob eine Baugenehmigung nötig ist (zum Beispiel für zwei Wohnungen statt einer)"],
+    ["substanz", "Dach, Statik, Leitungen und Feuchtigkeit von einem Fachmann angesehen"],
+    ["angebote", "Angebote für alle Arbeiten eingeholt"],
+    ["foerderung", "Energieberatung gemacht und Fördermittel geprüft"],
+    ["puffer", "Puffer für Unvorhergesehenes eingeplant"],
+    ["bank", "Finanzierungszusage der Bank liegt vor"],
+    ["zeitplan", "Zeitplan mit den Handwerkern abgestimmt"],
+    ["versicherung", "Versicherungen für die Bauzeit geklärt"],
+    ["steuer", "Mit dem Steuerberater über die Kosten gesprochen"],
+    ["miete", "Geplante Miete mit dem Mietspiegel abgeglichen"]
+  ];
+  const istSanierung = (p) => !!(p && p.planRoh && p.planRoh.vorhaben === "sanierung");
+  const prueflisteVon = (p) => istSanierung(p) ? PRUEFLISTE_SANIERUNG : PRUEFLISTE;
+
+  // Investition: was die Sanierung kostet und woher das Geld kommt (tritt im eigenen Objekt an die Stelle der Karte „Kauf")
+  function investitionKarte(p, z) {
+    const plan = z.plan;
+    if (!(z.INV > 0)) {
+      const leer = el(`<div class="card">
+        <div class="card-h"><div><div class="card-t">Investition</div></div></div>
+        <div class="card-b"><div class="eq-leer"><div>Noch keine Sanierungskosten eingetragen. Daraus rechnet ESTRIQ die Gesamtinvestition und deinen Eigenkapitalbedarf.</div>
+          <div><button type="button" class="eq-btn" id="pKauf">Kosten eintragen</button></div></div></div></div>`);
+      leer.querySelector("#pKauf").onclick = () => openKaufdaten(p);
+      return leer;
+    }
+    const zeilen = [
+      { name: "Sanierung", wert: z.SAN, farbe: "var(--eq-reihe-1)", zusatz: plan.sanierung_auto ? "Summe der Angebote" : "Budget" },
+      { name: "Weitere Kosten", wert: plan.kaufkosten_sonst, farbe: "var(--eq-reihe-3)", zusatz: "zum Beispiel Architekt und Gebühren" }
+    ];
+    const finanz = [
+      { name: "Darlehen", wert: Math.min(z.DAR, z.INV), farbe: "var(--eq-reihe-2)" },
+      { name: "Eigenkapital", wert: z.EK, farbe: "var(--eq-reihe-1)" }
+    ];
+    const anteil = (w) => z.INV > 0 ? Math.round(w / z.INV * 100) : 0;
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">Investition</div>
+        <div class="card-s">Was die Sanierung kostet und woher das Geld kommt</div></div>
+        <button type="button" class="add-btn" id="pKauf">Bearbeiten</button></div>
+      <div class="card-b">
+        ${anteilBalken(zeilen, "Sanierung " + anteil(z.SAN) + " Prozent, weitere Kosten " + anteil(plan.kaufkosten_sonst) + " Prozent der Gesamtinvestition")}
+        <div class="eq-kauf">
+          ${zeilen.map(t => `<div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:${t.farbe}"></i>${esc(t.name)}<small>${esc(t.zusatz)}</small></span><b>${eur2(t.wert)}</b></div>`).join("")}
+          <div class="kv eq-summe"><span>Gesamtinvestition</span><b>${eur2(z.INV)}</b></div>
+        </div>
+        <div class="card-t eq-zwischen">So wird sie bezahlt</div>
+        ${anteilBalken(finanz, "Darlehen " + anteil(Math.min(z.DAR, z.INV)) + " Prozent, Eigenkapital " + anteil(z.EK) + " Prozent")}
+        <div class="eq-kauf">
+          <div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:var(--eq-reihe-2)"></i>Darlehen${z.kredite ? `<small>${mehrzahl(z.kredite, "Kredit", "Kredite")}</small>` : `<small>noch keins eingetragen</small>`}</span><b>${eur2(z.DAR)}</b></div>
+          <div class="kv"><span class="eq-kauf-n"><i class="eq-punkt" style="background:var(--eq-reihe-1)"></i>Eigenkapital<small>bringst du selbst mit</small></span><b>${eur2(z.EK)}</b></div>
+        </div>
+        ${z.zuVielFinanziert ? `<div class="note" style="margin-top:12px">Die Finanzierung ist höher als die Investition. Prüf die Darlehenssummen.</div>` : ""}
+        <div class="card-t eq-zwischen">Das Haus selbst</div>
+        ${z.wert
+          ? `<div class="eq-kauf">
+              <div class="kv"><span class="eq-kauf-n">Wert des Hauses heute<small>deine Angabe, zählt nicht zur Investition</small></span><b>${eur2(z.wert)}</b></div>
+              <div class="kv"><span class="eq-kauf-n">Bruttomietrendite auf Haus und Sanierung<small>Jahreskaltmiete ÷ (Wert + Gesamtinvestition)</small></span><b>${z.KM > 0 ? prozent2(z.bruttoMitWert) : "—"}</b></div>
+            </div>
+            <div class="note" style="margin-top:12px">Alle anderen Kennzahlen rechnen nur mit dem Geld, das du jetzt in die Hand nimmst. Diese eine Zahl zeigt, was das ganze Haus abwirft.</div>`
+          : `<div class="note">Das Haus gehört dir schon, deshalb zählt es nicht zur Investition. Sein Wert steckt trotzdem im Objekt: Trag ihn ein, dann zeigt ESTRIQ auch die Rendite auf Haus und Sanierung zusammen.</div>`}
+      </div></div>`);
+    karte.querySelector("#pKauf").onclick = () => openKaufdaten(p);
+    return karte;
+  }
+
+  // Fenster zur Investition im eigenen Objekt: Sanierungsbudget, weitere Kosten, Wert des Hauses, Bundesland
+  function openInvestition(p) {
+    const z = projektZahlen(p), plan = z.plan;
+    const auto = plan.sanierung_auto;
+    const body = `
+      ${auto
+        ? `<div class="note" style="margin-bottom:8px">Dein Sanierungsbudget ist die Summe der Angebote deiner Handwerker: ${eur2(z.angebote)}. Den Schalter dafür findest du auf der Projektseite über den Handwerkern.</div>`
+        : ef("Sanierungsbudget", "sanierung", plan.sanierung || "", "number", { einheit: "€", min: 0, platzhalter: "z. B. 180000", hinweis: "Alles, was du in das Objekt steckst: Handwerker, Material und Planung" })}
+      ${ef("Weitere Kosten", "kaufkosten_sonst", plan.kaufkosten_sonst || "", "number", { einheit: "€", min: 0, hinweis: "Zum Beispiel Architekt, Genehmigungen oder Gebühren" })}
+      ${efTitel("Das Haus selbst")}
+      ${ef("Wert des Hauses heute", "bestandswert", plan.bestandswert || "", "number", { einheit: "€", min: 0, platzhalter: "freiwillig",
+        hinweis: "Was das Haus heute beim Verkauf bringen würde. Es zählt nicht zur Investition. ESTRIQ zeigt damit zusätzlich die Rendite auf Haus und Sanierung zusammen." })}
+      ${efSel("Bundesland", "bundesland", plan.bundesland || "", [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] }))),
+        { hinweis: "Damit zeigt ESTRIQ die passende Vergleichsmiete." })}
+      <div class="eq-live" id="kdLive" role="status"></div>
+      ${efAktionen()}`;
+    const sheet = openSheet("Investition", p.name, body);
+    const lesen = () => {
+      const w = efWerte(sheet);
+      const o = { kaufkosten_sonst: zahl(w.kaufkosten_sonst) || 0, bestandswert: zahl(w.bestandswert) > 0 ? zahl(w.bestandswert) : null, bundesland: text(w.bundesland) };
+      if (!auto) o.sanierung = zahl(w.sanierung) || 0;
+      return o;
+    };
+    const live = () => {
+      const n = projektZahlen({ ...p, plan: { ...p.plan, ...lesen() } });
+      sheet.querySelector("#kdLive").innerHTML = `<span>Gesamtinvestition</span><b>${eur2(n.INV)}</b>
+        <small>Sanierung ${eur2(n.SAN)} + weitere Kosten ${eur2(n.KNK)}</small>`;
+    };
+    sheet.querySelectorAll("input[data-f]").forEach(n => n.addEventListener("input", live));
+    live();
+    efBind(sheet, async () => await planSpeichern(p, lesen()));
+  }
+
   const BEWERTUNG_WORT = { gut: "Gut", mittel: "Mittel", achtung: "Achtung", kritisch: "Kritisch", offen: "Offen" };
   const einKomma = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
@@ -7985,12 +8170,25 @@
     const punkte = [];
     const punkt = (id, titel, stufe, satz, tunText, tun) => punkte.push({ id, titel, stufe, wort: BEWERTUNG_WORT[stufe], satz, tunText, tun });
 
+    const braucht = z.bestand ? "Braucht Sanierungskosten und Mieten." : "Braucht Kaufpreis und Mieten.";
     // 1. Trägt es sich?
-    if (u.offen) punkt("tragen", "Trägt es sich?", "offen", "Trag Kaufpreis und Mieten ein, dann rechnet ESTRIQ.", "Kaufdaten eintragen", () => openKaufdaten(p));
+    if (u.offen) punkt("tragen", "Trägt es sich?", "offen", "Trag " + (z.bestand ? "Sanierungskosten" : "Kaufpreis") + " und Mieten ein, dann rechnet ESTRIQ.", z.bestand ? "Kosten eintragen" : "Kaufdaten eintragen", () => openKaufdaten(p));
     else punkt("tragen", "Trägt es sich?", u.stufe, u.satz);
 
-    // 2. Kaufpreis im Verhältnis zur Miete
-    if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", "Braucht Kaufpreis und Mieten.");
+    // 2. Investition im Verhältnis zur Miete – beim Kauf der Kaufpreis, im eigenen Objekt die Sanierung
+    if (z.bestand) {
+      if (!(z.KM > 0) || !(z.INV > 0)) punkt("preis", "Investition und Miete", "offen", braucht);
+      else if (z.wert) {
+        // Mit dem Wert des Hauses: derselbe Maßstab wie beim Kauf
+        const fk = (z.INV + z.wert) / (z.KM * 12), f = "Haus und Sanierung zusammen sind das " + einKomma(fk) + "-Fache der Jahreskaltmiete. Faustregel: ";
+        if (fk <= 22) punkt("preis", "Investition und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.");
+        else if (fk <= 28) punkt("preis", "Investition und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.");
+        else punkt("preis", "Investition und Miete", "achtung", f + "Über dem 28-Fachen ist teuer. Dann bringt ein Verkauf vielleicht mehr als die Vermietung.");
+      } else {
+        const f = "Die Investition ist das " + einKomma(z.rueckfluss) + "-Fache der Jahreskaltmiete. Nach etwa " + einKomma(z.rueckfluss) + " Jahren hat die Miete sie eingespielt – vor Kosten und Zinsen. Der Wert des Hauses ist nicht mitgerechnet.";
+        punkt("preis", "Investition und Miete", z.rueckfluss <= 15 ? "gut" : z.rueckfluss <= 22 ? "mittel" : "achtung", f, "Wert des Hauses eintragen", () => openKaufdaten(p));
+      }
+    } else if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", braucht);
     else {
       const f = "Der Kaufpreis ist das " + einKomma(z.faktor) + "-Fache der Jahreskaltmiete. Faustregel: ";
       if (z.faktor <= 22) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.");
@@ -8003,7 +8201,7 @@
       punkt("finanzierung", "Finanzierung", "offen", "Noch kein Darlehen eingetragen. ESTRIQ rechnet so, als würdest du alles selbst bezahlen.",
         "Darlehen eintragen", () => openCreditEdit(p, null, true));
     } else {
-      if (z.brutto == null || !(z.KM > 0)) punkt("zins", "Miete und Kreditzins", "offen", "Braucht Kaufpreis und Mieten.");
+      if (z.brutto == null || !(z.KM > 0)) punkt("zins", "Miete und Kreditzins", "offen", braucht);
       else {
         const s = "Die Miete bringt " + prozent2(z.brutto) + " im Jahr, der Kredit kostet " + prozent2(z.hoechsterZins) + " Zins.";
         if (z.brutto < z.hoechsterZins - 1) punkt("zins", "Miete und Kreditzins", "kritisch", s + " Der Kredit kostet deutlich mehr, als die Miete bringt.");
@@ -8012,6 +8210,13 @@
         else punkt("zins", "Miete und Kreditzins", "gut", s);
       }
       if (z.zuVielFinanziert) punkt("eigenkapital", "Eigenkapital", "kritisch", "Die Darlehen sind höher als die Gesamtinvestition. Prüf die Darlehenssummen.");
+      else if (z.bestand) {
+        // Im eigenen Objekt gibt es keine Kaufnebenkosten. Maßstab ist der Anteil, den du selbst zahlst.
+        const anteil = z.INV > 0 ? z.EK / z.INV * 100 : 0;
+        if (!(z.INV > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht die Sanierungskosten.");
+        else if (anteil >= 20) punkt("eigenkapital", "Eigenkapital", "gut", "Du zahlst " + eur(z.EK) + " selbst. Das sind " + prozent(anteil, 0) + " der Investition.");
+        else punkt("eigenkapital", "Eigenkapital", "mittel", "Du finanzierst " + prozent(100 - anteil, 0) + " der Investition. Das geht oft, weil das Haus der Bank als Sicherheit dient – sprich früh mit ihr.");
+      }
       else if (!(z.KP > 0)) punkt("eigenkapital", "Eigenkapital", "offen", "Braucht den Kaufpreis.");
       else if (z.EK + 0.5 >= z.KNK) punkt("eigenkapital", "Eigenkapital", "gut", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + ".");
       else if (z.EK >= z.KNK / 2) punkt("eigenkapital", "Eigenkapital", "mittel", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " zum Teil. Viele Banken wollen, dass du sie ganz selbst zahlst.");
@@ -8024,7 +8229,7 @@
     }
 
     // 6. Stresstest
-    if (u.offen) punkt("stress", "Stresstest", "offen", "Braucht Kaufpreis und Mieten.");
+    if (u.offen) punkt("stress", "Stresstest", "offen", braucht);
     else if (z.cashflow < 0) punkt("stress", "Stresstest", u.stufe === "achtung" ? "achtung" : "kritisch", "Trägt sich schon nach Plan " + (u.stufe === "achtung" ? "knapp " : "") + "nicht – für Überraschungen ist kein Platz.");
     else {
       const faelle = stressFaelle(z), nicht = faelle.filter(f => projektZahlen(p, f.fall).cashflow < 0).length;
@@ -8053,19 +8258,29 @@
       else punkt("miete", "Miete im Vergleich", "offen", s + " Trag die ortsübliche Miete aus dem Mietspiegel ein, dann vergleicht ESTRIQ genauer.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
     }
 
-    // 9. Zustand
+    // 9. Zustand – im eigenen Objekt stattdessen: Stehen die Sanierungskosten auf Angeboten?
     const zu = zustandVon(roh);
-    if (!zu) punkt("zustand", "Zustand", "offen", "Noch nicht eingetragen.", "Zustand eintragen", () => openProjektEdit(p));
+    if (z.bestand) {
+      if (z.plan.sanierung_auto) {
+        if (z.angebote > 0) punkt("kosten", "Sanierungskosten", "gut", "Dein Budget folgt den Angeboten deiner Handwerker: " + eur(z.angebote) + ".");
+        else punkt("kosten", "Sanierungskosten", "offen", "Noch keine Angebote eingetragen.");
+      }
+      else if (!(z.SAN > 0)) punkt("kosten", "Sanierungskosten", "offen", "Noch keine Sanierungskosten eingetragen.", "Kosten eintragen", () => openKaufdaten(p));
+      else if (!(z.angebote > 0)) punkt("kosten", "Sanierungskosten", "offen", "Du rechnest mit " + eur(z.SAN) + ". Angebote von Handwerkern sind noch nicht eingetragen – hol sie ein, bevor du startest.");
+      else if (z.angebote > z.SAN + 0.5) punkt("kosten", "Sanierungskosten", "achtung", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen über deinem Budget von " + eur(z.SAN) + ".");
+      else punkt("kosten", "Sanierungskosten", "gut", "Die Angebote deiner Handwerker (" + eur(z.angebote) + ") liegen in deinem Budget von " + eur(z.SAN) + ".");
+    }
+    else if (!zu) punkt("zustand", "Zustand", "offen", "Noch nicht eingetragen.", "Zustand eintragen", () => openProjektEdit(p));
     else if (zu[0] === "gut") punkt("zustand", "Zustand", "gut", zu[1] + ". " + zu[2] + ".");
     else if (zu[0] === "mittel") punkt("zustand", "Zustand", "mittel", zu[1] + ". " + zu[2] + ".");
     else if (z.SAN > 0) punkt("zustand", "Zustand", "mittel", "Sanierungsbedürftig. Du hast " + eur(z.SAN) + " für die Sanierung eingeplant. Hol Angebote ein, bevor du kaufst.");
     else punkt("zustand", "Zustand", "achtung", "Sanierungsbedürftig, aber noch ohne Sanierungsbudget. Trag ein, was die Arbeiten kosten.", "Budget eintragen", () => openKaufdaten(p));
 
     // 10. Prüfliste
-    const bekannt = new Set(PRUEFLISTE.map(x => x[0]));
+    const liste = prueflisteVon(p), bekannt = new Set(liste.map(x => x[0]));
     const erledigt = (Array.isArray(roh.pruefliste) ? roh.pruefliste : []).filter(k => bekannt.has(k)).length;
-    if (erledigt >= PRUEFLISTE.length) punkt("pruefliste", "Prüfliste", "gut", "Alle " + PRUEFLISTE.length + " Punkte sind erledigt.");
-    else punkt("pruefliste", "Prüfliste", "offen", erledigt + " von " + PRUEFLISTE.length + " Punkten erledigt. Die Liste steht weiter unten.");
+    if (erledigt >= liste.length) punkt("pruefliste", "Prüfliste", "gut", "Alle " + liste.length + " Punkte sind erledigt.");
+    else punkt("pruefliste", "Prüfliste", "offen", erledigt + " von " + liste.length + " Punkten erledigt. Die Liste steht weiter unten.");
     return punkte;
   }
 
@@ -8184,9 +8399,9 @@
     }
     const z = projektZahlen(p);
     $("#pageTitle").textContent = p.name;
-    $("#pageSub").textContent = p.ort || bundeslandName(z.plan.bundesland) || "";
+    $("#pageSub").textContent = [p.ort || bundeslandName(z.plan.bundesland) || "", z.bestand ? "Sanierung im eigenen Objekt" : ""].filter(Boolean).join(" · ");
     const teile = [
-      projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), bewertungKarte(p, z), kaufKarte(p, z),
+      projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), bewertungKarte(p, z), z.bestand ? investitionKarte(p, z) : kaufKarte(p, z),
       einheitenKarte(p), lageKarte(p, z), finanzierungBereich(p), kostenKarte(p, z),
       (hatModul() || z.plan.sanierung_auto) ? sanierungSchalter(p, z) : null, gewerkeKarte(p),
       nebenkostenKarte(p), stresstestKarte(p, z), prueflisteKarte(p), notizKarte(p, z)
@@ -8200,6 +8415,7 @@
 
   // Kaufdaten: unter den Feldern steht live die Gesamtinvestition
   function openKaufdaten(p) {
+    if (istSanierung(p)) { openInvestition(p); return; }   // im eigenen Objekt: Fenster „Investition"
     const z = projektZahlen(p), plan = z.plan;
     const auto = plan.sanierung_auto;
     const body = `
@@ -8261,6 +8477,8 @@
     const body = `
       ${ef("Name", "name", p.name, "text", { pflicht: true, platzhalter: "z. B. Bergstraße 12" })}
       ${ef("Ort", "ort", p.ort || "")}
+      ${efSel("Vorhaben", "vorhaben", plan.vorhaben, [{ v: "kauf", t: "Ein Objekt kaufen" }, { v: "sanierung", t: "Ein eigenes Objekt sanieren" }],
+        { hinweis: "Im eigenen Objekt zählt kein Kaufpreis. Dann ist die Sanierung die Investition." })}
       ${ef("Baujahr", "baujahr", plan.baujahr || "", "number", { step: "1", min: 1000, max: 2200, platzhalter: "z. B. 1978" })}
       ${efSel("Zustand", "zustand", plan.zustand || "", [{ v: "", t: "Bitte wählen" }].concat(ZUSTAND.map(x => ({ v: x[0], t: x[1] + " – " + x[2] }))),
         { hinweis: "Dein Eindruck reicht. Der Zustand fließt in die Bewertung ein." })}
@@ -8270,7 +8488,7 @@
     const sheet = openSheet("Projekt bearbeiten", p.name, body);
     efBind(sheet, async (w) => await window.speichereProjekt(p._id, {
       name: text(w.name) || "Projekt", ort: text(w.ort), notiz: text(w.notiz),
-      projekt: { v: 1, ...(p.planRoh || {}), baujahr: w.baujahr ? Math.round(Number(w.baujahr)) : null, zustand: text(w.zustand), inserat: text(w.inserat), geaendert_am: new Date().toISOString() }
+      projekt: { v: 1, ...(p.planRoh || {}), vorhaben: w.vorhaben === "sanierung" ? "sanierung" : "kauf", baujahr: w.baujahr ? Math.round(Number(w.baujahr)) : null, zustand: text(w.zustand), inserat: text(w.inserat), geaendert_am: new Date().toISOString() }
     }));
   }
 
@@ -8325,7 +8543,7 @@
         <div class="ef-msg" id="efMsg" role="status"></div>
         <div class="ef-knoepfe"><button type="button" class="ef-save" id="efSave">In den Bestand übernehmen</button></div>
       </div>`;
-    const sheet = openSheet("Gekauft? Dann ab in den Bestand.", p.name, body);
+    const sheet = openSheet(istSanierung(p) ? "Fertig saniert? Dann ab in den Bestand." : "Gekauft? Dann ab in den Bestand.", p.name, body);
     const status = einheiten.map(u => u.status === "vermietet");
     sheet.querySelectorAll("[data-u]").forEach(b => b.onclick = () => {
       const i = Number(b.dataset.u);
