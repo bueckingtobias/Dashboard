@@ -1536,7 +1536,7 @@
         const fertig = merkLesen("estriq_onboarding_fertig");
         const nochKeinAbo = a && (a.roh_tarif === "onboarding" || a.roh_tarif === "test") && !hatAbo();
         if (!fertig && nochKeinAbo && !(freierTest() && !freierTest().laeuft)) {
-          setTimeout(() => openFarbwahlSheet({ onboarding: true }), 400);
+          setTimeout(() => funnelStart(), 400);
           return;
         }
       }
@@ -1741,9 +1741,11 @@
   // oder „Ausführlich"). Jeder Schritt sagt mit weg, zu welchem Vorhaben er gehört (ohne weg: zu beiden), und mit
   // schnell: true, ob er auch im schnellen Weg gefragt wird.
   // vor: Vorbelegung aus einem Rechner, zum Beispiel { kaufpreis, kalt } – dann ist das Vorhaben ein Kauf.
-  function assistentProjekt(vor) {
+  function assistentProjekt(vor, opt) {
     if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
     vor = vor || {};
+    // Erstes Projekt im Einstieg für neue Inhaber: danach folgt der letzte Schritt (Tarif oder Willkommen zum Test)
+    const imEinstieg = !!(opt && opt.nachOnboarding) || (funnelOffen() && !hatBestand());
     const san = (a) => a.vorhaben === "sanierung";
     const K = { o: "Das Objekt", k: "Der Kauf", s: "Die Sanierung", m: "Die Miete", l: "Die Lage", f: "Die Finanzierung", c: "Laufende Kosten" };
     // Planungsdaten aus den bisherigen Antworten – daraus ergibt sich die Gesamtinvestition
@@ -2040,12 +2042,14 @@
       showToast(fehlt.length
         ? "Projekt angelegt. Nicht gespeichert: " + fehlt.join(" und ") + ". Trag das bitte auf der Projektseite nach."
         : "Projekt angelegt. Oben steht das Urteil, darunter die Bewertung im Einzelnen.");
+      if (imEinstieg) setTimeout(() => onboardingWeiter(), 300);
     }, { abkuerzung: (a) => a.modus === "schnell" ? "" : "Rest überspringen und anlegen" });
   }
 
   // Geführtes Anlegen eines Mietobjekts
   function assistentObjekt(opt) {
     opt = opt || {};
+    if (!opt.nachOnboarding && funnelOffen() && !hatBestand()) opt = { ...opt, nachOnboarding: true };
     const schritte = [
       { id: "name", frage: "Wie soll dein Objekt heißen?",
         hinweis: "Ein Name, unter dem du es wiedererkennst.",
@@ -2743,29 +2747,60 @@
     schemaVerdrahten(sheet, "wcTheme");
     sheet.querySelector("#wcDone").onclick = async () => {
       await themeInDB(aktThemeId());
-      if (opt.onboarding) { closeSheet(); setTimeout(() => openErstesObjektSheet(), 250); }
+      if (opt.onboarding) { closeSheet(); setTimeout(() => funnelStart(), 250); }
       else { closeSheet(); }
     };
   }
 
-  // Onboarding-Schritt 2: erstes Objekt anlegen (erzeugt Bindung)
+  // Der Einstieg für neue Inhaber läuft in drei Schritten: Farben → Womit starten? → Tarif (oder Willkommen zum Test).
+  // Offen ist er, solange es kein Abo gibt, der Ablauf nicht abgeschlossen und ein Code-Test nicht abgelaufen ist.
+  function funnelOffen() {
+    const a = abo(), ft = freierTest();
+    return istInhaber() && !merkLesen("estriq_onboarding_fertig") && !!a
+      && (a.roh_tarif === "onboarding" || a.roh_tarif === "test") && !hatAbo() && !(ft && !ft.laeuft);
+  }
+  // Gibt es schon ein Objekt oder ein Projekt?
+  const hatBestand = () => ((D.streams || []).length + (D.projekte || []).length) > 0;
+  // Setzt den Einstieg dort fort, wo er steht. Wer schon Farben gewählt hat, sieht sie nicht noch einmal;
+  // wer schon etwas angelegt hat, kommt gleich zum letzten Schritt.
+  function funnelStart() {
+    if (!currentUser.theme) { openFarbwahlSheet({ onboarding: true }); return; }
+    if (hatBestand()) { onboardingWeiter(); return; }
+    openErstesObjektSheet();
+  }
+
+  // Schritt 2: Womit möchtest du starten? Ein Objekt aus dem Bestand, ein Projekt (Kauf oder Sanierung) –
+  // oder erst einmal umsehen bei den Rechnern und in der Lernecke.
   function openErstesObjektSheet() {
     const body = `
       <div class="wc-hero">
         <div class="wc-steps"><span class="done"></span><span class="on"></span><span></span></div>
-        <div class="wc-badge">Erster Schritt in dein Portfolio</div>
-        <div class="wc-t">Leg dein erstes Objekt an</div>
-        <div class="wc-d">Trag eine Immobilie ein, die du vermietest. Du siehst sofort, wie ESTRIQ deine Einnahmen und Rendite berechnet.</div>
+        <div class="wc-badge">Schritt 2 von 3</div>
+        <div class="wc-t">Womit möchtest du starten?</div>
+        <div class="wc-d">Den Rest legst du später über „Neu“ an.</div>
       </div>
-      <button class="wc-cta prem" id="obStart">Erstes Objekt anlegen</button>
-      <div class="wc-skip"><a href="#" id="obSkip">Überspringen</a></div>`;
-    const sheet = openSheet("Erstes Objekt", "", body);
+      <div class="frage-opts">
+        <button type="button" class="frage-opt" id="obStart">Ein Objekt, das ich vermiete<small>Trag eine Immobilie aus deinem Bestand ein. Du siehst sofort Einnahmen, Rendite und Cashflow.</small></button>
+        <button type="button" class="frage-opt" id="obProjekt">Ein Projekt, das ich prüfen will<small>Du überlegst zu kaufen oder ein eigenes Haus zu sanieren. ESTRIQ rechnet, ob es sich trägt.</small></button>
+        <button type="button" class="frage-opt" id="obSkip">Erst einmal umsehen<small>Zu den Rechnern und zur Lernecke. Dafür musst du nichts anlegen.</small></button>
+      </div>`;
+    const sheet = openSheet("Dein Einstieg", "", body);
     sheet.querySelector("#obStart").onclick = () => {
       closeSheet();
-      // Nach dem Speichern des Objekts geht es weiter zu den Fragen
+      // Nach dem Objekt folgt die erste Einheit, danach der letzte Schritt
       setTimeout(() => assistentObjekt({ nachOnboarding: true }), 200);
     };
-    sheet.querySelector("#obSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => onboardingWeiter(), 200); };
+    sheet.querySelector("#obProjekt").onclick = () => {
+      closeSheet();
+      setTimeout(() => assistentProjekt({}, { nachOnboarding: true }), 200);
+    };
+    sheet.querySelector("#obSkip").onclick = () => {
+      closeSheet();
+      geheZu("tools");
+      // Wer kostenlos testet, ist damit fertig. Alle anderen sehen sich um; der Tarif kommt, sobald sie etwas anlegen.
+      if (freierTest()) setTimeout(() => onboardingWeiter(), 250);
+      else showToast("Schau dich in Ruhe um. Ein Objekt oder Projekt legst du jederzeit über „Neu“ an.");
+    };
   }
 
   // Nach dem ersten Objekt: Wer über einen Zugangscode kostenlos testet, ist hier fertig.
