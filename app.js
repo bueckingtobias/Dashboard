@@ -323,6 +323,25 @@
       || s.includes("could not find the function") || s.includes("does not exist");
   }
   function istGesperrt() { return abo().tarif === "gesperrt"; }
+  // Kostenloser Test über einen Zugangscode: Tarif „test" mit Enddatum, noch ohne Abo.
+  // Gibt null zurück, wenn es keinen solchen Test gibt, sonst { ende, tage, laeuft, datum }.
+  function freierTest() {
+    const a = abo();
+    if (a.roh_tarif !== "test" || !a.tarif_bis || hatAbo()) return null;
+    const ende = new Date(a.tarif_bis);
+    if (isNaN(ende)) return null;
+    const tage = Math.ceil((ende - new Date()) / 86400000);
+    return { ende, tage, laeuft: ende > new Date(), datum: ende.toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" }) };
+  }
+  let testEndeGezeigt = false;   // das Fenster zur Tarifwahl nach Ablauf erscheint einmal je Sitzung von selbst
+  // Wer über einen Code kostenlos getestet hat, bekommt keinen weiteren Gratismonat. Läuft der Test noch mindestens
+  // drei Tage, beginnt das Bezahlen an seinem Ende (dieselbe Regel steht in der Edge Function checkout-starten).
+  const TEST_REST_MS = 3 * 86400000;
+  function testmonatSatz(ende) {
+    const ft = freierTest();
+    if (!ft) return "Erster Monat kostenlos · " + ende;
+    return (ft.ende - new Date() > TEST_REST_MS ? "Bezahlt wird erst nach deinem Test, ab dem " + ft.datum : "Kostenpflichtig ab der Buchung") + " · " + ende;
+  }
   // Premium-Module sind nur mit Premium bearbeitbar (Testphase zählt wie Premium)
   function hatModul() { return istPremium(); }
 
@@ -359,14 +378,18 @@
       einheiten: { t: "Einheiten-Grenze erreicht", d: `Basic umfasst bis zu ${b.einheiten} Einheiten. Premium hebt die Grenze vollständig auf.` },
       modul:     { t: mod && mod.titel ? mod.titel : (mod ? mod.name : "Dieses Modul") + " gehört zu Premium",
                    d: (mod && mod.vorsatz ? mod.vorsatz : "Im Basic-Tarif ist dieses Modul gesperrt. ") + (mod ? mod.nutzen : "") },
-      gesperrt:  { t: "Bearbeiten pausiert", d: darf
+      gesperrt:  freierTest() && !freierTest().laeuft
+        ? { t: "Dein kostenloser Test ist vorbei", d: darf
+          ? "Du hast ESTRIQ bis zum " + freierTest().datum + " kostenlos getestet. Wähl jetzt einen Tarif, um weiterzuarbeiten. Deine Daten bleiben erhalten und lesbar."
+          : "Der kostenlose Test dieses Kontos ist abgelaufen. Die Daten bleiben erhalten und lesbar – bearbeiten könnt ihr wieder, sobald ein Tarif gewählt ist." }
+        : { t: "Bearbeiten pausiert", d: darf
         ? "Dein Testzeitraum ist abgelaufen oder es liegt keine gültige Zahlung vor. Deine Daten bleiben erhalten und lesbar — mit einem aktiven Abo kannst du sie wieder bearbeiten."
         : "Für dieses Konto läuft gerade kein gültiges Abo. Die Daten bleiben erhalten und lesbar — bearbeiten könnt ihr wieder, sobald ein Abo aktiv ist." }
     };
     const info = texte[grund] || texte.objekte;
     const body = `
       <div class="up-hero">
-        <div class="up-badge">${grund === "gesperrt" ? "Pausiert" : "Upgrade"}</div>
+        <div class="up-badge">${grund === "gesperrt" ? (freierTest() ? "Test beendet" : "Pausiert") : "Upgrade"}</div>
         <div class="up-t">${esc(info.t)}</div>
         <div class="up-d">${esc(info.d)}</div>
       </div>
@@ -377,8 +400,8 @@
           <div class="up-plan-p">${prem.preis}<span>/Monat</span></div>
         </div>
         <ul class="up-feats">${leistungsListe("premium")}</ul>
-        ${darf ? `<button class="up-cta" id="upCta">Auf Premium wechseln</button>
-        <div class="up-note">Erster Monat kostenlos · monatlich kündbar</div>`
+        ${darf ? `<button class="up-cta" id="upCta">${grund === "gesperrt" && freierTest() ? "Tarif wählen" : "Auf Premium wechseln"}</button>
+        <div class="up-note">${esc(testmonatSatz("monatlich kündbar"))}</div>`
           : `<div class="nu-nur-inhaber">${esc(nurInhaberSatz())}</div>`}
       </div>
       <button type="button" class="add-btn wide" id="upSpaeter" style="margin-top:12px">${grund === "gesperrt" ? "Schließen" : "Nicht jetzt"}</button>
@@ -412,7 +435,9 @@
             : `<button class="tarif-btn${prem ? " prem" : ""}" data-plan="${plan}">${esc(tf.name)} wählen</button>`}
         </div>`;
     };
+    const ft = freierTest();
     const body = `
+      ${ft && ft.laeuft ? `<div class="note" style="margin-bottom:14px">Dein kostenloser Test läuft bis zum ${esc(ft.datum)} – so lange ist alles frei. Du musst jetzt noch nichts wählen. Wählst du schon jetzt, gilt der gewählte Tarif sofort.</div>` : ""}
       <div class="tarif-grid">
         ${karte("basic")}
         ${karte("premium")}
@@ -425,9 +450,10 @@
         </div>
         <div class="ef-msg" id="rabattMsg"></div>
       </div>
-      <div class="up-note" style="margin-top:14px">Erster Monat kostenlos · jederzeit kündbar</div>
+      <div class="up-note" style="margin-top:14px">${esc(testmonatSatz("jederzeit kündbar"))}</div>
       ${a.hat_stripe ? `<div class="abo-verwalten"><a href="#" id="portalLink">Abo verwalten oder kündigen</a></div>` : ""}`;
     const stand = aktuell ? TARIFE[aktuell].name
+      : freierTest() && freierTest().laeuft ? "Kostenloser Test bis " + freierTest().datum
       : a.tarif === "gesperrt" ? "Pausiert"
       : a.roh_tarif === "onboarding" ? "Kein Abo" : "Test";
     const sheet = openSheet("Tarif wählen", "Aktuell: " + stand, body);
@@ -663,7 +689,9 @@
     // Tarif-Status anzeigen — bildet den echten (Stripe-)Zustand ab
     const a = abo();
     const istOnboarding = a.roh_tarif === "onboarding";
-    const tarifName = istOnboarding ? "Kein Abo"
+    const ft = freierTest();
+    const tarifName = ft && ft.laeuft ? "Kostenloser Test"
+      : istOnboarding ? "Kein Abo"
       : a.tarif === "premium" ? "Premium"
       : a.tarif === "basic" ? "Basic"
       : a.tarif === "gesperrt" ? "Pausiert" : "Test";
@@ -671,7 +699,11 @@
     // Nur ein echtes Stripe-Trialing ist eine Testphase – nicht der Onboarding-Zustand
     const imTest = ss === "trialing";
     let statusZeile = "";
-    if (istOnboarding) {
+    if (ft && ft.laeuft) {
+      statusZeile = `Noch ${ft.tage} Tag${ft.tage === 1 ? "" : "e"}, bis ${ft.datum}. Alles ist frei – danach wählst du einen Tarif.`;
+    } else if (ft) {
+      statusZeile = "Dein kostenloser Test ist vorbei – wähl einen Tarif, um weiterzuarbeiten";
+    } else if (istOnboarding) {
       statusZeile = "Wähle einen Tarif, um alle Funktionen zu behalten";
     } else if (a.tarif === "gesperrt") {
       statusZeile = "Bearbeiten pausiert — Daten bleiben lesbar";
@@ -1343,16 +1375,25 @@
       msg.textContent = "Bitte stimme der Speicherung deiner Daten zu, um fortzufahren.";
       msg.className = "login-msg bad"; return;
     }
+    // Beta: ohne angenommenen Zugangscode keine Registrierung
+    if (!betaCode) {
+      msg.textContent = "Für die Registrierung brauchst du einen Zugangscode. Du trägst ihn unter „Vormerken“ ein.";
+      msg.className = "login-msg bad"; return;
+    }
     msg.textContent = "Konto wird erstellt…"; msg.className = "login-msg";
     $("#registerBtn").disabled = true;
 
     // 1. Konto anlegen. Der Datenbank-Trigger legt automatisch die eigene Organisation an.
+    //    Der Zugangscode reist in den Zusatzdaten mit; die Datenbank prüft ihn noch einmal.
     const { data, error } = await window.sb.auth.signUp({
       email: mail, password: pw,
-      options: { data: { name: name } }
+      options: { data: { name: name, beta_code: betaCode } }
     });
     if (error) {
-      msg.textContent = window.fehlerText(error);
+      const roh = (String(error.message || "") + " " + String(error.code || "")).toLowerCase();
+      msg.textContent = /beta_code|database error|unexpected_failure/.test(roh)
+        ? "Das Konto konnte nicht angelegt werden. Vielleicht gilt dein Zugangscode nicht mehr – frag bitte nach einem neuen."
+        : window.fehlerText(error);
       msg.className = "login-msg bad";
       $("#registerBtn").disabled = false;
       return;
@@ -1494,10 +1535,20 @@
       } else {
         const fertig = merkLesen("estriq_onboarding_fertig");
         const nochKeinAbo = a && (a.roh_tarif === "onboarding" || a.roh_tarif === "test") && !hatAbo();
-        if (!fertig && nochKeinAbo) {
+        if (!fertig && nochKeinAbo && !(freierTest() && !freierTest().laeuft)) {
           setTimeout(() => openFarbwahlSheet({ onboarding: true }), 400);
           return;
         }
+      }
+      const ft = freierTest();
+      if (ft && !ft.laeuft && istInhaber() && !testEndeGezeigt) {
+        testEndeGezeigt = true;
+        setTimeout(() => openUpgradeSheet("gesperrt"), 500);
+        return;
+      }
+      if (ft && ft.laeuft && ft.tage <= 14 && istInhaber() && merkLesen("estriq_test_hinweis") !== new Date().toDateString()) {
+        merkSetzen("estriq_test_hinweis", new Date().toDateString());
+        setTimeout(() => showToast("Dein kostenloser Test endet " + (ft.tage <= 1 ? "morgen" : "in " + ft.tage + " Tagen") + ". Einen Tarif wählst du im Profil."), 900);
       }
       // Sonst: fällige Mieten prüfen, danach ggf. ein Verbesserungs-Tipp
       setTimeout(() => { if (!pruefeMieteingaenge()) zeigeTippWennFaellig(); }, 600);
@@ -1734,6 +1785,16 @@
     const hatPreis = (a) => !san(a) && (asZahl(a.kaufpreis) || 0) > 0;
     const hatInvest = (a) => san(a) ? investAus(a) > 0 : hatPreis(a);
     const hatEinheit = (a) => asZahl(a.flaeche) != null || asZahl(a.kalt) != null;
+    // Zahl der Wohnungen (1 bis 20). Nach der ersten wird immer gefragt. Im ausführlichen Weg fragt ESTRIQ auch nach
+    // den nächsten (bis zur achten) – vorbelegt mit den Werten der ersten. Alle übrigen werden wie die erste angelegt.
+    const ANZAHL_MAX = 20, EINZELN_MAX = 8;
+    const anzahlAus = (a) => Math.min(ANZAHL_MAX, Math.max(1, Math.round(asZahl(a.anzahl) || 1)));
+    const gefuellt = (v) => v != null && v !== "";
+    const einheitAus = (a, i) => i > 1 && (gefuellt(a["flaeche_" + i]) || gefuellt(a["kalt_" + i]))
+      ? { flaeche: asZahl(a["flaeche_" + i]), kalt: asZahl(a["kalt_" + i]) }
+      : { flaeche: asZahl(a.flaeche), kalt: asZahl(a.kalt) };
+    const einheitenAus = (a, bis) => Array.from({ length: bis || anzahlAus(a) }, (_, i) => einheitAus(a, i + 1));
+    const summeAus = (a, bis) => einheitenAus(a, bis).reduce((s, e) => ({ f: s.f + (e.flaeche || 0), k: s.k + (e.kalt || 0) }), { f: 0, k: 0 });
     // Eigenkapital: direkt eingegeben oder aus dem gewünschten Darlehen berechnet
     const mitDarlehen = (a) => a["wahl:eigenkapital"] === "1";
     const finanzAngabe = (a) => { const v = mitDarlehen(a) ? a.darlehen : a.eigenkapital; return v != null && v !== ""; };
@@ -1764,11 +1825,11 @@
       { id: "modus", vorab: true, frage: "Wie möchtest du das Projekt anlegen?",
         hinweis: "Beide Wege führen zum selben Projekt. Was du jetzt weglässt, trägst du später auf der Projektseite nach.",
         optionen: (a) => san(a) ? [
-          { v: "schnell", t: "Schnell", d: "6 Fragen: Name, Ort, Sanierungskosten, Miete und Finanzierung. Für alles andere gelten Annahmen." },
-          { v: "voll", t: "Ausführlich", d: "16 Fragen: dazu weitere Kosten, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }]
+          { v: "schnell", t: "Schnell", d: "7 Fragen: Name, Ort, Sanierungskosten, Wohnungen, Miete und Finanzierung. Für alles andere gelten Annahmen." },
+          { v: "voll", t: "Ausführlich", d: "Ab 17 Fragen: dazu weitere Kosten, jede Wohnung einzeln, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }]
         : [
-          { v: "schnell", t: "Schnell", d: "6 Fragen: Name, Ort, Kaufpreis, Miete und Finanzierung. Für alles andere gelten Annahmen." },
-          { v: "voll", t: "Ausführlich", d: "20 Fragen: dazu Kaufnebenkosten, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }] },
+          { v: "schnell", t: "Schnell", d: "7 Fragen: Name, Ort, Kaufpreis, Wohnungen, Miete und Finanzierung. Für alles andere gelten Annahmen." },
+          { v: "voll", t: "Ausführlich", d: "Ab 21 Fragen: dazu Kaufnebenkosten, jede Wohnung einzeln, Lage, Vergleichsmiete, Zinsbindung und laufende Kosten." }] },
       // ----- Das Objekt -----
       { id: "name", schnell: true, kapitel: K.o, frage: "Wie soll das Projekt heißen?",
         hinweis: (a) => san(a) ? "Zum Beispiel die Adresse des Hauses." : "Zum Beispiel die Adresse aus dem Inserat.",
@@ -1831,15 +1892,38 @@
         live: (a) => { const z = zahlenAus(a); return "Gesamtinvestition: " + eur(z.INV) + ". Sanierung " + eur(z.SAN) + ", weitere Kosten " + eur(z.KNK) + "."; },
         ueberspringbar: true },
       // ----- Die Miete -----
+      { id: "anzahl", schnell: true, kapitel: K.m,
+        frage: (a) => san(a) ? "Wie viele Wohnungen entstehen?" : "Wie viele Wohnungen hat das Objekt?",
+        hinweis: (a) => (san(a) ? "Zum Beispiel zwei, wenn aus einem Haus zwei Wohnungen werden."
+          : "Bei einer Eigentumswohnung ist es eine. Ein Laden oder Büro zählt mit.") + " Möglich sind bis zu " + ANZAHL_MAX + ".",
+        typ: "number", vorgabe: 1, platzhalter: "1", ueberspringbar: true,
+        vorschlaege: [1, 2, 3, 4, 6].map(n => ({ text: n === 1 ? "1 Wohnung" : n + " Wohnungen", werte: () => ({ anzahl: String(n) }) })),
+        live: (a) => asZahl(a.anzahl) > ANZAHL_MAX ? "ESTRIQ legt " + ANZAHL_MAX + " Wohnungen an. Weitere trägst du auf der Projektseite ein." : "" },
       { schnell: true, kapitel: K.m,
-        frage: (a) => san(a) ? "Wie groß wird die erste Wohnung, und was soll sie an Kaltmiete bringen?" : "Wie groß ist es, und was bringt es an Kaltmiete?",
-        hinweis: (a) => san(a) ? "Plane mit der Miete nach der Sanierung. Weitere Wohnungen trägst du gleich auf der Projektseite ein."
-          : "Nimm die Miete, die heute gezahlt wird. Weitere Einheiten trägst du gleich auf der Projektseite ein.",
+        frage: (a) => san(a)
+          ? "Wie groß wird die " + (anzahlAus(a) > 1 ? "erste " : "") + "Wohnung, und was soll sie an Kaltmiete bringen?"
+          : anzahlAus(a) > 1 ? "Wie groß ist die erste Wohnung, und was bringt sie an Kaltmiete?" : "Wie groß ist es, und was bringt es an Kaltmiete?",
+        hinweis: (a) => { const n = anzahlAus(a);
+          return (san(a) ? "Plane mit der Miete nach der Sanierung." : "Nimm die Miete, die heute gezahlt wird.")
+            + (n === 1 ? ""
+              : a.modus === "schnell" ? " Die übrigen Wohnungen legt ESTRIQ genauso an. Auf der Projektseite passt du sie an."
+              : n > EINZELN_MAX ? " Nach den nächsten " + (EINZELN_MAX - 1) + " fragt ESTRIQ gleich, die übrigen legt es wie die erste an."
+              : " Nach " + (n === 2 ? "der zweiten" : "den anderen") + " fragt ESTRIQ gleich."); },
         felder: [
           { id: "flaeche", label: "Fläche", typ: "number", einheit: "m²", platzhalter: "z. B. 72" },
           { id: "kalt", label: "Kaltmiete im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 650",
             vorgabe: vor.kalt > 0 ? vor.kalt : undefined }
         ], live: vergleichSatz, ueberspringbar: true },
+      // Wohnung 2 bis 8, nur im ausführlichen Weg und nur so viele, wie es gibt
+      ...Array.from({ length: EINZELN_MAX - 1 }, (_, n) => n + 2).map(i => ({ kapitel: K.m,
+        frage: (a) => "Wohnung " + i + ": " + (san(a) ? "Wie groß wird sie, und was soll sie an Kaltmiete bringen?" : "Wie groß ist sie, und was bringt sie an Kaltmiete?"),
+        hinweis: "Vorbelegt mit den Werten der ersten Wohnung. Ändere, was abweicht.",
+        felder: [
+          { id: "flaeche_" + i, label: "Fläche", typ: "number", einheit: "m²", vorgabe: (a) => gefuellt(a.flaeche) ? a.flaeche : "" },
+          { id: "kalt_" + i, label: "Kaltmiete im Monat", typ: "number", einheit: "€", vorgabe: (a) => gefuellt(a.kalt) ? a.kalt : "" }
+        ],
+        live: (a) => { const z = summeAus(a, i); return "Wohnung 1 bis " + i + " zusammen: " + zahlKurz(z.f) + " m², " + eur(z.k) + " Kaltmiete im Monat."; },
+        ueberspringbar: true, ab: i, wenn: hatEinheit })),
       { id: "vergleichsmiete", kapitel: K.m, frage: "Kennst du die ortsübliche Miete?",
         hinweis: (a) => "Sie steht im Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + refSatz(a) + " je m². " + MIETE_STAND,
         typ: "number", einheit: "€ je m²", platzhalter: "z. B. 8,50", ueberspringbar: true,
@@ -1849,9 +1933,10 @@
           return Math.abs(ab) < 0.5 ? "Deine geplante Miete entspricht der ortsüblichen Miete."
             : "Deine geplante Miete von " + eur2(k / f) + " je m² liegt " + prozent(Math.abs(ab), 0) + " " + (ab > 0 ? "über" : "unter") + " der ortsüblichen Miete."; },
         wenn: (a) => asZahl(a.flaeche) > 0 && asZahl(a.kalt) > 0 },
-      { id: "vermietet", weg: "kauf", kapitel: K.m, frage: "Ist die Einheit schon vermietet?",
-        hinweis: "Die Miete rechnet ESTRIQ in beiden Fällen mit – als geplante Miete.",
-        optionen: [{ v: "vermietet", t: "Ja, sie ist vermietet" }, { v: "frei", t: "Nein, sie steht leer" }],
+      { id: "vermietet", weg: "kauf", kapitel: K.m, frage: (a) => anzahlAus(a) > 1 ? "Sind die Wohnungen schon vermietet?" : "Ist die Einheit schon vermietet?",
+        hinweis: (a) => "Die Miete rechnet ESTRIQ in beiden Fällen mit – als geplante Miete." + (anzahlAus(a) > 1 ? " Einzelne Wohnungen stellst du auf der Projektseite um." : ""),
+        optionen: (a) => anzahlAus(a) > 1 ? [{ v: "vermietet", t: "Ja, sie sind vermietet" }, { v: "frei", t: "Nein, sie stehen leer" }]
+          : [{ v: "vermietet", t: "Ja, sie ist vermietet" }, { v: "frei", t: "Nein, sie steht leer" }],
         ueberspringbar: true, wenn: hatEinheit }
     ].concat(
       // ----- Die Lage: drei Fragen, aus denen ESTRIQ die Lage einstuft -----
@@ -1913,12 +1998,12 @@
           { id: "instand_m2", label: "Instandhaltung", typ: "number", einheit: "€ je m²", vorgabe: instandVorgabe },
           { id: "ausfall_pct", label: "Mietausfall", typ: "number", einheit: "%", vorgabe: 3 }
         ],
-        live: (a) => { const f = asZahl(a.flaeche) || 0, k = asZahl(a.kalt) || 0; if (!(f > 0) && !(k > 0)) return "";
+        live: (a) => { const z = summeAus(a), f = z.f, k = z.k; if (!(f > 0) && !(k > 0)) return "";
           return "Das sind zusammen " + eur2(f * (asZahl(a.instand_m2) || 0) + k * (asZahl(a.ausfall_pct) || 0) / 100) + " im Monat."; },
         ueberspringbar: true }
     ]);
     // Ein Schritt zählt, wenn er zum Vorhaben gehört – und im schnellen Weg nur, wenn er als schnell markiert ist
-    schritte.forEach(f => { if (!f.vorab) f.nur = (a) => (!f.weg || f.weg === (san(a) ? "sanierung" : "kauf")) && (a.modus !== "schnell" || !!f.schnell); });
+    schritte.forEach(f => { if (!f.vorab) f.nur = (a) => (!f.weg || f.weg === (san(a) ? "sanierung" : "kauf")) && (a.modus !== "schnell" || !!f.schnell) && (!f.ab || anzahlAus(a) >= f.ab); });
     openAssistent("Projekt anlegen", schritte, async (a) => {
       const name = (a.name || "").trim() || "Projekt";
       const heute = new Date().toISOString();
@@ -1930,14 +2015,17 @@
         invest: rund2(INV) || null, nk_als_puffer: true, projekt: plan
       });
       const fehlt = [];
-      const flaeche = asZahl(a.flaeche), kalt = asZahl(a.kalt);
-      if (flaeche != null || kalt != null) {
-        // Im eigenen Objekt ist die Wohnung bis zum Ende der Sanierung leer
+      // Im eigenen Objekt sind die Wohnungen bis zum Ende der Sanierung leer
+      const einheiten = hatEinheit(a) ? einheitenAus(a).filter(e => e.flaeche != null || e.kalt != null) : [];
+      let ohne = 0;
+      for (let i = 0; i < einheiten.length; i++) {
+        const dazu = einheiten.length > 1 ? { sortierung: i + 1 } : {};
         try {
-          await neueEinheit(neu.id, { bezeichnung: san(a) ? "Wohnung 1" : "Einheit 1", flaeche, status: san(a) || a.vermietet === "frei" ? "frei" : "vermietet", kalt_fix: kalt, nk_fix: null,
-            zahltag: 1, mieter: "", einzug: null, vertrag: {} });
-        } catch (_) { fehlt.push("die Einheit"); }
+          await neueEinheit(neu.id, { bezeichnung: (san(a) ? "Wohnung " : "Einheit ") + (i + 1), flaeche: einheiten[i].flaeche, status: san(a) || a.vermietet === "frei" ? "frei" : "vermietet",
+            kalt_fix: einheiten[i].kalt, nk_fix: null, zahltag: 1, mieter: "", einzug: null, vertrag: {}, ...dazu });
+        } catch (_) { ohne++; }
       }
+      if (ohne) fehlt.push(einheiten.length === 1 ? "die Einheit" : ohne === einheiten.length ? "die Einheiten" : ohne + " von " + einheiten.length + " Einheiten");
       const zins = asZahl(a.zins), summe = rund2(darlehenAus(a)), rate = rateAus(a);
       if (hatDarlehen(a) && zins != null && rate != null && rate > 0 && summe > 0) {
         try {
@@ -1995,7 +2083,7 @@
         const neuesObj = streams[streams.length - 1];
         if (opt.nachOnboarding) {
           if (neuesObj) setTimeout(() => assistentEinheit(neuesObj, { nachOnboarding: true }), 300);
-          else setTimeout(() => openTarifFragenSheet(), 300);
+          else setTimeout(() => onboardingWeiter(), 300);
         } else {
           showToast("Objekt angelegt.");
           if (neuesObj) setTimeout(() => assistentEinheit(neuesObj), 350);
@@ -2044,7 +2132,7 @@
       });
       closeSheet();
       await window.nachSpeichern();
-      if (opt.nachOnboarding) setTimeout(() => openTarifFragenSheet(), 300);
+      if (opt.nachOnboarding) setTimeout(() => onboardingWeiter(), 300);
       else { showToast("Einheit angelegt – deine Zahlen sind aktualisiert."); route(s.id); }
     });
   }
@@ -2677,7 +2765,25 @@
       // Nach dem Speichern des Objekts geht es weiter zu den Fragen
       setTimeout(() => assistentObjekt({ nachOnboarding: true }), 200);
     };
-    sheet.querySelector("#obSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => openTarifFragenSheet(), 200); };
+    sheet.querySelector("#obSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => onboardingWeiter(), 200); };
+  }
+
+  // Nach dem ersten Objekt: Wer über einen Zugangscode kostenlos testet, ist hier fertig.
+  // Alle anderen kommen zu den drei Fragen und zur Tarifwahl.
+  function onboardingWeiter() {
+    const ft = freierTest();
+    if (ft && !ft.laeuft) { openUpgradeSheet("gesperrt"); return; }
+    if (!ft) { openTarifFragenSheet(); return; }
+    merkSetzen("estriq_onboarding_fertig", "1");
+    const sheet = openSheet("Willkommen", "", `
+      <div class="wc-hero">
+        <div class="wc-steps"><span class="done"></span><span class="done"></span><span class="on"></span></div>
+        <div class="wc-badge">Kostenloser Test</div>
+        <div class="wc-t">Du testest ESTRIQ bis zum ${esc(ft.datum)}</div>
+        <div class="wc-d">Alle Funktionen sind frei, ohne Zahlungsdaten. Probier in Ruhe alles aus. Danach wählst du einen Tarif – deine Daten bleiben in jedem Fall erhalten.</div>
+      </div>
+      <button class="wc-cta prem" id="testLos">Los geht’s</button>`);
+    sheet.querySelector("#testLos").onclick = closeSheet;
   }
 
   // Onboarding-Schritt 3: drei Fragen → Abo-Empfehlung
@@ -5769,7 +5875,7 @@
       try { await speichernFn(efWerte(sheet)); }
       catch (e) {
         clearTimeout(uhr);
-        msg.textContent = window.fehlerText(e);
+        msg.textContent = (e && e.eqText) || window.fehlerText(e);
         msg.className = "ef-msg bad";
         btn.disabled = false;
         return;
@@ -7178,11 +7284,12 @@
     ruecklage: nkPufferKarte,
     finanzierung: finanzierungBereich,
     handwerker: (s) => gewerkeKarte(s),
+    zeiten: (s) => zeitenKarte(s),
     nebenkosten: (s) => nebenkostenKarte(s)
   };
   // Feste Reihenfolge der Objektseite. Der Baustein „mieten" (Karte Offene Mieten) steht hier nicht:
   // Auf der Objektseite bestätigt man den Eingang direkt in der Einheitenliste.
-  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "nebenkosten"];
+  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "nebenkosten"];
 
   // Setzt eine Seite aus Bausteinen zusammen
   function objektSeite(host, s, reihenfolge) {
@@ -7209,6 +7316,466 @@
     $("#pageSub").textContent = [s.ort, "Mietobjekt", mehrzahl(m.einheiten, "Einheit", "Einheiten"), flaeche ? qm(flaeche) : ""]
       .filter(Boolean).join(" · ");
     objektSeite(host, s);
+  }
+
+  /* ================= ZEITERFASSUNG ================= */
+  // Hausmeister und Helfer tragen ihre Arbeitszeiten über einen Link ein (zeit.html, ohne Anmeldung).
+  // Ein Link gehört zu genau einem Objekt und einer Person. Die Einsätze stehen beim Objekt, lassen sich auswerten
+  // und – soweit umlagefähig – in die Nebenkosten des Jahres übernehmen.
+  // Tabellen zeit_links und zeit_eintraege aus 5-zeiterfassung.txt. Geladen wird erst, wenn die Karte gezeigt wird.
+
+  // Tätigkeiten mit der Vorgabe, ob sie auf die Mieter umgelegt werden können: true = ja, false = nein,
+  // null = wird je Einsatz entschieden. Die Vorgabe folgt der Betriebskostenverordnung (Gartenpflege, Reinigung,
+  // Winterdienst ja; Reparaturen und Neuanlagen nein) und lässt sich an jedem Einsatz ändern.
+  // Dieselbe Liste steht in zeit.html (dort ohne die Vorgabe). Bei einer Änderung beide Stellen anpassen.
+  const ZEIT_TAETIGKEITEN = [
+    ["rasen", "Rasen mähen", true],
+    ["hecke", "Hecken und Sträucher schneiden", true],
+    ["beete", "Beete pflegen, Unkraut entfernen", true],
+    ["laub", "Laub beseitigen", true],
+    ["baum", "Bäume schneiden und pflegen", true],
+    ["giessen", "Pflanzen bewässern", true],
+    ["wege", "Wege, Hof und Einfahrt reinigen", true],
+    ["winter", "Winterdienst: räumen und streuen", true],
+    ["treppenhaus", "Treppenhaus und Gemeinschaftsräume reinigen", true],
+    ["muell", "Mülltonnen und Müllplatz", true],
+    ["neuanlage", "Garten neu anlegen oder umgestalten", false],
+    ["reparatur", "Reparatur und Instandhaltung", false],
+    ["sonstiges", "Sonstiges", null]
+  ];
+  const zeitArt = (k) => ZEIT_TAETIGKEITEN.find(x => x[0] === k) || [k, k || "Sonstiges", null];
+  // Umlagefähig? Die Entscheidung am Einsatz geht vor, sonst gilt die Vorgabe der Tätigkeit. null = noch offen.
+  const zeitUmlage = (e) => e.umlagefaehig === true || e.umlagefaehig === false ? e.umlagefaehig : zeitArt(e.taetigkeit)[2];
+  const zeitStd = (e) => (Number(e.minuten) || 0) / 60;
+  const zeitKosten = (e) => zeitStd(e) * (Number(e.stundensatz) || 0);
+  const stdText = (h) => zahlKurz(rund2(h)) + " Std.";
+  const uhr = (t) => String(t || "").slice(0, 5);
+  const minutenVon = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const tagKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(iso) : d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }); };
+  const heuteIso = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  // Wort und Farbe für die Einordnung eines Einsatzes
+  const zeitMarke = (e) => { const u = zeitUmlage(e); return u === true ? `<span class="eq-marke gut">umlagefähig</span>` : u === false ? `<span class="eq-marke">nicht umlagefähig</span>` : `<span class="eq-marke achtung">noch offen</span>`; };
+  const meldung = (text) => Object.assign(new Error(text), { eqText: text });
+  const datumKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? "" : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+  // Zeitkonto je Person über alle Jahre: offene (noch nicht bezahlte) und bezahlte Stunden.
+  // Eine Person ist ein Link; Einsätze ohne Link zählen unter dem eingetragenen Namen.
+  function zeitKonten(d) {
+    const je = {};
+    d.eintraege.forEach(e => {
+      const link = e.link_id ? d.links.find(l => String(l.id) === String(e.link_id)) : null;
+      const key = link ? "l:" + link.id : "p:" + e.person;
+      const k = je[key] = je[key] || { key, link, name: link ? link.name : e.person, offen: [], offenStd: 0, offenKosten: 0, bezahltStd: 0, bezahltKosten: 0 };
+      if (e.bezahlt_am) { k.bezahltStd += zeitStd(e); k.bezahltKosten += zeitKosten(e); }
+      else { k.offen.push(e); k.offenStd += zeitStd(e); k.offenKosten += zeitKosten(e); }
+    });
+    return Object.values(je).sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
+  }
+
+  const ZEIT_FEHLT = "Die Zeiterfassung ist noch nicht eingerichtet. Bitte versuch es später noch einmal.";
+  const tabelleFehlt = (e) => {
+    const s = (String((e && e.code) || "") + " " + String((e && (e.message || e.details || e.hint)) || "")).toLowerCase();
+    return s.includes("42p01") || s.includes("pgrst205") || s.includes("could not find the table") || (s.includes("relation") && s.includes("does not exist"));
+  };
+  // Lädt Links und Einsätze eines Objekts. Neueste Einsätze zuerst.
+  async function ladeZeiten(objektId) {
+    try {
+      const [l, e] = await Promise.all([
+        window.sb.from("zeit_links").select("*").eq("objekt_id", objektId),
+        window.sb.from("zeit_eintraege").select("*").eq("objekt_id", objektId)
+      ]);
+      if (l.error) throw l.error;
+      if (e.error) throw e.error;
+      const links = (l.data || []).slice().sort((a, b) => String(a.erstellt_am || "").localeCompare(String(b.erstellt_am || "")));
+      const eintraege = (e.data || []).slice().sort((a, b) => String(b.tag).localeCompare(String(a.tag)) || String(b.beginn || "").localeCompare(String(a.beginn || "")));
+      return { links, eintraege };
+    } catch (err) {
+      const fehlt = tabelleFehlt(err);   // die Tabellen gibt es erst nach 5-zeiterfassung.txt – kein Fehler
+      if (!fehlt) console.error("Zeiterfassung:", (err && err.message) || err);
+      return { links: [], eintraege: [], fehlt: fehlt, fehler: !fehlt };
+    }
+  }
+  // Adresse der Seite für den Hausmeister: zeit.html liegt neben index.html
+  const zeitAdresse = (token) => location.origin + location.pathname.replace(/[^/]*$/, "") + "zeit.html?t=" + encodeURIComponent(token);
+  function zeitText(link, s) {
+    const vor = String(link.name || "").trim().split(" ")[0];
+    return "Hallo" + (vor ? " " + vor : "") + ", über diesen Link trägst du deine Arbeitszeiten für " + s.name + " ein. "
+      + "Am besten legst du ihn auf deinem Startbildschirm ab.\n" + zeitAdresse(link.token);
+  }
+  async function zeitLinkTeilen(link, s) {
+    const text = zeitText(link, s);
+    if (navigator.share) {
+      try { await navigator.share({ title: "Zeiterfassung " + s.name, text: text }); return; }
+      catch (err) { if (err && err.name === "AbortError") return; }
+    }
+    showToast(await kopiere(text)
+      ? "Nachricht mit Link kopiert – füg sie in WhatsApp oder eine E-Mail ein."
+      : "Teilen ist auf diesem Gerät nicht möglich. Kopier den Link bitte von Hand.");
+  }
+
+  // Auswertung eines Jahres: Stunden und Kosten gesamt, umlagefähig, nicht umlagefähig, noch offen, je Person, je Monat
+  function zeitAuswertung(eintraege, jahr) {
+    const liste = eintraege.filter(e => String(e.tag).slice(0, 4) === String(jahr));
+    const a = { jahr, liste, anzahl: liste.length, std: 0, kosten: 0, umlStd: 0, umlKosten: 0, umlAnzahl: 0, nichtStd: 0, nichtKosten: 0, nichtAnzahl: 0,
+      offen: 0, offenStd: 0, ohneSatz: 0, personen: [], monate: Array.from({ length: 12 }, () => ({ std: 0, kosten: 0, liste: [] })) };
+    const je = {};
+    liste.forEach(e => {
+      const h = zeitStd(e), k = zeitKosten(e), u = zeitUmlage(e);
+      a.std += h; a.kosten += k;
+      if (u === true) { a.umlStd += h; a.umlKosten += k; a.umlAnzahl++; }
+      else if (u === false) { a.nichtStd += h; a.nichtKosten += k; a.nichtAnzahl++; }
+      else { a.offen++; a.offenStd += h; }
+      if (!(Number(e.stundensatz) > 0)) a.ohneSatz++;
+      const p = je[e.person] = je[e.person] || { name: e.person, std: 0, kosten: 0, anzahl: 0 };
+      p.std += h; p.kosten += k; p.anzahl++;
+      const m = a.monate[Number(String(e.tag).slice(5, 7)) - 1];
+      if (m) { m.std += h; m.kosten += k; m.liste.push(e); }
+    });
+    a.personen = Object.values(je).sort((x, y) => y.std - x.std);
+    return a;
+  }
+
+  // Eine Zeile je Einsatz. Offene Einsätze tragen zwei Knöpfe zum Einordnen.
+  function zeitZeile(e, mitKnoepfen) {
+    const art = zeitArt(e.taetigkeit), u = zeitUmlage(e), k = zeitKosten(e);
+    const zeit = e.beginn && e.ende ? uhr(e.beginn) + "–" + uhr(e.ende) + (Number(e.pause_min) > 0 ? " · " + e.pause_min + " Min Pause" : "") : "";
+    return `<div class="eq-ze" data-ze="${esc(e.id)}">
+      <div class="eq-ze-kopf" role="button" tabindex="0" data-ze-auf="${esc(e.id)}">
+        <div class="eq-ze-tx"><div class="eq-ze-n">${esc(art[1])}</div>
+          <div class="eq-ze-m">${esc([tagKurz(e.tag), e.person, zeit].filter(Boolean).join(" · "))}</div>
+          ${e.beschreibung ? `<div class="eq-ze-b">${esc(e.beschreibung)}</div>` : ""}
+          ${e.bezahlt_am ? `<div class="eq-ze-z gut">Bezahlt am ${esc(datumKurz(e.bezahlt_am))}${e.beleg ? " · " + esc(e.beleg) : ""}</div>` : ""}
+          ${e.geaendert_am ? `<div class="eq-ze-z">Nachträglich geändert am ${esc(datumKurz(e.geaendert_am))}</div>` : ""}</div>
+        <div class="eq-ze-w"><b>${stdText(zeitStd(e))}</b>${k > 0 ? `<span>${eur2(k)}</span>` : ""}${zeitMarke(e)}</div>
+      </div>
+      ${mitKnoepfen && u == null ? `<div class="eq-ze-wahl" role="group" aria-label="Einordnen">
+        <button type="button" class="add-btn" data-ze-ja="${esc(e.id)}">Umlagefähig</button>
+        <button type="button" class="add-btn" data-ze-nein="${esc(e.id)}">Nicht umlagefähig</button></div>` : ""}</div>`;
+  }
+
+  // Karte auf der Objektseite: Links, Auswertung des laufenden Jahres, die letzten Einsätze
+  function zeitenKarte(s) {
+    const jahr = new Date().getFullYear();
+    const karte = el(`<div class="card eq-zeit">
+      <div class="card-h"><div><div class="card-t">Zeiterfassung</div>
+        <div class="card-s">Arbeitszeiten von Hausmeister und Helfern</div></div>
+        <button type="button" class="add-btn" id="zeitLinkNeu">+ Link</button></div>
+      <div class="card-b" id="zeitInhalt"><div class="note">Wird geladen…</div></div></div>`);
+    karte.querySelector("#zeitLinkNeu").onclick = () => openZeitLink(s, null);
+    ladeZeiten(s._id).then(d => {
+      const v = karte.querySelector("#zeitInhalt");
+      if (!v) return;
+      if (d.fehlt || d.fehler) {
+        karte.querySelector("#zeitLinkNeu").hidden = true;
+        v.innerHTML = `<div class="eq-leer" style="padding:8px 0 4px">${d.fehlt ? ZEIT_FEHLT : "Die Zeiten konnten nicht geladen werden. Bitte lade die Seite neu."}</div>`;
+        return;
+      }
+      if (!d.links.length && !d.eintraege.length) {
+        v.innerHTML = `<div class="eq-leer" style="padding:8px 0 4px"><div>Erstell einen Link für deinen Hausmeister. Er trägt seine Zeiten am Handy ein – ohne Anmeldung – und sie landen hier bei diesem Objekt.</div>
+          <div><button type="button" class="eq-btn" id="zeitErster">Link erstellen</button></div></div>`;
+        v.querySelector("#zeitErster").onclick = () => openZeitLink(s, null);
+        return;
+      }
+      const a = zeitAuswertung(d.eintraege, jahr);
+      const konten = zeitKonten(d), offenStd = konten.reduce((x, k) => x + k.offenStd, 0);
+      const kontoVon = (l) => konten.find(k => k.key === "l:" + l.id);
+      v.innerHTML = `
+        ${d.links.length ? `<div class="eq-zl" role="list">${d.links.map((l, i) => `<div class="eq-zl-z" role="listitem">
+          <button type="button" class="eq-zl-n" data-zl="${i}"><span>${esc(l.name)}</span>
+            <small>${Number(l.stundensatz) > 0 ? eur2(l.stundensatz) + " je Stunde" : "ohne Stundensatz"}${kontoVon(l) && kontoVon(l).offenStd > 0 ? " · " + stdText(kontoVon(l).offenStd) + " noch nicht bezahlt" : kontoVon(l) ? " · alles bezahlt" : ""}${l.aktiv ? "" : " · gesperrt"}</small></button>
+          ${l.aktiv ? `<button type="button" class="add-btn" data-zl-teilen="${i}">Teilen</button>` : `<span class="eq-marke eq-aus">gesperrt</span>`}</div>`).join("")}</div>` : ""}
+        ${a.offen ? `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${a.offen === 1 ? "Ein Einsatz ist" : a.offen + " Einsätze sind"} noch nicht eingeordnet</div>
+          <div class="eq-zustand-d">Entscheide, ob ${a.offen === 1 ? "er" : "sie"} auf die Mieter umgelegt ${a.offen === 1 ? "wird" : "werden"}.</div></div>
+          <button type="button" class="eq-btn" id="zeitOffen">Jetzt einordnen</button></div>` : ""}
+        <div class="eq-werte">
+          ${wert("Stunden " + jahr, stdText(a.std), mehrzahl(a.anzahl, "Einsatz", "Einsätze"))}
+          ${wert("Kosten " + jahr, eur2(a.kosten), a.ohneSatz ? "bei " + mehrzahl(a.ohneSatz, "Einsatz", "Einsätzen") + " fehlt der Stundensatz" : "Stunden × Stundensatz")}
+          ${wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd) + ", für die Nebenkosten")}
+          ${wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd) + ", trägst du selbst")}
+        </div>
+        ${d.eintraege.length ? `<div class="card-t eq-zwischen">Letzte Einsätze</div>
+          <div class="eq-zes">${d.eintraege.slice(0, 3).map(e => zeitZeile(e, false)).join("")}</div>` : `<div class="note" style="margin-top:16px">Noch kein Einsatz eingetragen.</div>`}
+        <div class="eq-zeit-fuss">
+          <button type="button" class="add-btn" id="zeitAlle">Alle Einsätze und Auswertung</button>
+          <button type="button" class="add-btn" id="zeitHand">+ Einsatz von Hand</button>
+          ${offenStd > 0 ? `<button type="button" class="add-btn" id="zeitBezahlt">Rechnung bezahlt melden</button>` : ""}
+        </div>`;
+      const zb = v.querySelector("#zeitBezahlt"); if (zb) zb.onclick = () => openZeitBezahlt(s, d, null);
+      v.querySelectorAll("[data-zl]").forEach(b => b.onclick = () => openZeitLink(s, d.links[Number(b.dataset.zl)]));
+      v.querySelectorAll("[data-zl-teilen]").forEach(b => b.onclick = () => zeitLinkTeilen(d.links[Number(b.dataset.zlTeilen)], s));
+      const auf = (id) => openZeitEintrag(s, d.eintraege.find(x => String(x.id) === String(id)), { links: d.links });
+      v.querySelectorAll("[data-ze-auf]").forEach(n => { n.onclick = () => auf(n.dataset.zeAuf); n.onkeydown = (ev) => { if ((ev.key === "Enter" || ev.key === " ") && !ev.repeat) { ev.preventDefault(); auf(n.dataset.zeAuf); } }; });
+      const of = v.querySelector("#zeitOffen"); if (of) of.onclick = () => openZeiten(s, jahr);
+      v.querySelector("#zeitAlle").onclick = () => openZeiten(s, jahr);
+      v.querySelector("#zeitHand").onclick = () => openZeitEintrag(s, null, { links: d.links });
+    });
+    return karte;
+  }
+
+  // Link anlegen oder bearbeiten: Name, Stundensatz, sperren. Nach dem Anlegen steht der Link zum Teilen da.
+  function openZeitLink(s, link) {
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    const neu = !link;
+    const body = `
+      ${neu ? `<div class="note" style="margin-bottom:14px">Der Link gilt nur für ${esc(s.name)} und nur für diese Person. Wer ihn öffnet, kann Zeiten eintragen – sonst nichts.</div>` : `
+      <div class="eq-zl-link"><div class="ef-l">Link für ${esc(link.name)}</div>
+        <div class="eq-zl-adr" id="zlAdr">${esc(zeitAdresse(link.token))}</div>
+        <div class="eq-zl-knoepfe"><button type="button" class="eq-btn" id="zlTeilen">Link teilen</button>
+          <button type="button" class="add-btn" id="zlKopieren">Kopieren</button></div></div>`}
+      ${ef("Name", "name", link ? link.name : "", "text", { pflicht: true, platzhalter: "z. B. Heinz Meyer", hinweis: "Steht an jedem Einsatz, den diese Person einträgt." })}
+      ${ef("Stundensatz", "stundensatz", link && link.stundensatz != null ? link.stundensatz : "", "number", { einheit: "€ je Stunde", min: 0, platzhalter: "z. B. 22,50",
+        hinweis: "Damit rechnet ESTRIQ aus den Stunden die Kosten. Er gilt für neue Einsätze; ältere behalten ihren Satz." })}
+      ${neu ? "" : efSel("Zustand", "aktiv", link.aktiv ? "1" : "0", [{ v: "1", t: "Aktiv" }, { v: "0", t: "Gesperrt" }],
+        { hinweis: "Ein gesperrter Link nimmt keine Zeiten mehr an. Die bisherigen Einsätze bleiben." })}
+      ${efAktionen({ speichern: neu ? "Link erstellen" : "Speichern", loeschen: neu ? null : "Link löschen" })}`;
+    const sheet = openSheet(neu ? "Neuer Link" : "Link bearbeiten", s.name, body);
+    if (!neu) {
+      sheet.querySelector("#zlTeilen").onclick = () => zeitLinkTeilen(link, s);
+      sheet.querySelector("#zlKopieren").onclick = async () => showToast(await kopiere(zeitAdresse(link.token)) ? "Link kopiert." : "Kopieren ist auf diesem Gerät nicht möglich.");
+    }
+    let angelegt = null;
+    efBind(sheet,
+      async (w) => {
+        const d = { name: text(w.name) || "Hausmeister", stundensatz: zahl(w.stundensatz) };
+        if (neu) {
+          const { data, error } = await window.sb.from("zeit_links").insert({ ...d, objekt_id: s._id }).select().single();
+          if (error) throw tabelleFehlt(error) ? meldung(ZEIT_FEHLT) : error;
+          angelegt = data;
+        } else {
+          const { error } = await window.sb.from("zeit_links").update({ ...d, aktiv: w.aktiv !== "0" }).eq("id", link.id);
+          if (error) throw error;
+        }
+      },
+      neu ? null : async () => { const { error } = await window.sb.from("zeit_links").delete().eq("id", link.id); if (error) throw error; },
+      "Link wirklich löschen?",
+      () => { if (angelegt && angelegt.token) openZeitLink(s, angelegt); else showToast("Gespeichert."); },
+      () => showToast("Link gelöscht. Die Einsätze bleiben erhalten."));
+  }
+
+  // Einsatz ansehen, ändern oder von Hand eintragen. opt: { links, zurueck } – zurueck öffnet danach wieder die Liste.
+  function openZeitEintrag(s, e, opt) {
+    opt = opt || {};
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    const neu = !e;
+    const links = opt.links || [];
+    const erster = links.find(l => l.aktiv) || links[0] || null;
+    const vorgabe = (k) => { const u = zeitArt(k)[2]; return u === true ? "umlagefähig" : u === false ? "nicht umlagefähig" : "wird je Einsatz entschieden"; };
+    // Person: einer der Links (dann zählt der Einsatz zu dessen Zeitkonto) oder ein freier Name
+    const linkVon = (id) => links.find(l => String(l.id) === String(id)) || null;
+    const gewaehlt = e ? (linkVon(e.link_id) ? String(e.link_id) : "") : (erster ? String(erster.id) : "");
+    const body = `
+      ${e && e.geaendert_am ? `<div class="note" style="margin-bottom:14px">${esc(e.person)} hat diesen Eintrag am ${esc(datumKurz(e.geaendert_am))} nachträglich geändert.</div>` : ""}
+      ${ef("Tag", "tag", e ? String(e.tag).slice(0, 10) : heuteIso(), "date", { pflicht: true })}
+      ${links.length ? efSel("Person", "konto", gewaehlt, links.map(l => ({ v: String(l.id), t: l.name + (l.aktiv ? "" : " (Link gesperrt)") })).concat([{ v: "", t: "Andere Person" }]),
+        { hinweis: "Der Einsatz zählt zum Zeitkonto dieser Person und steht auch auf ihrer Seite." }) : ""}
+      <div id="zePerson"${links.length && gewaehlt ? " hidden" : ""}>${ef(links.length ? "Name" : "Person", "person", e && !gewaehlt ? e.person : "", "text", { platzhalter: "z. B. Heinz Meyer" })}</div>
+      ${efSel("Tätigkeit", "taetigkeit", e ? zeitArt(e.taetigkeit)[0] : "rasen", ZEIT_TAETIGKEITEN.map(x => ({ v: x[0], t: x[1] })))}
+      ${efArea("Beschreibung", "beschreibung", e ? (e.beschreibung || "") : "", { hinweis: "Was genau gemacht wurde. Bei „Sonstiges“ entscheidest du danach, ob es umlagefähig ist." })}
+      ${efTitel("Zeit")}
+      ${ef("Beginn", "beginn", e ? uhr(e.beginn) : "08:00", "time", { pflicht: true })}
+      ${ef("Ende", "ende", e ? uhr(e.ende) : "12:00", "time", { pflicht: true })}
+      ${ef("Pause", "pause_min", e ? (e.pause_min || 0) : 0, "number", { step: "1", einheit: "Minuten", min: 0, max: 600 })}
+      <div class="eq-live" id="zeLive" role="status"></div>
+      ${efTitel("Abrechnung")}
+      ${efSel("Umlagefähig auf die Mieter", "umlage", e && e.umlagefaehig === true ? "ja" : e && e.umlagefaehig === false ? "nein" : "",
+        [{ v: "", t: "Vorgabe der Tätigkeit" }, { v: "ja", t: "Ja, umlagefähig" }, { v: "nein", t: "Nein, nicht umlagefähig" }],
+        { hinweis: "Die Vorgabe folgt der Betriebskostenverordnung. Ob du Kosten umlegen darfst, hängt auch von deinem Mietvertrag ab." })}
+      ${ef("Stundensatz", "stundensatz", e ? (e.stundensatz != null ? e.stundensatz : "") : (erster && erster.stundensatz != null ? erster.stundensatz : ""), "number", { einheit: "€ je Stunde", min: 0 })}
+      ${ef("Bezahlt am", "bezahlt_am", e && e.bezahlt_am ? String(e.bezahlt_am).slice(0, 10) : "", "date", { hinweis: "Leer heißt: noch nicht bezahlt. Mehrere Einsätze auf einmal meldest du über „Rechnung bezahlt melden“." })}
+      ${ef("Rechnung oder Beleg", "beleg", e ? (e.beleg || "") : "", "text", { platzhalter: "z. B. Rechnung 2026-14" })}
+      ${efAktionen({ loeschen: neu ? null : "Einsatz löschen" })}`;
+    const sheet = openSheet(neu ? "Einsatz eintragen" : "Einsatz bearbeiten", s.name, body);
+    const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
+    const rechne = () => {
+      const a = minutenVon(feld("beginn").value), b = minutenVon(feld("ende").value), p = Number(feld("pause_min").value) || 0;
+      const min = a != null && b != null ? b - a - p : null, satz = Number(feld("stundensatz").value) || 0;
+      return { a, b, p, min, satz };
+    };
+    const live = () => {
+      const r = rechne(), k = feld("taetigkeit").value, u = feld("umlage").value;
+      sheet.querySelector("#zeLive").innerHTML = `<span>Arbeitszeit</span><b>${r.min != null && r.min > 0 ? stdText(r.min / 60) : "—"}</b>
+        <small>${r.min != null && r.min > 0 && r.satz > 0 ? "Kosten " + eur2(r.min / 60 * r.satz) + " · " : ""}${u === "ja" ? "umlagefähig" : u === "nein" ? "nicht umlagefähig" : "Vorgabe: " + vorgabe(k)}</small>`;
+    };
+    sheet.querySelectorAll("[data-f]").forEach(n => { n.addEventListener("input", live); n.addEventListener("change", live); });
+    live();
+    // Wechsel der Person: Namensfeld nur bei „Andere Person"; bei einem neuen Einsatz kommt der Stundensatz des Links mit
+    const wahl = feld("konto");
+    if (wahl) wahl.addEventListener("change", () => {
+      const l = linkVon(wahl.value);
+      sheet.querySelector("#zePerson").hidden = !!l;
+      if (l && neu) { feld("stundensatz").value = l.stundensatz != null ? l.stundensatz : ""; live(); }
+    });
+    const danach = (satz) => () => { if (opt.zurueck) opt.zurueck(); showToast(satz); };
+    efBind(sheet,
+      async (w) => {
+        const r = rechne();
+        if (r.a == null || r.b == null || r.b <= r.a) throw meldung("Das Ende muss nach dem Beginn liegen.");
+        if (r.p < 0 || r.p >= r.b - r.a) throw meldung("Die Pause ist länger als die Arbeitszeit.");
+        const l = linkVon(w.konto);
+        if (!l && !text(w.person)) throw meldung("Bitte trag einen Namen ein.");
+        const d = { tag: w.tag, link_id: l ? l.id : null, person: l ? l.name : text(w.person), taetigkeit: w.taetigkeit, beschreibung: text(w.beschreibung),
+          beginn: w.beginn, ende: w.ende, pause_min: Math.round(r.p), minuten: Math.round(r.min),
+          umlagefaehig: w.umlage === "ja" ? true : w.umlage === "nein" ? false : null, stundensatz: zahl(w.stundensatz),
+          bezahlt_am: text(w.bezahlt_am), beleg: text(w.beleg) };
+        const { error } = neu
+          ? await window.sb.from("zeit_eintraege").insert({ ...d, objekt_id: s._id, quelle: "hand" })
+          : await window.sb.from("zeit_eintraege").update(d).eq("id", e.id);
+        if (error) throw tabelleFehlt(error) ? meldung(ZEIT_FEHLT) : error;
+      },
+      neu ? null : async () => { const { error } = await window.sb.from("zeit_eintraege").delete().eq("id", e.id); if (error) throw error; },
+      "Einsatz wirklich löschen?",
+      danach("Gespeichert."), danach("Gelöscht."));
+  }
+
+  // Rechnung bezahlt melden: Die offenen Einsätze einer Person stehen angehakt da. Was auf der Rechnung steht, bleibt
+  // angehakt; die Summe darunter lässt sich mit der Rechnung vergleichen. Danach gelten diese Einsätze als bezahlt –
+  // auch auf der Seite der Person (zeit.html). opt: { zurueck }.
+  function openZeitBezahlt(s, d, key, opt) {
+    opt = opt || {};
+    if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+    const konten = zeitKonten(d).filter(k => k.offen.length);
+    if (!konten.length) { showToast("Es gibt keinen offenen Einsatz."); return; }
+    let k = konten.find(x => x.key === key) || konten[0];
+    const sheet = openSheet("Rechnung bezahlt melden", s.name, `
+      <div class="note" style="margin-bottom:14px">Lass angehakt, was auf der Rechnung steht. Die Summe darunter hilft beim Vergleichen. Danach stehen diese Stunden auch auf der Seite der Person als bezahlt.</div>
+      ${konten.length > 1 ? efSel("Person", "konto", k.key, konten.map(x => ({ v: x.key, t: x.name }))) : `<div class="ef-l">${esc(k.name)}</div>`}
+      <div class="eq-zb" id="zbListe" role="group" aria-label="Offene Einsätze"></div>
+      <div class="eq-zeit-fuss"><button type="button" class="add-btn" id="zbAlle"></button></div>
+      <div class="eq-live" id="zbLive" role="status"></div>
+      ${ef("Rechnung oder Beleg", "beleg", "", "text", { platzhalter: "z. B. Rechnung 2026-14", hinweis: "Freiwillig. Steht danach an jedem dieser Einsätze." })}
+      ${ef("Bezahlt am", "bezahlt_am", heuteIso(), "date", { pflicht: true })}
+      ${efAktionen({ speichern: "Als bezahlt melden" })}`);
+    const liste = sheet.querySelector("#zbListe"), alle = sheet.querySelector("#zbAlle");
+    const haken = () => [...liste.querySelectorAll("input[type=checkbox]")];
+    const gewaehlt = () => { const ids = haken().filter(h => h.checked).map(h => h.value); return k.offen.filter(e => ids.includes(String(e.id))); };
+    const live = () => {
+      const g = gewaehlt(), h = g.reduce((x, e) => x + zeitStd(e), 0), kosten = g.reduce((x, e) => x + zeitKosten(e), 0);
+      sheet.querySelector("#zbLive").innerHTML = `<span>Ausgewählt</span><b>${stdText(h)}</b>
+        <small>${mehrzahl(g.length, "Einsatz", "Einsätze")}${kosten > 0 ? " · " + eur2(kosten) : ""}</small>`;
+      alle.textContent = g.length === k.offen.length ? "Alle abwählen" : "Alle auswählen";
+    };
+    const zeichne = () => {
+      // älteste zuerst – so stehen sie meist auch auf der Rechnung
+      const sortiert = k.offen.slice().sort((x, y) => String(x.tag).localeCompare(String(y.tag)) || String(x.beginn || "").localeCompare(String(y.beginn || "")));
+      liste.innerHTML = sortiert.map(e => `<label class="eq-zb-z"><input type="checkbox" value="${esc(e.id)}" checked>
+        <span class="eq-zb-tx"><b>${esc(tagKurz(e.tag))} · ${esc(zeitArt(e.taetigkeit)[1])}</b>
+          <small>${esc([e.beginn && e.ende ? uhr(e.beginn) + "–" + uhr(e.ende) : "", stdText(zeitStd(e)), zeitKosten(e) > 0 ? eur2(zeitKosten(e)) : ""].filter(Boolean).join(" · "))}</small></span></label>`).join("");
+      haken().forEach(h => h.addEventListener("change", live));
+      live();
+    };
+    alle.onclick = () => { const an = gewaehlt().length !== k.offen.length; haken().forEach(h => { h.checked = an; }); live(); };
+    const wahl = sheet.querySelector('[data-f="konto"]');
+    if (wahl) wahl.addEventListener("change", () => { k = konten.find(x => x.key === wahl.value) || k; zeichne(); });
+    zeichne();
+    let fertig = "";
+    efBind(sheet,
+      async (w) => {
+        const g = gewaehlt();
+        if (!g.length) throw meldung("Wähl mindestens einen Einsatz aus.");
+        const { error } = await window.sb.from("zeit_eintraege").update({ bezahlt_am: w.bezahlt_am, beleg: text(w.beleg) }).in("id", g.map(e => e.id));
+        if (error) throw error;
+        fertig = stdText(g.reduce((x, e) => x + zeitStd(e), 0)) + " als bezahlt gemeldet. " + k.name + " sieht das jetzt im eigenen Zeitkonto.";
+      },
+      null, null,
+      () => { if (opt.zurueck) opt.zurueck(); showToast(fertig); });
+  }
+
+  // Alle Einsätze eines Jahres mit Auswertung: gesamt, je Person, je Monat. Offene Einsätze lassen sich gleich einordnen.
+  // Unten: die umlagefähigen Kosten in die Nebenkosten des Jahres übernehmen.
+  function openZeiten(s, jahr) {
+    const sheet = openSheet("Zeiterfassung", s.name, `<div id="zeBody"><div class="note">Wird geladen…</div></div>`);
+    sheet.querySelector(".sheet").classList.add("eq-breit");
+    const body = sheet.querySelector("#zeBody");
+    async function zeichne() {
+      const d = await ladeZeiten(s._id);
+      if (!body.isConnected) return;
+      if (d.fehlt || d.fehler) { body.innerHTML = `<div class="eq-leer">${d.fehlt ? ZEIT_FEHLT : "Die Zeiten konnten nicht geladen werden. Bitte lade die Seite neu."}</div>`; return; }
+      const a = zeitAuswertung(d.eintraege, jahr);
+      const konten = zeitKonten(d);
+      const monate = a.monate.map((m, i) => ({ ...m, i })).filter(m => m.liste.length).reverse();
+      body.innerHTML = `
+        <div class="nk-jahr">
+          <button type="button" class="cal-btn" id="zePrev" aria-label="Jahr zurück">‹</button>
+          <span>Jahr <b>${jahr}</b></span>
+          <button type="button" class="cal-btn" id="zeNext" aria-label="Jahr vor">›</button>
+        </div>
+        <div class="eq-werte eq-werte-block">
+          ${wert("Stunden", stdText(a.std), mehrzahl(a.anzahl, "Einsatz", "Einsätze"))}
+          ${wert("Kosten", eur2(a.kosten), a.ohneSatz ? "bei " + mehrzahl(a.ohneSatz, "Einsatz", "Einsätzen") + " fehlt der Stundensatz" : "Stunden × Stundensatz")}
+          ${wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd))}
+          ${wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd))}
+        </div>
+        ${a.offen ? `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${a.offen === 1 ? "Ein Einsatz ist" : a.offen + " Einsätze sind"} noch nicht eingeordnet (${stdText(a.offenStd)})</div>
+          <div class="eq-zustand-d">Lies die Beschreibung und entscheide mit den Knöpfen an der Zeile. Bis dahin zählt der Einsatz weder zur einen noch zur anderen Summe.</div></div></div>` : ""}
+        ${konten.length ? `<div class="card-t eq-zwischen">Zeitkonto</div>
+          <div class="eq-zk">${konten.map((k, i) => `<div class="eq-zk-z">
+            <div class="eq-zk-tx"><b>${esc(k.name)}</b>
+              <span>${k.offenStd > 0 ? "Noch nicht bezahlt: " + stdText(k.offenStd) + (k.offenKosten > 0 ? " · " + eur2(k.offenKosten) : "") : "Alles bezahlt"}</span>
+              <small>Bezahlt: ${stdText(k.bezahltStd)}${k.bezahltKosten > 0 ? " · " + eur2(k.bezahltKosten) : ""} · alle Jahre</small></div>
+            ${k.offen.length ? `<button type="button" class="add-btn" data-zk="${i}">Bezahlt melden</button>` : ""}</div>`).join("")}</div>` : ""}
+        ${a.personen.length > 1 ? `<div class="card-t eq-zwischen">Je Person ${jahr}</div>
+          <div class="eq-kauf">${a.personen.map(p => `<div class="kv"><span class="eq-kauf-n">${esc(p.name)}<small>${mehrzahl(p.anzahl, "Einsatz", "Einsätze")} · ${stdText(p.std)}</small></span><b>${eur2(p.kosten)}</b></div>`).join("")}</div>` : ""}
+        ${monate.length ? monate.map(m => `<div class="eq-ze-monat"><span>${MONATSNAMEN[m.i]} ${jahr}</span><b>${stdText(m.std)}${m.kosten > 0 ? " · " + eur2(m.kosten) : ""}</b></div>
+          <div class="eq-zes">${m.liste.map(e => zeitZeile(e, true)).join("")}</div>`).join("")
+          : `<div class="eq-leer" style="padding:20px 8px">Für ${jahr} ist kein Einsatz eingetragen.</div>`}
+        <div class="eq-zeit-fuss"><button type="button" class="add-btn" id="zeHand">+ Einsatz von Hand</button></div>
+        ${a.anzahl ? `<div class="card-t eq-zwischen">Nebenkosten ${jahr}</div>
+          <div class="note">Umlagefähig sind ${eur2(a.umlKosten)} aus ${mehrzahl(a.umlAnzahl, "Einsatz", "Einsätzen")}${a.nichtKosten > 0 ? ", nicht umlagefähig " + eur2(a.nichtKosten) : ""}. Beim Übernehmen entsteht in den Nebenkosten ${jahr} die Kostenart „${ZEIT_NK_UML}“${a.nichtKosten > 0 ? " und „" + ZEIT_NK_NICHT + "“" : ""}. Gibt es sie schon, wird nur der Betrag angepasst.${a.offen ? " Offene Einsätze zählen nicht mit." : ""}</div>
+          <div class="eq-zeit-fuss"><button type="button" class="eq-btn" id="zeNk">In die Nebenkosten ${jahr} übernehmen</button></div>
+          <div class="ef-msg" id="zeNkMsg" role="status"></div>` : ""}`;
+      body.querySelector("#zePrev").onclick = () => { jahr--; zeichne(); };
+      body.querySelector("#zeNext").onclick = () => { jahr++; zeichne(); };
+      const zurueck = () => openZeiten(s, jahr);
+      const auf = (id) => openZeitEintrag(s, d.eintraege.find(x => String(x.id) === String(id)), { links: d.links, zurueck });
+      body.querySelectorAll("[data-ze-auf]").forEach(n => { n.onclick = () => auf(n.dataset.zeAuf); n.onkeydown = (ev) => { if ((ev.key === "Enter" || ev.key === " ") && !ev.repeat) { ev.preventDefault(); auf(n.dataset.zeAuf); } }; });
+      body.querySelector("#zeHand").onclick = () => openZeitEintrag(s, null, { links: d.links, zurueck });
+      body.querySelectorAll("[data-zk]").forEach(b => b.onclick = () => openZeitBezahlt(s, d, konten[Number(b.dataset.zk)].key, { zurueck }));
+      // Einordnen: ein Antippen, die Liste zeichnet sich neu, die Seite dahinter auch
+      const ordne = async (knopf, id, wert) => {
+        if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+        knopf.disabled = true;
+        const { error } = await window.sb.from("zeit_eintraege").update({ umlagefaehig: wert }).eq("id", id);
+        if (error) { knopf.disabled = false; showToast(window.fehlerText(error)); return; }
+        await zeichne();
+        window.refreshView();
+      };
+      body.querySelectorAll("[data-ze-ja]").forEach(b => b.onclick = () => ordne(b, b.dataset.zeJa, true));
+      body.querySelectorAll("[data-ze-nein]").forEach(b => b.onclick = () => ordne(b, b.dataset.zeNein, false));
+      const nk = body.querySelector("#zeNk");
+      if (nk) nk.onclick = () => zeitInNebenkosten(s, a, nk, body.querySelector("#zeNkMsg"));
+    }
+    zeichne();
+    return sheet;
+  }
+
+  // Übernimmt die Kosten eines Jahres in die Nebenkosten: eine umlagefähige Kostenart, bei Bedarf eine nicht umlagefähige.
+  // An nkVerteilung ändert sich nichts – es entstehen gewöhnliche Kostenarten, die sich dort auch von Hand ändern lassen.
+  const ZEIT_NK_UML = "Hausmeister laut Zeiterfassung";
+  const ZEIT_NK_NICHT = "Hausmeister, nicht umlagefähig";
+  async function zeitInNebenkosten(s, a, knopf, msg) {
+    if (!pruefeModul("nebenkosten")) return;
+    const sag = (t, schlecht) => { msg.textContent = t; msg.className = "ef-msg" + (schlecht ? " bad" : ""); };
+    if (!(a.umlKosten > 0) && !(a.nichtKosten > 0)) { sag(a.ohneSatz ? "Es gibt noch keine Kosten: Trag beim Link oder am Einsatz einen Stundensatz ein." : "Es gibt noch keinen eingeordneten Einsatz.", true); return; }
+    knopf.disabled = true; sag("Übernehme…");
+    try {
+      const { data: vorhanden, error } = await window.sb.from("nebenkosten").select("*").eq("objekt_id", s._id).eq("jahr", a.jahr);
+      if (error) throw error;
+      const stand = new Date().toLocaleDateString("de-DE");
+      const setze = async (art, betrag, umlagefaehig, std, anzahl) => {
+        const alt = (vorhanden || []).find(p => p.art === art);
+        const d = { betrag: rund2(betrag), umlagefaehig, notiz: stdText(std).replace(" ", " ") + " aus " + mehrzahl(anzahl, "Einsatz", "Einsätzen") + ", Stand " + stand };
+        const r = alt ? await window.sb.from("nebenkosten").update(d).eq("id", alt.id)
+          : betrag > 0 ? await window.sb.from("nebenkosten").insert({ ...d, objekt_id: s._id, jahr: a.jahr, art, schluessel: "flaeche" }) : { error: null };
+        if (r.error) throw r.error;
+      };
+      await setze(ZEIT_NK_UML, a.umlKosten, true, a.umlStd, a.umlAnzahl);
+      await setze(ZEIT_NK_NICHT, a.nichtKosten, false, a.nichtStd, a.nichtAnzahl);
+      delete nkCache[s._id + ":" + a.jahr];
+      knopf.disabled = false;
+      sag("Übernommen: " + eur2(a.umlKosten) + " umlagefähig" + (a.nichtKosten > 0 ? ", " + eur2(a.nichtKosten) + " nicht umlagefähig" : "") + ". Du findest sie in den Nebenkosten " + a.jahr + ".");
+      window.refreshView();
+    } catch (e) { knopf.disabled = false; sag(window.fehlerText(e), true); }
   }
 
   /* ================= PROJEKTE ================= */
@@ -9292,7 +9859,7 @@
         if (neuesObj) {
           setTimeout(() => openErsteEinheitSheet(neuesObj), 300);
         } else {
-          setTimeout(() => openTarifFragenSheet(), 300);
+          setTimeout(() => onboardingWeiter(), 300);
         }
       } : null);
   }
@@ -9335,9 +9902,9 @@
     efBind(sheet,
       async (w) => { await neueEinheit(s._id, bauen(w)); },
       null, null,
-      () => { setTimeout(() => openTarifFragenSheet(), 250); });
+      () => { setTimeout(() => onboardingWeiter(), 250); });
 
-    sheet.querySelector("#ehSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => openTarifFragenSheet(), 200); };
+    sheet.querySelector("#ehSkip").onclick = (e) => { e.preventDefault(); closeSheet(); setTimeout(() => onboardingWeiter(), 200); };
   }
 
   // --- Termin ---
@@ -9392,8 +9959,80 @@
 
   function loginOeffnen(modus) {
     $("#login").classList.remove("hide");
-    setRegMode(false);   // Beta: keine Selbstregistrierung
+    setRegMode(false);   // Beta: ohne Zugangscode keine Selbstregistrierung
     setTimeout(() => { const f = $("#mail"); if (f) f.focus(); }, 180);
+  }
+
+  /* ---------- Beta: Registrierung mit Zugangscode ---------- */
+  // Wer einen gültigen Zugangscode hat, darf ein eigenes Konto anlegen. Geprüft wird in der Datenbank
+  // (Funktion beta_code_gueltig aus 4-beta-code.txt). Gibt es die Funktion dort noch nicht, gilt der Fingerabdruck
+  // unten – der Code selbst steht nicht im Programm, nur sein SHA-256.
+  // Ohne die SQL-Datei ist das ein Türschild, kein Schloss: Erst der Auslöser in der Datenbank lehnt Konten ohne Code ab.
+  const BETA_FINGER = ["4aa05c62bc51969c5466a0bd884105fa76e806b034362effd5439368446aacba"];
+  let betaCode = "";   // angenommener Code; reist bei der Registrierung in den Zusatzdaten mit
+  // Schreibweise egal: „abcd 1234", „Abcd-1234" und „ABCD1234" sind derselbe Code
+  const codeForm = (v) => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  async function sha256(text) {
+    const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+  // true oder false; wirft, wenn die Prüfung selbst scheitert (keine Verbindung)
+  async function betaCodePruefen(roh) {
+    const code = codeForm(roh);
+    if (!code) return false;
+    try {
+      const { data, error } = await window.sb.rpc("beta_code_gueltig", { p_code: code });
+      if (error) throw error;
+      return data === true;
+    } catch (e) {
+      if (!funktionFehlt(e)) throw e;
+      return BETA_FINGER.includes(await sha256(code));
+    }
+  }
+  // Reiter „Registrieren" zeigen oder verbergen. Die Zeile „Beta-Zugang nur auf Einladung" weicht, solange ein Code gilt.
+  function betaRegistrierungZeigen(an) {
+    const tabs = document.querySelector("#login .login-tabs"), hinweis = document.querySelector("#login .beta-hinweis");
+    if (tabs) tabs.classList.toggle("beta-nur-login", !an);
+    if (hinweis) hinweis.classList.toggle("hide", !!an);
+  }
+  function registrierungOeffnen() {
+    $("#login").classList.remove("hide");
+    betaRegistrierungZeigen(true);
+    setRegMode(true);
+    const m = $("#loginMsg"); if (m) { m.textContent = "Zugangscode angenommen. Leg jetzt dein Konto an."; m.className = "login-msg"; }
+    setTimeout(() => { const f = $("#regName"); if (f) f.focus(); }, 180);
+  }
+  function betaCodeVerdrahten() {
+    const form = $("#codeForm"), feld = $("#codeFeld"), msg = $("#codeMsg"), box = $("#warteBox");
+    if (!form || !feld || !msg) return;
+    const knopf = form.querySelector("button");
+    const sag = (text, art) => { msg.textContent = text; msg.className = "wl-msg" + (art ? " " + art : ""); };
+    const einloesen = async () => {
+      if (knopf.disabled) return;
+      if (!codeForm(feld.value)) { sag("Bitte gib deinen Zugangscode ein.", "bad"); feld.focus(); return; }
+      knopf.disabled = true; sag("Code wird geprüft…");
+      let ok = false;
+      try { ok = await betaCodePruefen(feld.value); }
+      catch (e) { console.error("Zugangscode:", e); knopf.disabled = false; sag("Der Code konnte gerade nicht geprüft werden. Bitte versuch es gleich noch einmal.", "bad"); return; }
+      knopf.disabled = false;
+      if (!ok) { sag("Dieser Code ist nicht gültig. Prüf die Schreibweise.", "bad"); feld.focus(); feld.select(); return; }
+      betaCode = codeForm(feld.value);
+      feld.value = ""; sag("");
+      if (box) box.classList.add("hide");
+      registrierungOeffnen();
+    };
+    form.addEventListener("submit", (e) => { e.preventDefault(); einloesen(); });
+    // Link mit Code (…/?code=…): Das Fenster öffnet sich, der Code wird gleich geprüft. Nur vor dem Login.
+    try {
+      const adr = new URL(location.href), mit = adr.searchParams.get("code");
+      if (mit && document.documentElement.classList.contains("pre-login")) {
+        adr.searchParams.delete("code");
+        history.replaceState(null, "", adr.pathname + adr.search + adr.hash);
+        feld.value = mit;
+        if (box) box.classList.remove("hide");
+        einloesen();
+      }
+    } catch (_) {}
   }
   function loginSchliessen() {
     $("#login").classList.add("hide");
@@ -9430,6 +10069,7 @@
     stickyKnopf();
     impressumVerdrahten();
     wartelisteVerdrahten();
+    betaCodeVerdrahten();
   }
 
   /* ---------- TUNNEL: Eintauchen ins Produkt ---------- */
