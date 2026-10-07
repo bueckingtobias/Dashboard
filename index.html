@@ -2047,6 +2047,57 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .eq-ref-passt .eq-ref-n small{color:var(--soft);font-weight:600}
 .eq-ref-passt .eq-ref-b i{background:var(--eq-reihe-2)}
 
+/* ---------- Zeiterfassung: Links, Einsätze, Auswertung ---------- */
+/* Link einer Person: Name mit Stundensatz, rechts „Teilen" */
+.eq-zl{display:grid;gap:2px;margin-bottom:var(--eq-a4)}
+.eq-zl-z{display:flex;align-items:center;gap:var(--eq-a3);padding:6px 0;border-bottom:1px solid var(--stroke)}
+.eq-zl-z:last-child{border-bottom:none}
+.eq-zl-n{flex:1 1 auto;min-width:0;min-height:48px;padding:6px 0;border:none;background:transparent;color:var(--text);text-align:left;cursor:pointer;font-family:var(--fbody)}
+.eq-zl-n span{display:block;font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+.eq-zl-n small{display:block;font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
+.eq-zl-z .add-btn,.eq-zl-z .eq-marke{flex:0 0 auto}
+.eq-zl-link{margin-bottom:var(--eq-a5);padding:var(--eq-a4);border-radius:var(--r-sm);background:var(--eq-mulde);border:1px solid var(--stroke)}
+.eq-zl-adr{margin:6px 0 var(--eq-a3);font-size:var(--eq-t-1);color:var(--soft);line-height:1.5;overflow-wrap:anywhere;user-select:all;-webkit-user-select:all}
+.eq-zl-knoepfe{display:flex;flex-wrap:wrap;gap:var(--eq-a2)}
+/* Ein Einsatz: Tätigkeit, darunter Tag, Person und Zeit; rechts Stunden, Kosten und die Einordnung in Worten */
+.eq-ze{border-bottom:1px solid var(--stroke)}
+.eq-ze:last-child{border-bottom:none}
+.eq-ze-kopf{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--eq-a3) var(--eq-a4);padding:12px 0;cursor:pointer;border-radius:var(--r-sm)}
+.eq-ze-tx{min-width:0}
+.eq-ze-n{font-size:var(--eq-t-3);font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.eq-ze-m{font-size:var(--eq-t-1);color:var(--softer);line-height:1.45;margin-top:2px}
+.eq-ze-b{font-size:var(--eq-t-2);color:var(--soft);line-height:1.45;margin-top:4px;overflow-wrap:anywhere}
+.eq-ze-w{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
+.eq-ze-w b{font-family:var(--fdisp);font-size:var(--eq-t-4);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-ze-w span:not(.eq-marke){font-size:var(--eq-t-1);color:var(--soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-ze-w .eq-marke{white-space:nowrap}
+.eq-ze-wahl{display:flex;flex-wrap:wrap;gap:var(--eq-a2);padding:0 0 12px}
+.eq-ze-monat{display:flex;align-items:baseline;justify-content:space-between;gap:var(--eq-a3);margin-top:var(--eq-a5);padding-bottom:6px;border-bottom:1px solid var(--stroke-2)}
+.eq-ze-monat span{font-size:var(--eq-t-3);font-weight:600}
+.eq-ze-monat b{font-family:var(--fdisp);font-size:var(--eq-t-2);font-weight:600;color:var(--soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-zeit-fuss{display:flex;flex-wrap:wrap;gap:var(--eq-a2);margin-top:var(--eq-a4)}
+.eq-zeit .eq-zustand{margin-bottom:var(--eq-a4)}
+@media(hover:hover){.eq-ze-kopf:hover .eq-ze-n,.eq-zl-n:hover span{text-decoration:underline;text-underline-offset:3px}}
+
+/* Zeitkonto: je Person offene und bezahlte Stunden, rechts „Bezahlt melden" */
+.eq-ze-z{font-size:var(--eq-t-1);color:var(--softer);line-height:1.45;margin-top:4px}
+.eq-ze-z.gut{color:var(--ok);font-weight:600}
+.eq-zk{display:grid}
+.eq-zk-z{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--eq-a2) var(--eq-a3);padding:10px 0;border-bottom:1px solid var(--stroke)}
+.eq-zk-z:last-child{border-bottom:none}
+.eq-zk-tx{flex:1 1 180px;min-width:0;display:grid;gap:2px}
+.eq-zk-tx b{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+.eq-zk-tx span{font-size:var(--eq-t-2);color:var(--text);font-variant-numeric:tabular-nums}
+.eq-zk-tx small{font-size:var(--eq-t-1);color:var(--softer);font-variant-numeric:tabular-nums}
+.eq-zk-z .add-btn{flex:0 0 auto}
+/* Rechnung bezahlt melden: offene Einsätze zum Anhaken */
+.eq-zb{display:grid;margin:var(--eq-a2) 0 0;border-top:1px solid var(--stroke)}
+.eq-zb-z{display:flex;align-items:center;gap:var(--eq-a3);min-height:56px;padding:8px 0;border-bottom:1px solid var(--stroke);cursor:pointer}
+.eq-zb-z input{flex:0 0 auto;width:24px;height:24px;margin:0 2px;accent-color:var(--mint)}
+.eq-zb-tx{min-width:0;display:grid;gap:2px}
+.eq-zb-tx b{font-size:var(--eq-t-2);font-weight:600;overflow-wrap:anywhere}
+.eq-zb-tx small{font-size:var(--eq-t-1);color:var(--softer);font-variant-numeric:tabular-nums}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -2947,6 +2998,17 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
       <button class="btn btn-p btn-lg btn-block" type="submit">Eintragen</button>
       <div class="wl-msg" aria-live="polite"></div>
     </form>
+    <div style="margin-top:24px;padding-top:22px;border-top:1px solid var(--line-2)">
+      <p class="msub" style="margin-top:0">Du hast einen Zugangscode? Dann kannst du dich schon jetzt registrieren.</p>
+      <form class="mform" id="codeForm" novalidate style="margin-top:14px">
+        <div>
+          <label for="codeFeld">Zugangscode</label>
+          <input type="text" id="codeFeld" name="code" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" style="padding-left:14px;height:50px;font-size:16px;text-transform:uppercase">
+        </div>
+        <button class="btn btn-g btn-lg btn-block" type="submit">Code einlösen</button>
+        <div class="wl-msg" id="codeMsg" aria-live="polite"></div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -3094,10 +3156,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=64"></script>
-<script src="./data-save.js?v=64"></script>
-<script src="./finance-engine.js?v=64"></script>
-<script src="./app.js?v=64"></script>
+<script src="./data-loader.js?v=67"></script>
+<script src="./data-save.js?v=67"></script>
+<script src="./finance-engine.js?v=67"></script>
+<script src="./app.js?v=67"></script>
 
 <script>
 /* =====================================================================
