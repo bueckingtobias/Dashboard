@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Zeiten eintragen</title>
+<meta name="robots" content="noindex,nofollow" />
+<meta name="theme-color" content="#16181D" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Zeiten" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ESTRIQ · Zeiterfassung für Hausmeister und Helfer.
+   Eine eigene, kleine Seite: Wer den Link hat, trägt hier seine Arbeitszeiten ein – ohne Anmeldung.
+   Farben und Schriften wie im Dashboard (Anthrazit; am hellen Gerät das helle Schema). */
+:root{
+  --bg:#16181D;--flaeche:#1F2228;--mulde:#16181D;--flaeche-2:#282C34;
+  --text:#ECEFF3;--soft:#B4BCC8;--softer:#98A1AE;
+  --mint:#4CAF7D;--mint-2:#7DD3A6;--auf-mint:#0B1F15;
+  --ok:#5CC48E;--danger:#F4857B;
+  --linie:rgba(236,239,243,.11);--linie-2:rgba(236,239,243,.2);--linie-feld:#72767D;
+  --f-titel:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+  --f-zahl:"Space Grotesk",system-ui,sans-serif;
+  --f-text:"Inter",system-ui,-apple-system,sans-serif;
+}
+@media(prefers-color-scheme:light){
+  :root{
+    --bg:#F6F7F9;--flaeche:#FFFFFF;--mulde:#F6F7F9;--flaeche-2:#EEF1F5;
+    --text:#12161C;--soft:#4A5462;--softer:#5E6774;
+    --mint:#1F6B4A;--mint-2:#17553A;--auf-mint:#FFFFFF;
+    --ok:#1E7A4F;--danger:#B42318;
+    --linie:rgba(18,22,28,.11);--linie-2:rgba(18,22,28,.2);--linie-feld:#878A8F;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-text);font-size:15px;line-height:1.5;
+  padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.seite{max-width:520px;margin:0 auto}
+[hidden]{display:none!important}
+
+/* Kopf: für wen und für welches Objekt */
+.kopf{padding:4px 2px 18px}
+.marke{font-family:var(--f-zahl);font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--softer)}
+.firma{font-family:var(--f-titel);font-size:26px;font-weight:650;line-height:1.15;letter-spacing:-.02em;margin:10px 0 4px;overflow-wrap:anywhere}
+.objekt{font-size:15px;color:var(--soft);overflow-wrap:anywhere}
+.person{margin-top:10px;font-size:14px;color:var(--soft)}
+.person b{color:var(--text);font-weight:600}
+
+.karte{background:var(--flaeche);border:1px solid var(--linie);border-radius:20px;padding:18px;margin-bottom:14px}
+label,.label{display:block;font-size:14px;font-weight:600;margin:0 0 6px}
+.feld{margin-bottom:16px}
+.feld:last-child{margin-bottom:0}
+.hinweis{font-size:13px;color:var(--softer);margin-top:6px;line-height:1.45}
+input[type=date],input[type=time],input[type=number],select,textarea{width:100%;min-height:52px;background:var(--mulde);border:1px solid var(--linie-feld);
+  border-radius:12px;padding:12px 14px;color:var(--text);font-family:var(--f-text);font-size:16px;line-height:1.3;outline:none;-webkit-appearance:none;appearance:none}
+textarea{min-height:92px;resize:vertical;line-height:1.5}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--soft) 50%),linear-gradient(135deg,var(--soft) 50%,transparent 50%);
+  background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:40px}
+input::placeholder,textarea::placeholder{color:var(--softer)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:var(--mint);box-shadow:0 0 0 3px color-mix(in srgb,var(--mint) 35%,transparent)}
+button:focus-visible{outline:2px solid var(--mint-2);outline-offset:3px}
+
+/* Umschalter: Schieberegler oder Direkteingabe */
+.wahl{display:flex;gap:4px;padding:4px;margin-bottom:16px;border-radius:14px;background:var(--mulde);border:1px solid var(--linie)}
+.wahl button{flex:1 1 0;min-height:44px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--soft);font-family:var(--f-text);font-size:14px;font-weight:600;cursor:pointer}
+.wahl button[aria-pressed=true]{background:var(--flaeche);border-color:var(--linie-2);color:var(--text)}
+
+/* Die Zeit groß: Beginn, Ende und was dabei herauskommt */
+.zeit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px 10px;padding:16px 14px;margin-bottom:18px;border-radius:16px;background:var(--mulde);border:1px solid var(--linie)}
+.zeit .uhr{font-family:var(--f-zahl);font-size:34px;font-weight:600;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;text-align:center}
+.zeit .pfeil{color:var(--softer);font-size:20px}
+.zeit .unter{grid-column:1 / -1;display:flex;justify-content:center;flex-wrap:wrap;gap:4px 14px;padding-top:10px;margin-top:6px;border-top:1px solid var(--linie);font-size:14px;color:var(--soft)}
+.zeit .unter b{font-family:var(--f-zahl);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.zeit.falsch .uhr{color:var(--danger)}
+
+.regler{margin-bottom:14px}
+.regler:last-child{margin-bottom:0}
+.regler-kopf{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.regler-kopf output{font-family:var(--f-zahl);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;cursor:pointer;touch-action:pan-y}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:var(--flaeche-2);border:1px solid var(--linie)}
+input[type=range]::-moz-range-track{height:8px;border-radius:99px;background:var(--flaeche-2);border:1px solid var(--linie)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:30px;height:30px;margin-top:-12px;border-radius:50%;background:var(--mint);border:3px solid var(--flaeche)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--mint);border:3px solid var(--flaeche)}
+input[type=range]:focus-visible{outline:none}
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--mint) 45%,transparent)}
+.direkt{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.direkt .ganz{grid-column:1 / -1}
+
+.senden{width:100%;min-height:58px;border:none;border-radius:16px;background:var(--mint);color:var(--auf-mint);font-family:var(--f-text);font-size:17px;font-weight:700;cursor:pointer}
+.senden:active{transform:scale(.99)}
+.senden:disabled{opacity:.6;cursor:default}
+.meldung{min-height:22px;margin:12px 4px 0;font-size:14px;text-align:center;color:var(--soft)}
+.meldung.gut{color:var(--ok);font-weight:600}
+.meldung.schlecht{color:var(--danger);font-weight:600}
+
+.liste-titel{font-family:var(--f-titel);font-size:18px;font-weight:600;margin:26px 2px 10px}
+.eintrag{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:12px 0;border-bottom:1px solid var(--linie)}
+.eintrag:last-child{border-bottom:none}
+.eintrag .n{font-weight:600;overflow-wrap:anywhere}
+.eintrag .m{font-size:13px;color:var(--softer);margin-top:2px}
+.eintrag .b{font-size:14px;color:var(--soft);margin-top:3px;overflow-wrap:anywhere}
+.eintrag .std{flex:0 0 auto;font-family:var(--f-zahl);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.leer{font-size:14px;color:var(--softer);padding:6px 2px}
+.eintrag{flex-wrap:wrap}
+.eintrag .links{flex:1 1 0;min-width:0}
+.eintrag .s{font-size:13px;margin-top:4px;color:var(--softer)}
+.eintrag .s.bezahlt{color:var(--ok);font-weight:600}
+.eintrag .knoepfe{flex:1 1 100%;display:flex;gap:8px;margin-top:2px}
+.klein{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--linie-2);background:transparent;color:var(--text);font-family:var(--f-text);font-size:14px;font-weight:600;cursor:pointer}
+.klein.warn{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
+.klein:disabled{opacity:.6;cursor:default}
+.liste-hinweis{font-size:13px;color:var(--softer);margin:10px 4px 0;line-height:1.45}
+
+/* Zeitkonto: was noch offen ist und was schon bezahlt wurde */
+.konto-t{font-size:14px;font-weight:600;margin-bottom:12px}
+.konto-w{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.konto-w span{display:block;font-size:13px;color:var(--soft)}
+.konto-w b{display:block;font-family:var(--f-zahl);font-size:26px;font-weight:600;line-height:1.2;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin-top:2px}
+.konto-w small{display:block;font-size:13px;color:var(--softer);margin-top:2px;line-height:1.4}
+.konto-j{margin-top:12px;padding-top:12px;border-top:1px solid var(--linie);font-size:13px;color:var(--soft)}
+.konto-j b{font-family:var(--f-zahl);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+
+/* Einen Eintrag ändern: Hinweis über dem Knopf */
+.aendert{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-bottom:12px;padding:12px 14px;border-radius:14px;
+  background:var(--flaeche);border:1px solid var(--mint);font-size:14px;font-weight:600}
+
+/* Zustand der ganzen Seite: lädt oder Link gilt nicht */
+.zustand{padding:56px 12px;text-align:center}
+.zustand h1{font-family:var(--f-titel);font-size:24px;font-weight:650;line-height:1.2;margin:0 0 10px}
+.zustand p{margin:0 auto;max-width:34ch;color:var(--soft)}
+.fuss{margin-top:28px;text-align:center;font-size:13px;color:var(--softer)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="seite">
+  <div class="zustand" id="laedt"><p>Wird geladen…</p></div>
+
+  <div class="zustand" id="gesperrt" hidden>
+    <h1 id="gesperrtTitel">Dieser Link gilt nicht</h1>
+    <p id="gesperrtText">Bitte frag deinen Auftraggeber nach einem neuen Link.</p>
+  </div>
+
+  <main id="seite" hidden>
+    <header class="kopf">
+      <div class="marke">ESTRIQ · Zeiterfassung</div>
+      <div class="firma" id="firma"></div>
+      <div class="objekt" id="objekt"></div>
+      <div class="person">Zeiten für <b id="person"></b></div>
+    </header>
+
+    <section class="karte" id="konto" hidden aria-labelledby="kontoTitel">
+      <div class="konto-t" id="kontoTitel">Dein Zeitkonto</div>
+      <div class="konto-w">
+        <div><span>Guthaben</span><b id="kOffen">—</b><small id="kOffenU"></small></div>
+        <div><span>Bezahlt</span><b id="kBezahlt">—</b><small id="kBezahltU"></small></div>
+      </div>
+      <div class="konto-j" id="kJahr"></div>
+    </section>
+
+    <form id="form" novalidate>
+      <section class="karte">
+        <div class="feld">
+          <label for="tag">Arbeitstag</label>
+          <input type="date" id="tag" required>
+        </div>
+        <div class="feld">
+          <label for="taetigkeit">Tätigkeit</label>
+          <select id="taetigkeit"></select>
+        </div>
+        <div class="feld">
+          <label for="beschreibung">Was hast du gemacht?</label>
+          <textarea id="beschreibung" maxlength="500" placeholder="z. B. Rasen vorne und hinten gemäht"></textarea>
+          <div class="hinweis" id="beschreibungHinweis">Ein paar Stichworte reichen.</div>
+        </div>
+      </section>
+
+      <section class="karte">
+        <div class="wahl" role="group" aria-label="Zeit eingeben mit">
+          <button type="button" id="modusRegler" aria-pressed="true">Schieberegler</button>
+          <button type="button" id="modusDirekt" aria-pressed="false">Direkteingabe</button>
+        </div>
+        <div class="zeit" id="zeit" role="status" aria-live="polite">
+          <div class="uhr" id="zBeginn">07:00</div><div class="pfeil" aria-hidden="true">→</div><div class="uhr" id="zEnde">16:00</div>
+          <div class="unter"><span>Pause <b id="zPause">60 Min</b></span><span>Arbeitszeit <b id="zStd">8 Std.</b></span></div>
+        </div>
+
+        <div id="teilRegler">
+          <div class="regler">
+            <div class="regler-kopf"><label for="rBeginn">Beginn</label><output id="oBeginn">07:00</output></div>
+            <input type="range" id="rBeginn" min="0" max="1425" step="15" value="420">
+          </div>
+          <div class="regler">
+            <div class="regler-kopf"><label for="rEnde">Ende</label><output id="oEnde">16:00</output></div>
+            <input type="range" id="rEnde" min="15" max="1440" step="15" value="960">
+          </div>
+          <div class="regler">
+            <div class="regler-kopf"><label for="rPause">Pause</label><output id="oPause">60 Min</output></div>
+            <input type="range" id="rPause" min="0" max="180" step="5" value="60">
+          </div>
+        </div>
+
+        <div id="teilDirekt" class="direkt" hidden>
+          <div><label for="dBeginn">Beginn</label><input type="time" id="dBeginn" value="07:00"></div>
+          <div><label for="dEnde">Ende</label><input type="time" id="dEnde" value="16:00"></div>
+          <div class="ganz"><label for="dPause">Pause in Minuten</label><input type="number" id="dPause" min="0" max="600" step="5" inputmode="numeric" value="60"></div>
+        </div>
+      </section>
+
+      <div class="aendert" id="aendert" hidden>
+        <span id="aendertText"></span>
+        <button type="button" class="klein" id="abbrechen">Abbrechen</button>
+      </div>
+      <button type="submit" class="senden" id="senden">Zeiten übermitteln</button>
+      <div class="meldung" id="meldung" role="status" aria-live="polite"></div>
+    </form>
+
+    <h2 class="liste-titel">Deine letzten Einträge</h2>
+    <section class="karte" id="liste"></section>
+    <div class="liste-hinweis" id="listeHinweis" hidden></div>
+    <div class="fuss">Tipp: Leg diese Seite auf deinem Startbildschirm ab.</div>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // Öffentliche Verbindungsdaten des Projekts – dieselben wie in data-loader.js. Kein Geheimnis:
+  // Ohne den Schlüssel im Link lässt die Datenbank über diese Seite nichts zu.
+  var SB_URL = "https://lxigpeasfnnmfvipckxp.supabase.co", SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4aWdwZWFzZm5ubWZ2aXBja3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2Mjc3MjMsImV4cCI6MjEwMDIwMzcyM30.XRN3fHbwTJt1qweyRgRdUFqdXq5-ZyKD_JyNuMO92LI";
+
+  // Dieselbe Liste wie im Dashboard (app.js, ZEIT_TAETIGKEITEN). Bei einer Änderung beide Stellen anpassen.
+  var TAETIGKEITEN = [
+    ["rasen", "Rasen mähen"], ["hecke", "Hecken und Sträucher schneiden"], ["beete", "Beete pflegen, Unkraut entfernen"],
+    ["laub", "Laub beseitigen"], ["baum", "Bäume schneiden und pflegen"], ["giessen", "Pflanzen bewässern"],
+    ["wege", "Wege, Hof und Einfahrt reinigen"], ["winter", "Winterdienst: räumen und streuen"],
+    ["treppenhaus", "Treppenhaus und Gemeinschaftsräume reinigen"], ["muell", "Mülltonnen und Müllplatz"],
+    ["neuanlage", "Garten neu anlegen oder umgestalten"], ["reparatur", "Reparatur und Instandhaltung"], ["sonstiges", "Sonstiges"]
+  ];
+  var FEHLER = {
+    zeit_ungueltig: "Das Ende muss nach dem Beginn liegen.",
+    pause_ungueltig: "Die Pause ist länger als die Arbeitszeit.",
+    tag_ungueltig: "Dieser Tag liegt zu weit zurück oder in der Zukunft.",
+    taetigkeit_fehlt: "Bitte wähl eine Tätigkeit.",
+    text_zu_lang: "Die Beschreibung ist zu lang. Bitte kürz sie etwas.",
+    zu_viele: "Heute sind schon sehr viele Einträge gekommen. Bitte melde dich bei deinem Auftraggeber.",
+    bezahlt: "Dieser Eintrag ist schon bezahlt. Er lässt sich nicht mehr ändern.",
+    zu_spaet: "Dieser Eintrag ist zu alt, um ihn hier zu ändern. Bitte melde dich bei deinem Auftraggeber.",
+    nicht_gefunden: "Diesen Eintrag gibt es nicht mehr."
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var zwei = function (n) { return (n < 10 ? "0" : "") + n; };
+  var uhr = function (min) { return zwei(Math.floor(min / 60)) + ":" + zwei(min % 60); };
+  var minuten = function (t) { var m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  var std = function (min) { return (Math.round(min / 60 * 100) / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Std."; };
+  var iso = function (d) { return d.getFullYear() + "-" + zwei(d.getMonth() + 1) + "-" + zwei(d.getDate()); };
+  var datum = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+  var tagText = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }); };
+  var artName = function (k) { for (var i = 0; i < TAETIGKEITEN.length; i++) if (TAETIGKEITEN[i][0] === k) return TAETIGKEITEN[i][1]; return k || "Sonstiges"; };
+  var merk = { lesen: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, setzen: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+  // Der Schlüssel steht im Link. Er wird gemerkt, falls die Seite später ohne ihn geöffnet wird.
+  var token = "";
+  try { token = new URLSearchParams(location.search).get("t") || ""; } catch (e) {}
+  if (token) merk.setzen("estriq_zeit_t", token); else token = merk.lesen("estriq_zeit_t") || "";
+
+  function rpc(name, args) {
+    return fetch(SB_URL + "/rest/v1/rpc/" + name, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY },
+      body: JSON.stringify(args)
+    }).then(function (r) {
+      if (r.status === 404) { var e = new Error("nicht eingerichtet"); e.fehlt = true; throw e; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    });
+  }
+  function zeige(welche) { ["laedt", "gesperrt", "seite"].forEach(function (id) { $(id).hidden = id !== welche; }); }
+  function sperre(titel, text) { $("gesperrtTitel").textContent = titel; $("gesperrtText").textContent = text; zeige("gesperrt"); }
+  function sag(text, art) { var m = $("meldung"); m.textContent = text; m.className = "meldung" + (art ? " " + art : ""); }
+
+  // ---------- Zeit: zwei Eingabewege, ein Stand ----------
+  var stand = { beginn: 420, ende: 960, pause: 60, modus: "regler" };
+  try { var alt = JSON.parse(merk.lesen("estriq_zeit_v") || "null"); if (alt && alt.beginn != null) stand = { beginn: Number(alt.beginn) || 0, ende: Number(alt.ende) || 0, pause: Number(alt.pause) || 0, modus: alt.modus === "direkt" ? "direkt" : "regler" }; } catch (e) {}
+  var arbeit = function () { return stand.ende - stand.beginn - stand.pause; };
+  var gueltig = function () { return stand.ende > stand.beginn && stand.pause >= 0 && stand.pause < stand.ende - stand.beginn; };
+  function zeichneZeit(quelle) {
+    $("zBeginn").textContent = uhr(stand.beginn); $("zEnde").textContent = uhr(stand.ende);
+    $("zPause").textContent = stand.pause + " Min"; $("zStd").textContent = gueltig() ? std(arbeit()) : "—";
+    $("zeit").classList.toggle("falsch", !gueltig());
+    $("oBeginn").textContent = uhr(stand.beginn); $("oEnde").textContent = uhr(stand.ende); $("oPause").textContent = stand.pause + " Min";
+    if (quelle !== "regler") { $("rBeginn").value = stand.beginn; $("rEnde").value = stand.ende; $("rPause").value = Math.min(180, stand.pause); }
+    if (quelle !== "direkt") { $("dBeginn").value = uhr(Math.min(1439, stand.beginn)); $("dEnde").value = uhr(Math.min(1439, stand.ende)); $("dPause").value = stand.pause; }
+    merk.setzen("estriq_zeit_v", JSON.stringify(stand));
+  }
+  function modus(m) {
+    stand.modus = m;
+    $("modusRegler").setAttribute("aria-pressed", String(m === "regler")); $("modusDirekt").setAttribute("aria-pressed", String(m === "direkt"));
+    $("teilRegler").hidden = m !== "regler"; $("teilDirekt").hidden = m !== "direkt";
+    zeichneZeit();
+  }
+  $("modusRegler").onclick = function () { modus("regler"); };
+  $("modusDirekt").onclick = function () { modus("direkt"); };
+  // Schieberegler: Beginn und Ende schieben sich gegenseitig, damit das Ende immer nach dem Beginn liegt
+  $("rBeginn").oninput = function () { stand.beginn = Number(this.value); if (stand.ende <= stand.beginn) stand.ende = Math.min(1440, stand.beginn + 15); zeichneZeit("regler"); $("rEnde").value = stand.ende; sag(""); };
+  $("rEnde").oninput = function () { stand.ende = Number(this.value); if (stand.ende <= stand.beginn) stand.beginn = Math.max(0, stand.ende - 15); zeichneZeit("regler"); $("rBeginn").value = stand.beginn; sag(""); };
+  $("rPause").oninput = function () { stand.pause = Number(this.value); zeichneZeit("regler"); sag(""); };
+  var direkt = function () {
+    var a = minuten($("dBeginn").value), b = minuten($("dEnde").value), p = Number($("dPause").value);
+    if (a != null) stand.beginn = a; if (b != null) stand.ende = b; stand.pause = isFinite(p) && p >= 0 ? Math.round(p) : 0;
+    zeichneZeit("direkt"); sag("");
+  };
+  ["dBeginn", "dEnde", "dPause"].forEach(function (id) { $(id).addEventListener("input", direkt); $(id).addEventListener("change", direkt); });
+
+  // ---------- Formular ----------
+  var heute = new Date(), frueh = new Date(heute.getTime() - 92 * 864e5), morgen = new Date(heute.getTime() + 864e5);
+  $("tag").value = iso(heute); $("tag").min = iso(frueh); $("tag").max = iso(morgen);
+  TAETIGKEITEN.forEach(function (x) { var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; $("taetigkeit").appendChild(o); });
+  var letzte = merk.lesen("estriq_zeit_art"); if (letzte && artName(letzte) !== letzte) $("taetigkeit").value = letzte;
+  function hinweisBeschreibung() {
+    $("beschreibungHinweis").textContent = $("taetigkeit").value === "sonstiges"
+      ? "Bei „Sonstiges“ bitte kurz beschreiben, was du gemacht hast." : "Ein paar Stichworte reichen.";
+  }
+  $("taetigkeit").onchange = function () { hinweisBeschreibung(); sag(""); };
+  hinweisBeschreibung();
+
+  var eintraege = [], doppeltBestaetigt = "", bearbeite = null, standVorher = null;
+  function knopf(text, klasse) { var b = document.createElement("button"); b.type = "button"; b.className = "klein" + (klasse ? " " + klasse : ""); b.textContent = text; return b; }
+  function zeichneListe() {
+    var l = $("liste"); l.textContent = "";
+    if (!eintraege.length) { var leer = document.createElement("div"); leer.className = "leer"; leer.textContent = "Noch kein Eintrag. Dein erster erscheint hier, sobald du ihn übermittelt hast."; l.appendChild(leer); return; }
+    eintraege.forEach(function (e) {
+      var z = document.createElement("div"); z.className = "eintrag";
+      var links = document.createElement("div"); links.className = "links";
+      var n = document.createElement("div"); n.className = "n"; n.textContent = artName(e.taetigkeit); links.appendChild(n);
+      var m = document.createElement("div"); m.className = "m";
+      m.textContent = tagText(e.tag) + (e.beginn && e.ende ? " · " + String(e.beginn).slice(0, 5) + "–" + String(e.ende).slice(0, 5) : "") + (Number(e.pause_min) > 0 ? " · " + e.pause_min + " Min Pause" : "");
+      links.appendChild(m);
+      if (e.beschreibung) { var b = document.createElement("div"); b.className = "b"; b.textContent = e.beschreibung; links.appendChild(b); }
+      // Ob bezahlt oder offen, steht als Wort da (nur, wenn die Datenbank das Zeitkonto schon kennt)
+      if (e.bezahlt_am !== undefined) {
+        var st = document.createElement("div"); st.className = "s" + (e.bezahlt_am ? " bezahlt" : "");
+        st.textContent = e.bezahlt_am ? "Bezahlt am " + datum(e.bezahlt_am) : "Noch nicht bezahlt"; links.appendChild(st);
+      }
+      var s = document.createElement("div"); s.className = "std"; s.textContent = std(Number(e.minuten) || 0);
+      z.appendChild(links); z.appendChild(s);
+      if (e.aenderbar && e.id) {
+        var k = document.createElement("div"); k.className = "knoepfe";
+        var ae = knopf("Ändern"), lo = knopf("Löschen", "warn");
+        ae.onclick = function () { bearbeiten(e); };
+        lo.onclick = function () { loeschen(e, lo); };
+        k.appendChild(ae); k.appendChild(lo); z.appendChild(k);
+      }
+      l.appendChild(z);
+    });
+  }
+
+  // Zeitkonto: Guthaben = eingetragen, aber noch nicht bezahlt
+  function zeichneKonto(k) {
+    if (!k) { $("konto").hidden = true; return; }
+    $("konto").hidden = false;
+    var offen = Number(k.offen_min) || 0, bezahlt = Number(k.bezahlt_min) || 0, anzahl = Number(k.offen_anzahl) || 0;
+    $("kOffen").textContent = std(offen);
+    $("kOffenU").textContent = offen > 0 ? (anzahl === 1 ? "1 Eintrag" : anzahl + " Einträge") + ", noch nicht bezahlt" : "Alles ist bezahlt.";
+    $("kBezahlt").textContent = std(bezahlt);
+    $("kBezahltU").textContent = k.zuletzt_am ? "zuletzt am " + datum(k.zuletzt_am) + ": " + std(Number(k.zuletzt_min) || 0) : "Noch keine Zahlung gemeldet.";
+    $("kJahr").textContent = "";
+    $("kJahr").appendChild(document.createTextNode("Im Jahr " + k.jahr + " eingetragen: "));
+    var b = document.createElement("b"); b.textContent = std(Number(k.jahr_min) || 0); $("kJahr").appendChild(b);
+  }
+
+  // Einen eigenen Eintrag ändern: Er wird ins Formular geladen, der Knopf speichert die Änderung.
+  function bearbeiten(e) {
+    if (!bearbeite) standVorher = { beginn: stand.beginn, ende: stand.ende, pause: stand.pause, modus: stand.modus };
+    bearbeite = e.id;
+    $("tag").value = String(e.tag).slice(0, 10);
+    $("taetigkeit").value = e.taetigkeit; if ($("taetigkeit").value !== e.taetigkeit) $("taetigkeit").value = "sonstiges";
+    $("beschreibung").value = e.beschreibung || "";
+    hinweisBeschreibung();
+    var a = minuten(e.beginn), b = minuten(e.ende), p = Number(e.pause_min) || 0;
+    stand.beginn = a != null ? a : stand.beginn; stand.ende = b != null ? b : stand.ende; stand.pause = p;
+    // Minutengenaue Zeiten passen nicht auf die Schieberegler
+    modus(stand.beginn % 15 || stand.ende % 15 || p % 5 || p > 180 ? "direkt" : stand.modus);
+    $("aendertText").textContent = "Du änderst den Eintrag vom " + tagText(e.tag).replace(/\.$/, "") + ".";
+    $("aendert").hidden = false;
+    $("senden").textContent = "Änderung speichern";
+    sag("");
+    $("form").scrollIntoView({ block: "start" });
+  }
+  function bearbeitenEnde() {
+    bearbeite = null;
+    $("aendert").hidden = true;
+    $("senden").textContent = "Zeiten übermitteln";
+    $("tag").value = iso(new Date());
+    $("beschreibung").value = "";
+    var letzte = merk.lesen("estriq_zeit_art"); if (letzte && artName(letzte) !== letzte) $("taetigkeit").value = letzte;
+    hinweisBeschreibung();
+    if (standVorher) { stand.beginn = standVorher.beginn; stand.ende = standVorher.ende; stand.pause = standVorher.pause; modus(standVorher.modus); standVorher = null; }
+  }
+  $("abbrechen").onclick = function () { bearbeitenEnde(); sag(""); };
+
+  // Löschen fragt einmal nach: erst das zweite Tippen löscht.
+  function loeschen(e, b) {
+    if (b.dataset.sicher !== "1") {
+      b.dataset.sicher = "1"; b.textContent = "Wirklich löschen?";
+      setTimeout(function () { if (b.isConnected && b.dataset.sicher === "1") { b.dataset.sicher = ""; b.textContent = "Löschen"; } }, 4000);
+      return;
+    }
+    b.disabled = true;
+    rpc("zeit_loeschen", { p_token: token, p_id: e.id }).then(function (antwort) {
+      if (bearbeite === e.id) bearbeitenEnde();
+      if (antwort === "ok") { sag("Eintrag gelöscht.", "gut"); return lade(); }
+      sag(FEHLER[antwort] || "Das hat nicht geklappt. Bitte versuch es noch einmal.", "schlecht");
+      return lade();
+    }).catch(function () { b.disabled = false; sag("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "schlecht"); });
+  }
+
+  function lade() {
+    return rpc("zeit_link_laden", { p_token: token }).then(function (d) {
+      if (!d || d.status !== "ok") {
+        if (d && d.status === "gesperrt") sperre("Dieser Link ist gesperrt", "Über diesen Link lassen sich keine Zeiten mehr eintragen. Bitte frag deinen Auftraggeber.");
+        else sperre("Dieser Link gilt nicht", "Bitte frag deinen Auftraggeber nach einem neuen Link.");
+        return false;
+      }
+      $("firma").textContent = d.firma || "Zeiterfassung";
+      $("objekt").textContent = [d.objekt, d.ort].filter(Boolean).join(" · ");
+      $("person").textContent = d.name || "";
+      document.title = "Zeiten · " + (d.objekt || "ESTRIQ");
+      eintraege = d.eintraege || [];
+      zeichneListe();
+      zeichneKonto(d.konto);
+      var frist = Number(d.frist_tage) || 0;
+      $("listeHinweis").hidden = !(frist > 0 && eintraege.length);
+      $("listeHinweis").textContent = "Eigene Einträge kannst du " + frist + " Tage lang ändern oder löschen, solange sie nicht bezahlt sind.";
+      zeige("seite");
+      return true;
+    });
+  }
+
+  $("form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var knopf = $("senden");
+    if (knopf.disabled) return;
+    var tag = $("tag").value, art = $("taetigkeit").value, text = $("beschreibung").value.trim();
+    if (!tag) { sag("Bitte wähl den Arbeitstag.", "schlecht"); $("tag").focus(); return; }
+    if (!(stand.ende > stand.beginn)) { sag(FEHLER.zeit_ungueltig, "schlecht"); return; }
+    if (!gueltig()) { sag(FEHLER.pause_ungueltig, "schlecht"); return; }
+    if (art === "sonstiges" && !text) { sag("Bitte beschreib kurz, was du gemacht hast.", "schlecht"); $("beschreibung").focus(); return; }
+    // Schutz vor doppeltem Senden: derselbe Tag mit derselben Zeit steht schon in der Liste
+    var kennung = tag + "|" + uhr(stand.beginn) + "|" + uhr(stand.ende);
+    var doppelt = eintraege.some(function (e) { return (!bearbeite || e.id !== bearbeite) && String(e.tag).slice(0, 10) === tag && String(e.beginn).slice(0, 5) === uhr(stand.beginn) && String(e.ende).slice(0, 5) === uhr(stand.ende); });
+    if (doppelt && doppeltBestaetigt !== kennung) {
+      doppeltBestaetigt = kennung;
+      sag("Für diesen Tag gibt es schon einen Eintrag mit genau dieser Zeit. Tipp noch einmal auf den Knopf, wenn du ihn trotzdem senden willst.", "schlecht");
+      return;
+    }
+    var aendern = bearbeite;
+    knopf.disabled = true; knopf.textContent = aendern ? "Wird gespeichert…" : "Wird übermittelt…"; sag("");
+    var fertig = function () { knopf.disabled = false; knopf.textContent = bearbeite ? "Änderung speichern" : "Zeiten übermitteln"; };
+    var angaben = { p_token: token, p_tag: tag, p_beginn: uhr(Math.min(1439, stand.beginn)), p_ende: stand.ende >= 1440 ? "23:59" : uhr(stand.ende),
+      p_pause: stand.pause, p_taetigkeit: art, p_beschreibung: text || null };
+    if (aendern) angaben.p_id = aendern;
+    var zeile = tagText(tag) + ", " + uhr(stand.beginn) + "–" + uhr(stand.ende) + ", " + std(arbeit());
+    rpc(aendern ? "zeit_aendern" : "zeit_eintragen", angaben).then(function (antwort) {
+      if (antwort === "ok") {
+        if (aendern) bearbeitenEnde(); else { merk.setzen("estriq_zeit_art", art); $("beschreibung").value = ""; }
+        doppeltBestaetigt = "";
+        fertig();
+        sag((aendern ? "Geändert: " : "Gespeichert: ") + zeile, "gut");
+        return lade();
+      }
+      // Der Eintrag lässt sich nicht mehr ändern: zurück zum normalen Formular
+      if (aendern && (antwort === "bezahlt" || antwort === "zu_spaet" || antwort === "nicht_gefunden")) { bearbeitenEnde(); fertig(); sag(FEHLER[antwort], "schlecht"); return lade(); }
+      fertig();
+      if (antwort === "gesperrt" || antwort === "unbekannt") { lade(); return; }
+      sag(FEHLER[antwort] || "Das hat nicht geklappt. Bitte versuch es noch einmal.", "schlecht");
+    }).catch(function () { fertig(); sag("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "schlecht"); });
+  });
+
+  modus(stand.modus);
+  if (!token) { sperre("Hier fehlt der Link", "Öffne bitte den Link, den du von deinem Auftraggeber bekommen hast."); return; }
+  lade().catch(function (e) {
+    if (e && e.fehlt) sperre("Noch nicht eingerichtet", "Die Zeiterfassung ist noch nicht eingerichtet. Bitte versuch es später noch einmal.");
+    else sperre("Keine Verbindung", "Die Seite konnte nicht geladen werden. Bitte prüf dein Netz und lade neu.");
+  });
+})();
+</script>
+</body>
+</html>
