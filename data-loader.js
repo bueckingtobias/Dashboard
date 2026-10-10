@@ -60,6 +60,7 @@ function zuStream(o) {
   if (o.invest)        s.invest       = Number(o.invest);
   if (o.nk_als_puffer) s.nkAlsPuffer  = true;
   if (o.nk_positionen) s.nkPositionen = o.nk_positionen;
+  if (o.us_daten)      s.usDaten      = o.us_daten;   // nur Konten in den USA (Spalte aus 9-usa.txt)
 
   if (o.art === "miete") {
     s.einheiten = (o.einheiten || [])
@@ -115,13 +116,16 @@ const PROJEKT_VORGABEN = {
   instand_m2: 1, verwaltung_einheit: 25, kosten_sonst: 0, ausfall_pct: 3,
   baujahr: null, inserat: null, pruefliste: [], angelegt_am: null, uebernommen_am: null
 };
+// Konten in den USA (app.js setzt window.ESTRIQ_REGION): Abschlusskosten statt Notar, kein Makler,
+// Instandhaltung je sq ft und Monat. Es bleiben Annahmen.
+const PROJEKT_VORGABEN_US = { notar_pct: 3, makler_pct: 0, instand_m2: 0.09 };
 // Ein Projekt wird wie ein Mietobjekt aufbereitet (kind "miete"), damit FinanceEngine unverändert rechnet.
 function zuProjekt(o) {
   const s = zuStream({ ...o, art: "miete" });
   s.istProjekt = true;
   s.nkAlsPuffer = true;                         // Nebenkosten sind im Projekt durchlaufend, kein Ertrag
   s.planRoh = (o.projekt && typeof o.projekt === "object") ? o.projekt : {};   // wie gespeichert, mit unbekannten Feldern
-  s.plan = { ...PROJEKT_VORGABEN, ...s.planRoh };
+  s.plan = { ...PROJEKT_VORGABEN, ...(window.ESTRIQ_REGION === "us" ? PROJEKT_VORGABEN_US : {}), ...s.planRoh };
   if (!Array.isArray(s.plan.pruefliste)) s.plan.pruefliste = [];
   if (!s.einheiten) s.einheiten = [];
   return s;
