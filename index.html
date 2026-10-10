@@ -2440,6 +2440,28 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 <!-- LOGIN -->
 <!-- LANDING -->
 <div id="landing">
+<style>
+/* Sprachwahl DE / EN in der Leiste (beide Landings) */
+#landing .eq-sprachwahl{display:inline-flex;align-items:center;border:1px solid var(--line-2);border-radius:10px;padding:2px;margin-right:8px;flex-shrink:0}
+#landing .eq-sprachwahl a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0 8px;border-radius:8px;
+  font:600 13.5px/1 var(--font-b);letter-spacing:.02em;color:var(--tx-1);text-decoration:none}
+#landing .eq-sprachwahl a[aria-current="page"]{background:rgba(148,163,184,.16);color:var(--tx-0);font-weight:800;text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
+#landing .eq-sprachwahl a:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+@media(max-width:600px){#landing .eq-sprachwahl{margin-right:2px;padding:0;border-radius:11px}#landing .eq-sprachwahl a{min-width:44px;min-height:44px;padding:0 4px;border-radius:10px}}
+/* Hinweis für Geräte mit Sprache Englisch (USA), nur auf der deutschen Landing */
+#landing .eq-us-leiste{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px var(--pad);background:var(--ink-2);border-bottom:1px solid var(--line-2);
+  font:500 14px/1.4 var(--font-b);color:var(--tx-0)}
+#landing .eq-us-leiste[hidden]{display:none}
+#landing .eq-us-leiste span{flex:1 1 220px;min-width:0}
+#landing .eq-us-leiste a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:10px;background:var(--green);color:var(--green-ink);font-weight:700;text-decoration:none}
+#landing .eq-us-leiste button{width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--tx-1);font-size:22px;line-height:1;cursor:pointer}
+#landing .eq-us-leiste a:focus-visible,#landing .eq-us-leiste button:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+</style>
+<div class="eq-us-leiste" id="eqUsLeiste" lang="en" hidden>
+  <span>Visiting from the US? ESTRIQ is available in English, with prices in US dollars.</span>
+  <a href="./us/" data-sprache-wahl="en">Switch to English</a>
+  <button type="button" id="eqUsZu" aria-label="Close">×</button>
+</div>
 <!-- ============================ NAVIGATION ============================ -->
 <header class="nav" id="lpNav">
   <div class="nav-in">
@@ -2454,6 +2476,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
       <a href="#gruender">Gründer</a>
     </nav>
     <div class="nav-cta">
+      <nav class="eq-sprachwahl" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-sprache-wahl="de" aria-current="page" aria-label="Deutsch">DE</a><a href="./us/" lang="en" hreflang="en-US" data-sprache-wahl="en" aria-label="English (US)">EN</a></nav>
       <button class="btn btn-g btn-sm" type="button" data-login="anmelden">Beta-Login</button>
       <button class="btn btn-p btn-sm" type="button" data-warte>Platz sichern</button>
     </div>
@@ -3071,6 +3094,20 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   </div>
 </div>
 
+<script>
+(function(){
+  var K = "estriq_lp_sprache";
+  function merk(v){ try{ localStorage.setItem(K, v); }catch(e){} }
+  var w = document.querySelectorAll("[data-sprache-wahl]");
+  for(var i = 0; i < w.length; i++) w[i].addEventListener("click", function(){ merk(this.getAttribute("data-sprache-wahl")); });
+  var l = document.getElementById("eqUsLeiste");
+  if(!l) return;
+  var gewaehlt = null; try{ gewaehlt = localStorage.getItem(K); }catch(e){}
+  var sp = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+  if(!gewaehlt && /^en-US$/i.test(sp)) l.hidden = false;
+  document.getElementById("eqUsZu").addEventListener("click", function(){ l.hidden = true; merk("de"); });
+})();
+</script>
 <div id="login" class="hide">
   <div class="login-card">
     <button type="button" class="login-schliessen" id="loginZu" aria-label="Schließen">×</button>
