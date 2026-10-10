@@ -614,10 +614,29 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
 .foot-links button[data-konto]{min-height:44px;display:inline-flex;align-items:center}
 /* Anmelden bleibt auch auf schmalen Handys in der Leiste (auf der deutschen Seite steht dort kein Login) */
 @media(max-width:599px){#landing .nav-cta #navKonto{display:inline-flex}}
+/* Mit der Sprachwahl DE / EN wird die Leiste am Handy enger: Knöpfe etwas schmaler (10.10.2026) */
+@media(max-width:599px){#landing .nav-cta [data-warte]{padding-left:9px;padding-right:9px}#landing .nav-cta #navKonto{padding-left:5px;padding-right:5px}}
 </style>
 </head>
 <body>
 <div id="landing">
+<style>
+/* Sprachwahl DE / EN in der Leiste (beide Landings) */
+#landing .eq-sprachwahl{display:inline-flex;align-items:center;border:1px solid var(--line-2);border-radius:10px;padding:2px;margin-right:8px;flex-shrink:0}
+#landing .eq-sprachwahl a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0 8px;border-radius:8px;
+  font:600 13.5px/1 var(--font-b);letter-spacing:.02em;color:var(--tx-1);text-decoration:none}
+#landing .eq-sprachwahl a[aria-current="page"]{background:rgba(148,163,184,.16);color:var(--tx-0);font-weight:800;text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
+#landing .eq-sprachwahl a:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+@media(max-width:600px){#landing .eq-sprachwahl{margin-right:2px;padding:0;border-radius:11px}#landing .eq-sprachwahl a{min-width:44px;min-height:44px;padding:0 4px;border-radius:10px}}
+/* Hinweis für Geräte mit Sprache Englisch (USA), nur auf der deutschen Landing */
+#landing .eq-us-leiste{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px var(--pad);background:var(--ink-2);border-bottom:1px solid var(--line-2);
+  font:500 14px/1.4 var(--font-b);color:var(--tx-0)}
+#landing .eq-us-leiste[hidden]{display:none}
+#landing .eq-us-leiste span{flex:1 1 220px;min-width:0}
+#landing .eq-us-leiste a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:10px;background:var(--green);color:var(--green-ink);font-weight:700;text-decoration:none}
+#landing .eq-us-leiste button{width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--tx-1);font-size:22px;line-height:1;cursor:pointer}
+#landing .eq-us-leiste a:focus-visible,#landing .eq-us-leiste button:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+</style>
 <!-- ============================ NAVIGATION ============================ -->
 <header class="nav" id="lpNav">
   <div class="nav-in">
@@ -632,6 +651,7 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
       <a href="#gruender">Founder</a>
     </nav>
     <div class="nav-cta">
+      <nav class="eq-sprachwahl" aria-label="Language"><a href="../" lang="de" hreflang="de" data-sprache-wahl="de" aria-label="Deutsch">DE</a><a href="./" lang="en" hreflang="en-US" data-sprache-wahl="en" aria-current="page" aria-label="English (US)">EN</a></nav>
       <button class="btn btn-g btn-sm" type="button" data-konto="anmelden" id="navKonto">Sign in</button>
       <button class="btn btn-p btn-sm" type="button" data-warte>Join the waitlist</button>
     </div>
@@ -1154,7 +1174,7 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
       <a href="#" id="lpImpressum" data-impressum>Legal notice &amp; Privacy</a>
       <a href="#" data-terms>Terms of Service</a>
       <button type="button" data-konto="anmelden">Sign in</button>
-      <a href="../" hreflang="de" lang="de">Deutsch</a>
+      <a href="../" hreflang="de" lang="de" data-sprache-wahl="de">Deutsch</a>
     </div>
   </div>
 </footer>
@@ -1342,6 +1362,21 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
     <p class="stand">Draft · Last updated: October 9, 2026</p>
   </div>
 </div>
+
+<script>
+(function(){
+  var K = "estriq_lp_sprache";
+  function merk(v){ try{ localStorage.setItem(K, v); }catch(e){} }
+  var w = document.querySelectorAll("[data-sprache-wahl]");
+  for(var i = 0; i < w.length; i++) w[i].addEventListener("click", function(){ merk(this.getAttribute("data-sprache-wahl")); });
+  var l = document.getElementById("eqUsLeiste");
+  if(!l) return;
+  var gewaehlt = null; try{ gewaehlt = localStorage.getItem(K); }catch(e){}
+  var sp = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+  if(!gewaehlt && /^en-US$/i.test(sp)) l.hidden = false;
+  document.getElementById("eqUsZu").addEventListener("click", function(){ l.hidden = true; merk("de"); });
+})();
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
