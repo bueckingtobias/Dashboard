@@ -601,6 +601,19 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
 .hide{display:none!important}
 .eq-us-hinweis{margin:2px 0 0;font-size:13px;color:var(--tx-1);line-height:1.5}
 .eq-us-hinweis a{color:var(--green-2);text-decoration:underline;text-underline-offset:2px}
+.eq-us-link{background:none;border:0;padding:0 2px;margin:0;min-height:44px;font:inherit;font-weight:600;color:var(--green-2);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.eq-us-link:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:4px}
+.eq-us-code{margin:16px 0 0;text-align:center;font-size:14px;color:var(--tx-1)}
+.eq-us-konto .mform label{font-size:13px}
+.eq-us-konto .mclose{width:44px;height:44px}
+.eq-us-konto .mform input{width:100%;height:50px;padding:0 14px;font-size:16px}
+.eq-us-zustimmung{display:flex!important;gap:10px;align-items:flex-start;font-size:14px!important;font-weight:500!important;line-height:1.5;color:var(--tx-1);cursor:pointer;min-height:44px}
+.eq-us-zustimmung input{width:22px!important;height:22px!important;flex:0 0 22px;margin:1px 0 0;padding:0;accent-color:var(--green)}
+.eq-us-zustimmung a{color:var(--green-2);text-decoration:underline;text-underline-offset:2px}
+.eq-us-fertig p{margin:18px 0;font-size:15px;line-height:1.6;color:var(--tx-1)}
+.foot-links button[data-konto]{min-height:44px;display:inline-flex;align-items:center}
+/* Anmelden bleibt auch auf schmalen Handys in der Leiste (auf der deutschen Seite steht dort kein Login) */
+@media(max-width:599px){#landing .nav-cta #navKonto{display:inline-flex}}
 </style>
 </head>
 <body>
@@ -619,7 +632,7 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
       <a href="#gruender">Founder</a>
     </nav>
     <div class="nav-cta">
-      <a class="btn btn-g btn-sm" href="../" hreflang="de" lang="de">Deutsch</a>
+      <button class="btn btn-g btn-sm" type="button" data-konto="anmelden" id="navKonto">Sign in</button>
       <button class="btn btn-p btn-sm" type="button" data-warte>Join the waitlist</button>
     </div>
   </div>
@@ -921,11 +934,11 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
       <article class="bc bc-4 rv d2">
         <div>
           <h3>Calculators for your next deal.</h3>
-          <p>From price-to-rent ratio to extra principal payments – the tools you need before your next purchase. Included.</p>
+          <p>From cash flow to extra principal payments – the tools you need before your next purchase. Included.</p>
         </div>
         <div class="vis chips">
           <span>Returns</span><span>Mortgage</span><span>Compound interest</span><span>Extra payments</span>
-          <span>Cash flow</span><span>Rent increase</span><span>Price-to-rent</span><span class="mehr">+ more</span>
+          <span>Cash flow</span><span>Vacancy cost</span><span>Opportunity cost</span><span class="mehr">+ more</span>
         </div>
       </article>
 
@@ -1119,6 +1132,7 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
       </button>
       <div class="wl-msg" aria-live="polite" style="text-align:center"></div>
     </form>
+    <p class="eq-us-code rv d2">Got an access code? <button type="button" class="eq-us-link" data-konto="code">Create your account</button></p>
     <div class="cta-note rv d2">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Free, no obligation</span>
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>No ads – just your invite</span>
@@ -1138,6 +1152,8 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
     </div>
     <div class="foot-links">
       <a href="#" id="lpImpressum" data-impressum>Legal notice &amp; Privacy</a>
+      <a href="#" data-terms>Terms of Service</a>
+      <button type="button" data-konto="anmelden">Sign in</button>
       <a href="../" hreflang="de" lang="de">Deutsch</a>
     </div>
   </div>
@@ -1216,14 +1232,16 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
     <p>This website is hosted by GitHub Pages, a service of GitHub, Inc., USA. When you open the page, the server automatically receives technical data such as your IP address, date and time of the request, the page requested, browser and operating system, and the referring page. This is necessary to deliver the page and keep it secure (legal basis: Art. 6(1)(f) GDPR – our legitimate interest in a secure, working website). We do not combine this data with other data.</p>
     <h3>3. Fonts</h3>
     <p>This page loads fonts from Google Fonts (Google Ireland Limited / Google LLC). To do so, your browser connects to Google’s servers and transmits your IP address (legal basis: Art. 6(1)(f) GDPR – a consistent appearance of our website).</p>
-    <h3>4. Waitlist</h3>
+    <h3>4. Waitlist and account</h3>
     <p>If you join the waitlist, we store your email address, the date and time you signed up, which form you used, how you found us (for example through a partner link) and – if you tell us – your plan interest and number of rental units.</p>
     <p>We use this data only to inform you about the US launch of ESTRIQ, to give you access in the order of sign-up and to understand which plans are in demand. Legal basis: Art. 6(1)(b) GDPR (steps you asked for before a possible contract); for the optional details, your consent under Art. 6(1)(a) GDPR, which you can withdraw at any time.</p>
     <p>The data is stored with our database provider Supabase (Supabase, Inc., USA) on servers in Frankfurt, Germany, under a data processing agreement. We delete your entry when you ask us to, and otherwise no later than 12 months after we invite you, unless you create an account.</p>
+    <p>If you create an ESTRIQ account (with an access code), we store your name, email address, a securely hashed password, your language and region, and the data you enter about your properties, units, tenants, loans and appointments. We use this data to provide the service you signed up for (legal basis: Art. 6(1)(b) GDPR). It is stored with Supabase on servers in Frankfurt, Germany, and kept as long as your account exists. When you delete your account in your profile, your data is deleted.</p>
+    <p>Account emails (for example to confirm your email address) are sent through Supabase.</p>
     <h3>5. Browser storage, cookies, tracking</h3>
-    <p>This page sets no cookies and uses no analytics, tracking or advertising tools. If you arrive through a partner link, the partner’s name is saved in your browser’s local storage so that a later sign-up can be attributed to the partner. You can delete it at any time in your browser settings.</p>
+    <p>This page sets no cookies and uses no analytics, tracking or advertising tools. When you sign in, your browser stores a login token in local storage so that you stay signed in; this is technically necessary for the service. If you arrive through a partner link, the partner’s name is saved in your browser’s local storage so that a later sign-up can be attributed to the partner. You can delete it at any time in your browser settings.</p>
     <h3>6. Payments</h3>
-    <p>Once ESTRIQ launches in the US, paid subscriptions will be processed by Stripe. Payment details are handled by Stripe only and never stored by us. Details will be provided when you sign up for a plan.</p>
+    <p>Paid subscriptions are processed by Stripe (Stripe Payments Europe, Ltd., Ireland, and Stripe, Inc., USA). Payment details are handled by Stripe only and never stored by us. We receive the status of your subscription, your plan and a customer reference.</p>
     <h3>7. Contacting us</h3>
     <p>If you email or call us, we process your details to answer your request and any follow-up questions (legal basis: Art. 6(1)(b) or (f) GDPR).</p>
     <h3>8. Transfers outside the EU</h3>
@@ -1238,6 +1256,94 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
   </div>
 </div>
 
+<!-- ACCOUNT: sign in, access code, create account -->
+<div class="lmodal hide" id="kontoBox" role="dialog" aria-modal="true" aria-labelledby="kbTitle">
+  <div class="mbox eq-us-konto">
+    <button class="mclose" type="button" aria-label="Close">×</button>
+    <h3 id="kbTitle">Sign in</h3>
+    <p class="msub" id="kbSub">Sign in to your ESTRIQ account.</p>
+    <form class="mform" id="kbAnmelden" data-schritt="anmelden" novalidate>
+      <div>
+        <label for="kbMail">Email address</label>
+        <input type="email" id="kbMail" name="email" placeholder="you@email.com" autocomplete="email" inputmode="email">
+      </div>
+      <div>
+        <label for="kbPw">Password</label>
+        <input type="password" id="kbPw" name="passwort" autocomplete="current-password">
+      </div>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Sign in</button>
+      <div class="wl-msg" role="status" aria-live="polite"></div>
+      <p class="eq-us-hinweis">New to ESTRIQ? <button type="button" class="eq-us-link" data-schritt-zu="code">Create an account with your access code</button></p>
+    </form>
+    <form class="mform hide" id="kbCode" data-schritt="code" novalidate>
+      <div>
+        <label for="kbCodeFeld">Access code</label>
+        <input type="text" id="kbCodeFeld" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      </div>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Check code</button>
+      <div class="wl-msg" role="status" aria-live="polite"></div>
+      <p class="eq-us-hinweis">No code yet? We send codes to people on the waitlist. <button type="button" class="eq-us-link" data-warte>Join the waitlist</button></p>
+      <p class="eq-us-hinweis">Already have an account? <button type="button" class="eq-us-link" data-schritt-zu="anmelden">Sign in</button></p>
+    </form>
+    <form class="mform hide" id="kbKonto" data-schritt="konto" novalidate>
+      <div>
+        <label for="kbName">Your name</label>
+        <input type="text" id="kbName" name="name" autocomplete="name">
+      </div>
+      <div>
+        <label for="kbMail2">Email address</label>
+        <input type="email" id="kbMail2" name="email" placeholder="you@email.com" autocomplete="email" inputmode="email">
+      </div>
+      <div>
+        <label for="kbPw2">Password (at least 8 characters)</label>
+        <input type="password" id="kbPw2" name="passwort" autocomplete="new-password" minlength="8">
+      </div>
+      <label class="eq-us-zustimmung" for="kbOk"><input type="checkbox" id="kbOk"> <span>I agree to the <a href="#" data-terms>Terms of Service</a> and have read the <a href="#" data-impressum>Privacy notice</a>.</span></label>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Create account</button>
+      <div class="wl-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="hide eq-us-fertig" id="kbFertig" data-schritt="fertig" role="status">
+      <p>Almost done – we sent you an email. Open the link in it to confirm your address. Then come back here and sign in.</p>
+      <button class="btn btn-g btn-block" type="button" data-schritt-zu="anmelden">Go to sign in</button>
+    </div>
+  </div>
+</div>
+
+<!-- TERMS OF SERVICE (draft of 09.10.2026 – to be reviewed by a lawyer) -->
+<div class="lmodal hide" id="termsBox" role="dialog" aria-modal="true" aria-labelledby="tosTitle">
+  <div class="mbox wide legal">
+    <button class="mclose" type="button" aria-label="Close">×</button>
+    <h2 id="tosTitle">Terms of Service</h2>
+    <p>These terms apply to the use of ESTRIQ by customers in the United States. Please read them before you create an account.</p>
+    <h3>1. Who we are</h3>
+    <p>ESTRIQ is provided by Bücking Immobilien GmbH &amp; Co. KG, Baumstraße 35A, 27777 Ganderkesee, Germany (“we”, “us”). Contact: info@buecking-immobilien.de.</p>
+    <h3>2. The service</h3>
+    <p>ESTRIQ is a web application that helps independent landlords keep track of their rental properties: units, rents and payments, loans with amortization schedules, key figures, projects, a calendar, calculators and time tracking for helpers. ESTRIQ calculates with the data you enter and with assumptions you can change. It does not collect rent, does not screen tenants and does not move money.</p>
+    <h3>3. No professional advice</h3>
+    <p>ESTRIQ provides calculations and general information. It is not legal, tax, financial or investment advice, and it does not replace a lawyer, accountant, lender or other professional. Results depend on your entries and on assumptions; please check important decisions with a professional.</p>
+    <h3>4. Your account</h3>
+    <p>During the launch phase, accounts can only be created with an access code. You must be at least 18 years old and give accurate information. Keep your password confidential; you are responsible for activity in your account. The account owner can invite up to two more users (Premium plan); the owner is responsible for the users they invite.</p>
+    <h3>5. Free trial, plans and payment</h3>
+    <p>Plans and prices are shown in the app before you subscribe (currently Basic $29.99 and Premium $39.99 per month). Unless stated otherwise, a new subscription starts with a free trial. <strong>Your subscription renews automatically every month and your payment method is charged at the start of each billing period until you cancel.</strong> We will show the trial end date and the price before you enter your payment details. Payments are processed by Stripe. Applicable sales tax may be added where required.</p>
+    <h3>6. Cancellation</h3>
+    <p>You can cancel at any time online in your profile (“Manage plan”). The cancellation takes effect at the end of the current billing period; you keep access until then. Fees already paid are not refunded, except where required by law. After cancellation, your data stays readable, and you can export or delete it.</p>
+    <h3>7. Your data</h3>
+    <p>The data you enter belongs to you. We use it only to provide the service, as described in the Privacy notice. You can delete your account and data at any time in your profile.</p>
+    <h3>8. Acceptable use</h3>
+    <p>Do not misuse ESTRIQ: no unlawful content, no attempts to access other accounts or to disrupt the service, and only enter personal data of others (for example tenants) where you are permitted to do so.</p>
+    <h3>9. Availability and changes</h3>
+    <p>We work to keep ESTRIQ available but cannot guarantee uninterrupted operation. We may develop the service further. If we change these terms or prices, we will tell you in advance by email or in the app; you can cancel before the change takes effect.</p>
+    <h3>10. Liability</h3>
+    <p>To the extent permitted by law, we are not liable for decisions you make based on calculations in ESTRIQ, and our total liability is limited to the amount you paid us in the 12 months before the claim. This does not limit liability for intent, gross negligence, injury to life, body or health, or any liability that cannot be limited under applicable law.</p>
+    <h3>11. Termination by us</h3>
+    <p>We may suspend or close an account that seriously breaches these terms, after notice where reasonable.</p>
+    <h3>12. Governing law</h3>
+    <p>These terms are governed by the laws of the Federal Republic of Germany. If you are a consumer, this does not deprive you of the protection of mandatory consumer protection laws of the state where you live.</p>
+    <p class="stand">Draft · Last updated: October 9, 2026</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* =====================================================================
    ESTRIQ · US landing – waitlist, dialogs and motion.
@@ -1346,13 +1452,14 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
   }
 
   /* ---------- Dialogs (waitlist, legal) ---------- */
-  const wb = $("#warteBox"), imp = $("#impressum");
-  const popupOffen = () => [wb, imp].some(m => m && !m.classList.contains("hide"));
+  const wb = $("#warteBox"), imp = $("#impressum"), kb = $("#kontoBox"), tos = $("#termsBox");
+  const FENSTER = [wb, imp, kb, tos];
+  const popupOffen = () => FENSTER.some(m => m && !m.classList.contains("hide"));
   let zurueck = null;
   function oeffnen(box) {
     if (!box) return;
     zurueck = document.activeElement;
-    [wb, imp].forEach(m => { if (m && m !== box) m.classList.add("hide"); });
+    FENSTER.forEach(m => { if (m && m !== box) m.classList.add("hide"); });
     box.classList.remove("hide");
     lp.classList.add("modal-open");
     setTimeout(() => { const inp = box.querySelector("input") || box.querySelector(".mclose"); if (inp && (window.innerWidth > 600 || !box.querySelector("input"))) inp.focus(); }, 140);
@@ -1363,14 +1470,14 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
     if (!popupOffen()) lp.classList.remove("modal-open");
     if (zurueck && zurueck.focus) { try { zurueck.focus(); } catch (e) {} }
   }
-  [wb, imp].forEach(m => {
+  FENSTER.forEach(m => {
     if (!m) return;
     m.addEventListener("click", e => { if (e.target === m) schliessen(m); });
     $$(".mclose", m).forEach(b => b.addEventListener("click", () => schliessen(m)));
   });
   window.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
-    [wb, imp].forEach(m => { if (m && !m.classList.contains("hide")) schliessen(m); });
+    FENSTER.forEach(m => { if (m && !m.classList.contains("hide")) schliessen(m); });
   });
   $$("[data-warte]").forEach(b => b.addEventListener("click", () => {
     const plan = b.getAttribute("data-warte"), sel = $("#wlPlan");
@@ -1378,6 +1485,128 @@ html,body{margin:0;height:100%;background:#0B1220;-webkit-text-size-adjust:100%;
     oeffnen(wb);
   }));
   $$("[data-impressum]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); oeffnen(imp); }));
+  $$("[data-terms]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); oeffnen(tos); }));
+
+  /* ---------- Account: sign in, access code, create account ---------- */
+  // Uses the same login as the German site (Supabase). After signing in, the dashboard opens at estriq.com/.
+  // New accounts from this page get region "us" and language "en" (set by the database, 7-region.txt).
+  let client = null;
+  const sb = () => { if (!client && window.supabase) { try { client = window.supabase.createClient(SB_URL, SB_KEY); } catch (e) {} } return client; };
+  const ZUR_APP = "../";
+  // Only the SHA-256 fingerprint of the launch code is here, never the code itself (fallback if the database check is missing)
+  const CODE_FINGER = ["4aa05c62bc51969c5466a0bd884105fa76e806b034362effd5439368446aacba"];
+  const codeForm = (v) => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  async function sha256(text) {
+    const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+  const fehlt = (e) => /PGRST202|could not find the function|does not exist/i.test(String((e && (e.code + " " + e.message)) || ""));
+  async function codePruefen(roh) {
+    const code = codeForm(roh);
+    if (!code) return false;
+    try {
+      const { data, error } = await sb().rpc("beta_code_gueltig", { p_code: code });
+      if (error) throw error;
+      return data === true;
+    } catch (e) {
+      if (!fehlt(e)) throw e;
+      return CODE_FINGER.includes(await sha256(code));
+    }
+  }
+  let gueltigerCode = "";
+  const TITEL = { anmelden: ["Sign in", "Sign in to your ESTRIQ account."], code: ["Create your account", "Enter the access code you received from us."],
+    konto: ["Create your account", "Your code is valid. Choose your login details."], fertig: ["Check your email", ""] };
+  function schritt(name) {
+    if (!kb) return;
+    $$("[data-schritt]", kb).forEach(f => f.classList.toggle("hide", f.getAttribute("data-schritt") !== name));
+    $("#kbTitle").textContent = TITEL[name][0];
+    const sub = $("#kbSub"); sub.textContent = TITEL[name][1]; sub.classList.toggle("hide", !TITEL[name][1]);
+    $$(".wl-msg", kb).forEach(m => { m.textContent = ""; m.className = "wl-msg"; });
+    setTimeout(() => { const f = kb.querySelector("[data-schritt='" + name + "'] input"); if (f && window.innerWidth > 600) f.focus(); }, 120);
+  }
+  const sag = (form, text, art) => { const m = form.querySelector(".wl-msg"); m.textContent = text; m.className = "wl-msg" + (art ? " " + art : ""); };
+  $$("[data-konto]").forEach(b => b.addEventListener("click", e => {
+    e.preventDefault();
+    if (b.getAttribute("data-angemeldet") === "1") { location.href = ZUR_APP; return; }
+    schritt(gueltigerCode && b.getAttribute("data-konto") === "code" ? "konto" : b.getAttribute("data-konto"));
+    oeffnen(kb);
+  }));
+  $$("[data-schritt-zu]", kb || document).forEach(b => b.addEventListener("click", () => schritt(b.getAttribute("data-schritt-zu"))));
+  if (kb) $$("[data-warte]", kb).forEach(b => b.addEventListener("click", () => schliessen(kb)));
+  const knopf = (form, an, text) => { const b = form.querySelector("button[type=submit]"); if (!b._text) b._text = b.textContent; b.disabled = !an; b.textContent = an ? b._text : text; };
+  const anmeldeFehler = (error) => {
+    const roh = String((error && (error.message + " " + (error.code || ""))) || "").toLowerCase();
+    if (/not confirmed/.test(roh)) return "Please confirm your email first – check your inbox for our email.";
+    if (/invalid login|invalid_credentials/.test(roh)) return "Sign-in failed. Check your email and password.";
+    if (/rate limit|too many/.test(roh)) return "Too many attempts. Please wait a moment and try again.";
+    if (/failed to fetch|network/.test(roh)) return "No connection. Please check your internet connection.";
+    return "That didn’t work. Please try again.";
+  };
+  const fA = $("#kbAnmelden"), fC = $("#kbCode"), fK = $("#kbKonto");
+  if (fA) fA.addEventListener("submit", async e => {
+    e.preventDefault();
+    const mail = fA.email.value.trim(), pw = fA.passwort.value;
+    if (!gueltig(mail.toLowerCase())) { sag(fA, "Please enter a valid email address.", "bad"); fA.email.focus(); return; }
+    if (!pw) { sag(fA, "Please enter your password.", "bad"); fA.passwort.focus(); return; }
+    if (!sb()) { sag(fA, "Sign-in isn’t available right now. Please try again later.", "bad"); return; }
+    knopf(fA, false, "Signing in …");
+    const { error } = await sb().auth.signInWithPassword({ email: mail, password: pw });
+    if (error) { knopf(fA, true); sag(fA, anmeldeFehler(error), "bad"); return; }
+    sag(fA, "Signed in. Opening your dashboard …", "ok");
+    location.href = ZUR_APP;
+  });
+  if (fC) fC.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!codeForm(fC.code.value)) { sag(fC, "Please enter your access code.", "bad"); fC.code.focus(); return; }
+    knopf(fC, false, "Checking …");
+    let ok = false;
+    try { ok = await codePruefen(fC.code.value); }
+    catch (err) { console.error("Access code:", err); knopf(fC, true); sag(fC, "The code couldn’t be checked right now. Please try again in a moment.", "bad"); return; }
+    knopf(fC, true);
+    if (!ok) { sag(fC, "This code isn’t valid. Check the spelling.", "bad"); fC.code.select(); return; }
+    gueltigerCode = codeForm(fC.code.value);
+    fC.code.value = "";
+    schritt("konto");
+  });
+  if (fK) fK.addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = fK.name.value.trim(), mail = fK.email.value.trim(), pw = fK.passwort.value;
+    if (!name) { sag(fK, "Please enter your name.", "bad"); fK.name.focus(); return; }
+    if (!gueltig(mail.toLowerCase())) { sag(fK, "Please enter a valid email address.", "bad"); fK.email.focus(); return; }
+    if (pw.length < 8) { sag(fK, "Your password needs at least 8 characters.", "bad"); fK.passwort.focus(); return; }
+    if (!$("#kbOk").checked) { sag(fK, "Please agree to the Terms of Service to continue.", "bad"); return; }
+    if (!gueltigerCode) { schritt("code"); return; }
+    if (!sb()) { sag(fK, "Creating an account isn’t available right now. Please try again later.", "bad"); return; }
+    knopf(fK, false, "Creating account …");
+    const { data, error } = await sb().auth.signUp({ email: mail, password: pw,
+      options: { data: { name, beta_code: gueltigerCode, region: "us", sprache: "en" } } });
+    if (error) {
+      knopf(fK, true);
+      const roh = (String(error.message || "") + " " + String(error.code || "")).toLowerCase();
+      sag(fK, /already registered|already been registered|user_already_exists/.test(roh) ? "There’s already an account with this email. Please sign in."
+        : /beta_code|database error|unexpected_failure/.test(roh) ? "The account couldn’t be created. Your access code may no longer be valid – please ask us for a new one."
+        : /password/.test(roh) ? "Please choose a stronger password." : anmeldeFehler(error), "bad");
+      return;
+    }
+    if (data && data.session) { sag(fK, "Account created. Opening your dashboard …", "ok"); location.href = ZUR_APP; return; }
+    schritt("fertig");
+  });
+  // Link with a code (…/us/?code=…) opens the account dialog and checks the code right away
+  try {
+    const adr = new URL(location.href), mit = adr.searchParams.get("code");
+    if (mit && fC) {
+      adr.searchParams.delete("code");
+      history.replaceState(null, "", adr.pathname + adr.search + adr.hash);
+      schritt("code"); oeffnen(kb); fC.code.value = mit;
+      fC.requestSubmit ? fC.requestSubmit() : fC.dispatchEvent(new Event("submit", { cancelable: true }));
+    }
+  } catch (e) { /* not important */ }
+  // Already signed in on this device: the buttons open the dashboard
+  try {
+    let drin = false;
+    for (let i = 0; i < localStorage.length; i++) if (/^sb-.+-auth-token$/.test(localStorage.key(i) || "")) { drin = true; break; }
+    if (drin) $$("[data-konto='anmelden']").forEach(b => { b.textContent = "Open dashboard"; b.setAttribute("data-angemeldet", "1"); });
+  } catch (e) { /* not important */ }
 
   /* ---------- Sticky button on phones ---------- */
   const sticky = $("#stickyCta"), hero = $("#hero");
