@@ -2098,6 +2098,22 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .eq-zb-tx b{font-size:var(--eq-t-2);font-weight:600;overflow-wrap:anywhere}
 .eq-zb-tx small{font-size:var(--eq-t-1);color:var(--softer);font-variant-numeric:tabular-nums}
 
+/* ---------- Warteliste (nur Betreiber): Filter, Liste, Knöpfe ---------- */
+.eq-wl-filter{display:flex;flex-wrap:wrap;gap:var(--eq-a2);margin-bottom:var(--eq-a3)}
+.eq-wl-chip{min-height:44px;padding:8px 14px;border-radius:99px;border:1px solid var(--stroke-2);background:transparent;color:var(--text);
+  font-family:var(--fbody);font-size:var(--eq-t-2);font-weight:600;cursor:pointer}
+.eq-wl-chip[aria-pressed="true"]{background:var(--surface-2);border-color:var(--mint)}
+.eq-wl-liste{display:grid;margin-top:var(--eq-a3);border-top:1px solid var(--stroke)}
+.eq-wl-z{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:var(--eq-a2) var(--eq-a4);padding:12px 0;border-bottom:1px solid var(--stroke)}
+.eq-wl-tx{flex:1 1 240px;min-width:0;display:grid;gap:2px}
+.eq-wl-mail{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+.eq-wl-m{font-size:var(--eq-t-1);color:var(--softer);line-height:1.45}
+.eq-wl-s{font-size:var(--eq-t-1);color:var(--soft)}
+.eq-wl-s.gut{color:var(--ok);font-weight:600}
+.eq-wl-n{font-size:var(--eq-t-2);color:var(--soft);overflow-wrap:anywhere}
+.eq-wl-k{display:flex;flex-wrap:wrap;gap:var(--eq-a2)}
+.eq-wl-k .add-btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;min-height:44px}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -3156,10 +3172,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=68"></script>
-<script src="./data-save.js?v=68"></script>
-<script src="./finance-engine.js?v=68"></script>
-<script src="./app.js?v=68"></script>
+<script src="./data-loader.js?v=69"></script>
+<script src="./data-save.js?v=69"></script>
+<script src="./finance-engine.js?v=69"></script>
+<script src="./app.js?v=69"></script>
 
 <script>
 /* =====================================================================
