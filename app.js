@@ -12,10 +12,13 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
   // Negative Zahlen tragen das echte Minuszeichen (−), keinen Bindestrich
   const echtMinus = s => s.replace("-", "\u2212");
-  const eur = n => echtMinus((Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
-  const eur2 = n => echtMinus((Number(n) || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  // Zahl, Währung und Datum: Deutsch (de-DE, Euro) als Standard; Konten in den USA setzen regionLaden() um
+  let LOC = "de-DE", WAEHRUNG = "EUR";
+  const DEZ = () => LOC === "de-DE" ? "," : ".";
+  const eur = n => echtMinus((Number(n) || 0).toLocaleString(LOC, { style: "currency", currency: WAEHRUNG, maximumFractionDigits: 0 }));
+  const eur2 = n => echtMinus((Number(n) || 0).toLocaleString(LOC, { style: "currency", currency: WAEHRUNG, minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const el = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
-  const monthShort = m => { const d = new Date(m + "-01"); return d.toLocaleDateString("de-DE", { month: "short" }); };
+  const monthShort = m => { const d = new Date(m + "-01"); return d.toLocaleDateString(LOC, { month: "short" }); };
 
 
   /* ---------- ICONS ---------- */
@@ -85,6 +88,7 @@
     const theme = themeGueltig(currentUser.theme || lokalTheme);
     themeAnwenden(theme);
     themeSpeichern(theme);
+    await regionLaden();
   }
 
   /* ---------- GERÄTESPEICHER JE NUTZER ---------- */
@@ -180,7 +184,7 @@
     localStorage.removeItem(SESSION);
     // Nichts aus dieser Sitzung für den nächsten Nutzer am selben Gerät stehen lassen
     try { sessionStorage.removeItem("estriq_miete_spaeter"); } catch (_) {}
-    location.reload();
+    if (istUS()) location.replace("us/"); else location.reload();
   }
 
   /* ---------- DESIGN / FARBSCHEMA ---------- */
@@ -331,7 +335,7 @@
     const ende = new Date(a.tarif_bis);
     if (isNaN(ende)) return null;
     const tage = Math.ceil((ende - new Date()) / 86400000);
-    return { ende, tage, laeuft: ende > new Date(), datum: ende.toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" }) };
+    return { ende, tage, laeuft: ende > new Date(), datum: ende.toLocaleDateString(LOC, { day: "numeric", month: "long", year: "numeric" }) };
   }
   let testEndeGezeigt = false;   // das Fenster zur Tarifwahl nach Ablauf erscheint einmal je Sitzung von selbst
   // Wer über einen Code kostenlos getestet hat, bekommt keinen weiteren Gratismonat. Läuft der Test noch mindestens
@@ -660,6 +664,7 @@
       <div class="ef-l">Farbschema</div>
       ${schemaKacheln("themeRow")}
       <div class="ef-h">Gilt nur für dich und auf all deinen Geräten.</div>
+      ${spracheBlock()}
       ${efTitel("Hinweise")}
       <div class="opt-row">
         <div class="opt-tx">
@@ -686,6 +691,7 @@
       <div class="ef-msg" id="pDelMsg"></div>`;
 
     const sheet = openSheet("Mein Profil", currentUser.email || "", body);
+    spracheVerdrahten(sheet);
     istBetreiber().then(ja => {
       const ort = sheet.querySelector("#pBetreiber");
       if (!ja || !ort || !ort.isConnected) return;
@@ -720,7 +726,7 @@
       const tage = Math.max(0, Math.ceil((new Date(a.tarif_bis) - new Date()) / 86400000));
       statusZeile = `Testphase · noch ${tage} Tag${tage === 1 ? "" : "e"}, danach kostenpflichtig`;
     } else if (ss === "active" && a.tarif_bis) {
-      const d = new Date(a.tarif_bis).toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" });
+      const d = new Date(a.tarif_bis).toLocaleDateString(LOC, { day: "numeric", month: "long", year: "numeric" });
       statusZeile = `Aktiv · verlängert sich am ${d}`;
     } else if (a.tarif === "basic") {
       statusZeile = `${a.objekte}/${TARIFE.basic.objekte} Objekte · ${a.einheiten}/${TARIFE.basic.einheiten} Einheiten`;
@@ -1785,6 +1791,10 @@
       const lage = {};
       LAGE_FRAGEN.forEach(f => { const v = a["lage_" + f.id]; if (v !== undefined && v !== "") lage[f.id] = Number(v); });
       if (Object.keys(lage).length) plan.lage = lage;
+      if (istUS()) {
+        if (a.us_state) plan.us_state = a.us_state;
+        ["steuer_pct", "versicherung_jahr", "hoa_monat", "pmi_monat"].forEach(zahl);
+      }
       const bindung = asZahl(a.zinsbindung);
       if (bindung > 0) plan.zinsbindung_jahre = bindung;
       return plan;
@@ -1792,7 +1802,7 @@
     const zahlenAus = (a) => projektZahlen({ plan: planAus(a), einheiten: [], kredite: [] });
     const investAus = (a) => zahlenAus(a).INV;
     // Nach der Sanierung gilt die Annahme für ein saniertes Objekt, sonst richtet sie sich nach dem Zustand
-    const instandVorgabe = (a) => { const x = ZUSTAND.find(y => y[0] === (san(a) ? "gut" : a.zustand)); return x ? x[3] : 1; };
+    const instandVorgabe = (a) => { const x = ZUSTAND.find(y => y[0] === (san(a) ? "gut" : a.zustand)); const v = x ? x[3] : 1; return istUS() ? rund2(v / SQFT_JE_M2) : v; };
     const hatPreis = (a) => !san(a) && (asZahl(a.kaufpreis) || 0) > 0;
     const hatInvest = (a) => san(a) ? investAus(a) > 0 : hatPreis(a);
     const hatEinheit = (a) => asZahl(a.flaeche) != null || asZahl(a.kalt) != null;
@@ -1821,6 +1831,7 @@
       const f = asZahl(a.flaeche), k = asZahl(a.kalt);
       if (!(f > 0) || !(k > 0)) return "";
       const ref = mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp });
+      if (istUS()) return "Das sind " + eur2(k / f) + " je m².";
       return "Das sind " + eur2(k / f) + " je m². Zum Vergleich: " + ref.map(r => r.text + " " + eur2(r.wert)).join(", ") + ".";
     };
     const refSatz = (a) => mietReferenz({ bundesland: a.bundesland, gemeindetyp: a.gemeindetyp }).map(r => r.text + " " + eur2(r.wert)).join(", ");
@@ -1846,12 +1857,13 @@
         hinweis: (a) => san(a) ? "Zum Beispiel die Adresse des Hauses." : "Zum Beispiel die Adresse aus dem Inserat.",
         typ: "text", pflicht: true, platzhalter: "z. B. Bergstraße 12" },
       { schnell: true, kapitel: K.o, frage: "Wo liegt das Objekt?",
-        hinweis: (a) => san(a) ? "Mit dem Bundesland zeigt dir ESTRIQ die passende Vergleichsmiete." : "Das Bundesland bestimmt die Grunderwerbsteuer.",
+        hinweis: (a) => istUS() ? "Zum Beispiel Stadt und Bundesstaat." : san(a) ? "Mit dem Bundesland zeigt dir ESTRIQ die passende Vergleichsmiete." : "Das Bundesland bestimmt die Grunderwerbsteuer.",
         felder: [
-          { id: "ort", label: "Ort", typ: "text", platzhalter: "z. B. Bremen" },
+          { id: "ort", label: "Ort", typ: "text", platzhalter: "z. B. Bremen" }
+        ].concat(istUS() ? [{ id: "us_state", label: "Bundesstaat", auswahl: usStaatAuswahl() }] : [
           { id: "bundesland", label: "Bundesland", auswahl: [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] }))) }
-        ], ueberspringbar: true },
-      { id: "gemeindetyp", kapitel: K.o, frage: "Ist das eine Stadt oder ein Dorf?",
+        ]), ueberspringbar: true },
+      { id: "gemeindetyp", nurDE: true, kapitel: K.o, frage: "Ist das eine Stadt oder ein Dorf?",
         hinweis: "Damit zeigt dir ESTRIQ die passende Vergleichsmiete.",
         optionen: GEMEINDETYP.map(g => ({ v: g[0], t: g[1], d: g[2] })), ueberspringbar: true },
       { id: "baujahr", kapitel: K.o, frage: "Wann wurde es gebaut?",
@@ -1867,16 +1879,16 @@
         typ: "number", einheit: "€", ueberspringbar: true, platzhalter: "z. B. 250000",
         vorgabe: vor.kaufpreis > 0 ? vor.kaufpreis : undefined },
       { weg: "kauf", kapitel: K.k, frage: "Welche Nebenkosten kommen beim Kauf sicher dazu?",
-        hinweis: (a) => (a.bundesland
+        hinweis: (a) => istUS() ? "Die Transfer Tax hängt vom Bundesstaat und vom Ort ab. " + US_VORGABE.abschluss + " % für Titel, Grundbuch und Gebühren der Bank sind eine Annahme – Freddie Mac nennt 2 bis 5 % des Kaufpreises (Stand 4.6.2025)." : (a.bundesland
           ? "Die Grunderwerbsteuer für " + bundeslandName(a.bundesland) + " ist vorbelegt. " + GREST_STAND
           : "Die Grunderwerbsteuer hängt vom Bundesland ab und liegt zwischen 3,5 und 6,5 %.") + " 2 % für Notar und Grundbuch sind eine Annahme.",
         felder: [
-          { id: "grest_pct", label: "Grunderwerbsteuer", typ: "number", einheit: "%", vorgabe: (a) => { const g = grestVon(a.bundesland); return g != null ? g : ""; }, platzhalter: "z. B. 5" },
-          { id: "notar_pct", label: "Notar und Grundbuch", typ: "number", einheit: "%", vorgabe: 2 }
+          { id: "grest_pct", label: "Grunderwerbsteuer", typ: "number", einheit: "%", vorgabe: (a) => { const g = grestVon(a.bundesland); return g != null ? g : istUS() ? 0 : ""; }, platzhalter: istUS() ? "0" : "z. B. 5" },
+          { id: "notar_pct", label: "Notar und Grundbuch", typ: "number", einheit: "%", vorgabe: istUS() ? US_VORGABE.abschluss : 2 }
         ],
         live: (a) => { const kp = asZahl(a.kaufpreis) || 0; return "Grunderwerbsteuer " + eur(kp * (asZahl(a.grest_pct) || 0) / 100) + ", Notar und Grundbuch " + eur(kp * (asZahl(a.notar_pct) || 0) / 100) + "."; },
         ueberspringbar: true, wenn: hatPreis },
-      { weg: "kauf", kapitel: K.k, frage: "Kaufst du über einen Makler?",
+      { weg: "kauf", nurDE: true, kapitel: K.k, frage: "Kaufst du über einen Makler?",
         hinweis: "Mit Makler: Trag die Courtage ein. 3,57 % ist eine Annahme – der genaue Satz steht im Inserat.",
         felder: [{ id: "makler_pct", label: "Courtage", typ: "number", einheit: "%", vorgabe: 3.57, platzhalter: "3,57" }],
         live: (a) => hatPreis(a) ? "Das sind " + eur((asZahl(a.kaufpreis) || 0) * (asZahl(a.makler_pct) || 0) / 100) + "." : "",
@@ -1936,7 +1948,8 @@
         live: (a) => { const z = summeAus(a, i); return "Wohnung 1 bis " + i + " zusammen: " + zahlKurz(z.f) + " m², " + eur(z.k) + " Kaltmiete im Monat."; },
         ueberspringbar: true, ab: i, wenn: hatEinheit })),
       { id: "vergleichsmiete", kapitel: K.m, frage: "Kennst du die ortsübliche Miete?",
-        hinweis: (a) => "Sie steht im Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + refSatz(a) + " je m². " + MIETE_STAND,
+        hinweis: (a) => istUS() ? "Frag eine Hausverwaltung vor Ort oder sieh dir vergleichbare Inserate an. Ohne Angabe zeigt ESTRIQ nur deine eigene Miete je m²."
+          : "Sie steht im Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + refSatz(a) + " je m². " + MIETE_STAND,
         typ: "number", einheit: "€ je m²", platzhalter: "z. B. 8,50", ueberspringbar: true,
         live: (a) => { const f = asZahl(a.flaeche), k = asZahl(a.kalt), o = asZahl(a.vergleichsmiete);
           if (!(f > 0) || !(k > 0) || !(o > 0)) return "";
@@ -1960,7 +1973,7 @@
           return san(a)
             ? "Du brauchst insgesamt " + eur(z.INV) + " für die Sanierung. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
             : "Du brauchst insgesamt " + eur(z.INV) + ". Davon sind " + eur(z.KNK) + " Kaufnebenkosten. Trag ein, was du selbst mitbringst – oder die Summe, die die Bank geben soll."
-              + (a.modus === "schnell" ? " Für Notar (2 %) und Makler (3,57 %) gelten Annahmen." : ""); },
+              + (a.modus === "schnell" ? (istUS() ? " Für die Abschlusskosten (" + US_VORGABE.abschluss + " %) gilt eine Annahme." : " Für Notar (2 %) und Makler (3,57 %) gelten Annahmen.") : ""); },
         felder: [{ id: "eigenkapital", label: "Eigenkapital", typ: "number", einheit: "€", platzhalter: "z. B. 60000",
           wahl: { id: "darlehen", label: "Darlehen", typ: "number", einheit: "€", platzhalter: "z. B. 200000", knoepfe: ["Eigenkapital", "Darlehen"],
             zuRate: (a) => investAus(a) - (asZahl(a.eigenkapital) || 0),
@@ -1976,10 +1989,12 @@
           return "Du finanzierst " + eur(d) + " und bringst " + eur(eigenkapitalAus(a)) + " selbst mit. Die Bank trägt " + prozent(inv > 0 ? d / inv * 100 : 0, 0) + " der Gesamtinvestition."; },
         ueberspringbar: true, wenn: hatInvest },
       { schnell: true, kapitel: K.f, frage: "Zu welchen Bedingungen finanzierst du?",
-        hinweis: (a) => "Du finanzierst " + eur(darlehenAus(a)) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen.",
+        hinweis: (a) => istUS()
+          ? "Du finanzierst " + eur(darlehenAus(a)) + ". Vorbelegt ist eine Festzins-Hypothek über " + US_VORGABE.laufzeit + " Jahre mit " + prozent(US_VORGABE.zins, 1) + " Zins (Durchschnitt laut Freddie Mac, Stand 8.10.2026) – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen."
+          : "Du finanzierst " + eur(darlehenAus(a)) + ". 3,5 % Zins und 2 % Tilgung sind Beispielwerte – nimm die Zahlen deiner Bank. Statt der Tilgung kannst du auch die Rate eintragen.",
         felder: [
-          { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: 3.5 },
-          { id: "tilgung", label: "Anfangstilgung im Jahr", typ: "number", einheit: "%", vorgabe: 2,
+          { id: "zins", label: "Sollzins im Jahr", typ: "number", einheit: "%", vorgabe: istUS() ? US_VORGABE.zins : 3.5 },
+          { id: "tilgung", label: "Anfangstilgung im Jahr", typ: "number", einheit: "%", vorgabe: istUS() ? tilgungFuer(US_VORGABE.zins, US_VORGABE.laufzeit) : 2,
             wahl: { id: "rate", label: "Rate im Monat", typ: "number", einheit: "€", platzhalter: "z. B. 1050", knoepfe: ["Tilgung in %", "Rate im Monat"],
               zuRate: (a) => darlehenAus(a) * ((asZahl(a.zins) || 0) + (asZahl(a.tilgung) || 0)) / 1200,
               zuProzent: (a) => darlehenAus(a) > 0 ? (asZahl(a.rate) || 0) * 1200 / darlehenAus(a) - (asZahl(a.zins) || 0) : 0 } }
@@ -1990,12 +2005,29 @@
             : "Deine Rate: " + eur2(r) + " im Monat."; },
         ueberspringbar: true, wenn: hatDarlehen },
       { id: "zinsbindung", kapitel: K.f, frage: "Wie lange ist der Zins fest?",
-        hinweis: "Die Zinsbindung steht im Angebot der Bank. Danach brauchst du eine Anschlussfinanzierung – zum Zins, der dann gilt.",
-        typ: "number", einheit: "Jahre", vorgabe: 10, ueberspringbar: true,
+        hinweis: istUS() ? "Bei einer Festzins-Hypothek über 30 Jahre ist der Zins die ganze Laufzeit fest. Bei variablen Krediten (ARM) steht die Zeit bis zur ersten Anpassung im Angebot."
+          : "Die Zinsbindung steht im Angebot der Bank. Danach brauchst du eine Anschlussfinanzierung – zum Zins, der dann gilt.",
+        typ: "number", einheit: "Jahre", vorgabe: istUS() ? US_VORGABE.laufzeit : 10, ueberspringbar: true,
         live: (a) => { const r = rateAus(a), j = asZahl(a.zinsbindung), zins = asZahl(a.zins);
           return r > 0 && j > 0 && zins != null ? "Restschuld nach " + zahlKurz(j) + (j === 1 ? " Jahr: " : " Jahren: ") + eur(rcRestschuld(darlehenAus(a), zins, r, j * 12)) + "." : ""; },
         wenn: (a) => hatDarlehen(a) && rateAus(a) > 0 },
       // ----- Laufende Kosten -----
+      // ----- Nur USA: PMI und die laufenden Kosten Grundsteuer, Versicherung, HOA -----
+      { nurUS: true, kapitel: K.f, frage: "Brauchst du eine PMI?",
+        hinweis: "Bei weniger als 20 % Eigenkapital verlangt die Bank meist eine private Hypothekenversicherung (PMI). Den Betrag im Monat findest du im Loan Estimate.",
+        felder: [{ id: "pmi_monat", label: "PMI im Monat", typ: "number", einheit: "€", platzhalter: "laut Loan Estimate" }],
+        ueberspringbar: true, wenn: (a) => !san(a) && hatDarlehen(a) && darlehenAus(a) > 0.8 * (asZahl(a.kaufpreis) || 0) },
+      { nurUS: true, schnell: true, kapitel: K.c, frage: "Grundsteuer, Versicherung und HOA",
+        hinweis: (a) => { const st = usStaat(a.us_state);
+          return (st && st[2] != null ? "Vorbelegt ist der durchschnittliche Grundsteuersatz in " + st[1] + " (Tax Foundation 2026). Der genaue Betrag steht im Steuerbescheid des County."
+            : "Der Grundsteuersatz hängt vom County ab. Trag ihn aus dem Steuerbescheid oder dem Inserat ein.") + " Die Versicherung steht in deinem Angebot."; },
+        felder: [
+          { id: "steuer_pct", label: "Grundsteuer im Jahr", typ: "number", einheit: "% des Preises", vorgabe: (a) => { const v = usSteuerVon(a.us_state); return v != null ? v : ""; } },
+          { id: "versicherung_jahr", label: "Versicherung im Jahr", typ: "number", einheit: "€", platzhalter: "laut Angebot" },
+          { id: "hoa_monat", label: "HOA im Monat", typ: "number", einheit: "€", platzhalter: "0" }
+        ],
+        live: (a) => { const z = zahlenAus(a); return z.usKosten && z.usKosten.summe > 0 ? "Das sind " + eur2(z.usKosten.summe) + " im Monat, davon " + eur2(z.usKosten.escrow) + " für Steuer und Versicherung (oft über Escrow)." : ""; },
+        ueberspringbar: true },
       { id: "verwaltung", kapitel: K.c, frage: "Wer verwaltet das Objekt?",
         hinweis: "Verwaltung kostet Geld, das du nicht auf die Mieter umlegen kannst.",
         optionen: [{ v: "selbst", t: "Ich selbst", d: "Dann rechnet ESTRIQ ohne Verwaltungskosten" },
@@ -2014,7 +2046,7 @@
         ueberspringbar: true }
     ]);
     // Ein Schritt zählt, wenn er zum Vorhaben gehört – und im schnellen Weg nur, wenn er als schnell markiert ist
-    schritte.forEach(f => { if (!f.vorab) f.nur = (a) => (!f.weg || f.weg === (san(a) ? "sanierung" : "kauf")) && (a.modus !== "schnell" || !!f.schnell) && (!f.ab || anzahlAus(a) >= f.ab); });
+    schritte.forEach(f => { if (!f.vorab) f.nur = (a) => !(f.nurDE && istUS()) && !(f.nurUS && !istUS()) && (!f.weg || f.weg === (san(a) ? "sanierung" : "kauf")) && (a.modus !== "schnell" || !!f.schnell) && (!f.ab || anzahlAus(a) >= f.ab); });
     openAssistent("Projekt anlegen", schritte, async (a) => {
       const name = (a.name || "").trim() || "Projekt";
       const heute = new Date().toISOString();
@@ -2070,7 +2102,7 @@
       { id: "invest", frage: "Was hast du insgesamt investiert?",
         hinweis: "Kaufpreis inklusive Nebenkosten wie Notar, Grunderwerbsteuer und Makler. Daraus berechnet ESTRIQ deine Rendite.",
         typ: "number", einheit: "€", pflicht: true, platzhalter: "z. B. 250000" },
-      { id: "nk_als_puffer", frage: "Wie sollen Nebenkosten behandelt werden?",
+      { id: "nk_als_puffer", nur: () => !istUS(), frage: "Wie sollen Nebenkosten behandelt werden?",
         hinweis: "Als Rücklage bedeutet: Die Nebenkosten deiner Mieter werden für Ausgaben zurückgelegt und nicht als Gewinn gezählt. Das ist die vorsichtigere Rechnung.",
         optionen: [
           { t: "Als Rücklage zurücklegen", v: "1" },
@@ -2122,7 +2154,7 @@
       { id: "kalt_fix", frage: "Wie hoch ist die Kaltmiete?",
         hinweis: "Die reine Miete pro Monat, ohne Nebenkosten.",
         typ: "number", einheit: "€ / Monat", pflicht: true, platzhalter: "z. B. 650" },
-      { id: "nk_fix", frage: "Was zahlt der Mieter an Nebenkosten?",
+      { id: "nk_fix", nur: () => !istUS(), frage: "Was zahlt der Mieter an Nebenkosten?",
         hinweis: "Die monatliche Vorauszahlung für Heizung, Wasser, Müll und so weiter.",
         typ: "number", einheit: "€ / Monat", ueberspringbar: true, platzhalter: "z. B. 180" },
       { id: "zahltag", frage: "An welchem Tag im Monat kommt die Miete?",
@@ -2344,8 +2376,8 @@
 
   /* ---------- MIETEN IM LAUFENDEN MONAT ---------- */
 
-  const monatsName = () => new Date().toLocaleDateString("de-DE", { month: "long" });
-  const qm = (n) => (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + "\u00A0m²";
+  const monatsName = () => new Date().toLocaleDateString(LOC, { month: "long" });
+  const qm = (n) => (Number(n) || 0).toLocaleString(LOC, { maximumFractionDigits: 2 }) + "\u00A0m²";
   const mehrzahl = (n, eins, viele) => n + " " + (n === 1 ? eins : viele);
   // Hausnummer nicht vom Straßennamen trennen („Parkallee 8" bricht nicht vor der 8 um)
   const nameOhneBruch = (s) => String(s || "").replace(/ (\d+\s?[a-zA-Z]?)$/, "\u00A0$1");
@@ -2605,7 +2637,7 @@
   // opt.vonHand: selbst geöffnet (nicht die Nachfrage beim Login) – dann heißt der zweite Knopf „Schließen"
   function openMietCheckSheet(offen, opt) {
     opt = opt || {};
-    const monatName = new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+    const monatName = new Date().toLocaleDateString(LOC, { month: "long", year: "numeric" });
     // Nach Objekt gruppieren
     const gruppen = {};
     offen.forEach(o => {
@@ -2646,7 +2678,7 @@
       const sum = rest.reduce((a, b) => a + (Number(b.dataset.betrag) || 0), 0);
       sheet.querySelector("#mkStand").textContent = !rest.length ? "Alle Mieten sind eingegangen."
         : (rest.length === 1 ? "Eine Miete ist" : rest.length + " Mieten sind") + " fällig · zusammen " + eur(sum);
-      if (alle.textContent !== "Speichere…") alle.textContent = rest.length === 1 ? "Eingegangen" : "Alle eingegangen";
+      if (alle.textContent !== "Speichere…" && alle.textContent !== T("Speichere…")) alle.textContent = rest.length === 1 ? "Eingegangen" : "Alle eingegangen";
     }
     // Die Ansicht dahinter neu laden. Scheitert das, ist trotzdem gespeichert – das steht dann in der Meldung.
     async function neuLaden() {
@@ -3762,7 +3794,7 @@
     else if (pkt < -5) { titel = "Im Plan – du hast weniger bezahlt, als gebaut wurde"; text = vergleich; }
     else { titel = "Im Plan – Zahlung und Baufortschritt passen zusammen"; text = vergleich; }
 
-    const datum = (d) => d ? new Date(d).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "ohne Datum";
+    const datum = (d) => d ? new Date(d).toLocaleDateString(LOC, { day: "2-digit", month: "2-digit", year: "numeric" }) : "ohne Datum";
     const rechnungen = g.rechnungen.length
       ? `<div class="eq-rn-liste">${g.rechnungen.map(r => `
           <div class="eq-rn" data-rechnung="${r.id}" role="button" tabindex="0">
@@ -4030,7 +4062,7 @@
     const v = Number(n) || 0, a = Math.abs(v);
     return (v < 0 && a >= 0.005 ? "−" : "") + (a < 9999.995 ? eur2(a) : eur(a));
   };
-  const rcZahl = (n) => (Math.abs(Number(n) || 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rcZahl = (n) => (Math.abs(Number(n) || 0)).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const rcProz = (n) => ((Number(n) || 0) <= -0.005 ? "−" : "") + rcZahl(n) + " %";
   const RC_BERATUNG = "Dient der Orientierung und ersetzt keine Rechts- oder Steuerberatung.";
   // Fehlt eine Angabe, steht im Ergebnis ein Strich und im Fazit, was fehlt. Geteilt durch null wird nie.
@@ -4072,8 +4104,8 @@
           zeilen: [
             { l: "Gesamtinvestition", v: eur(invest), gross: true },
             { l: "Jahreskaltmiete", v: eur(jahr) },
-            { l: "Bruttorendite", v: (invest ? (jahr / invest * 100) : 0).toFixed(2).replace(".", ",") + " %", gross: true },
-            { l: "Nettorendite", v: (invest ? (netto / invest * 100) : 0).toFixed(2).replace(".", ",") + " %", gross: true },
+            { l: "Bruttorendite", v: (invest ? (jahr / invest * 100) : 0).toFixed(2).replace(".", DEZ()) + " %", gross: true },
+            { l: "Nettorendite", v: (invest ? (netto / invest * 100) : 0).toFixed(2).replace(".", DEZ()) + " %", gross: true },
             { l: "davon Bewirtschaftung", v: "− " + eur(jahr - netto) }
           ],
           balken: Math.max(0, Math.min(100, invest ? (jahr / invest * 100) * 10 : 0)),
@@ -4191,7 +4223,7 @@
             { l: "Notar und Grundbuch", v: eur(n) },
             { l: "Makler", v: eur(m) },
             { l: "Nebenkosten gesamt", v: eur(nk), gross: true },
-            { l: "Anteil am Kaufpreis", v: (w.kaufpreis ? nk / w.kaufpreis * 100 : 0).toFixed(1).replace(".", ",") + " %" },
+            { l: "Anteil am Kaufpreis", v: (w.kaufpreis ? nk / w.kaufpreis * 100 : 0).toFixed(1).replace(".", DEZ()) + " %" },
             { l: "Gesamtinvestition", v: eur(ges), gross: true }
           ],
           stapel: [
@@ -4321,8 +4353,8 @@
         return {
           zeilen: [
             { l: "Jahreskaltmiete", v: eur(jahr) },
-            { l: "Kaufpreisfaktor", v: faktor.toFixed(1).replace(".", ",") + " ×", gross: true },
-            { l: "entspricht Bruttorendite", v: rendite.toFixed(2).replace(".", ",") + " %", gross: true }
+            { l: "Kaufpreisfaktor", v: faktor.toFixed(1).replace(".", DEZ()) + " ×", gross: true },
+            { l: "entspricht Bruttorendite", v: rendite.toFixed(2).replace(".", DEZ()) + " %", gross: true }
           ],
           faktor: faktor,
           fazit: faktor <= 20
@@ -4584,7 +4616,7 @@
           fazit = Math.abs(a.zinsen - b.zinsen) < 0.5 ? "Beide Angebote kosten in der Zinsbindung gleich viel Zinsen."
             : "Angebot " + (a.zinsen < b.zinsen ? "A" : "B") + " kostet in der Zinsbindung " + rcEur(Math.abs(a.zinsen - b.zinsen)) + " weniger Zinsen.";
         } else {
-          const sicher = "gibt dir " + rcZahl(jahre).replace(",00", "") + (jahre === 1 ? " Jahr" : " Jahre") + " länger Sicherheit.";
+          const sicher = "gibt dir " + rcZahl(jahre).replace(/[.,]00$/, "") + (jahre === 1 ? " Jahr" : " Jahre") + " länger Sicherheit.";
           fazit = gleich ? "Beide Raten sind gleich hoch. Angebot " + laenger + " " + sicher
             : guenstig === laenger ? "Angebot " + guenstig + " ist " + rcEur(diff) + " im Monat günstiger und " + sicher
             : "Angebot " + guenstig + " ist " + rcEur(diff) + " im Monat günstiger. Angebot " + laenger + " " + sicher;
@@ -4826,10 +4858,10 @@
               { l: "Zulässige Gesamtinvestition", v: eur(invest), gross: true },
               { l: "Davon Kaufnebenkosten", v: "− " + eur(invest - kaufpreis) },
               { l: "Maximaler Kaufpreis", v: eur(kaufpreis), gross: true },
-              { l: "Kaufpreisfaktor", v: (jahr ? kaufpreis / jahr : 0).toFixed(1).replace(".", ",") + " ×" }
+              { l: "Kaufpreisfaktor", v: (jahr ? kaufpreis / jahr : 0).toFixed(1).replace(".", DEZ()) + " ×" }
             ],
             fazit: "Mehr als " + eur(kaufpreis) + " darfst du nicht zahlen, wenn du " +
-              w.wunsch.toLocaleString("de-DE") + " % Bruttorendite erreichen willst."
+              w.wunsch.toLocaleString(LOC) + " % Bruttorendite erreichen willst."
           };
         } },
       { id: "miete", label: "Nötige Miete", frage: "Welche Miete brauche ich für meine Zielrendite?",
@@ -4848,7 +4880,7 @@
               { l: "Gesamtinvestition", v: eur(invest) },
               { l: "Nötige Jahreskaltmiete", v: eur(jahr) },
               { l: "Nötige Kaltmiete", v: eur(monat) + " / Monat", gross: true },
-              { l: "Entspricht", v: (w.flaeche ? monat / w.flaeche : 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " € / m²", gross: true }
+              { l: "Entspricht", v: (w.flaeche ? monat / w.flaeche : 0).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " € / m²", gross: true }
             ],
             fazit: "Vergleich diesen Wert mit dem örtlichen Mietspiegel. Liegt er deutlich darüber, ist der Kaufpreis zu hoch."
           };
@@ -4890,7 +4922,7 @@
           return {
             zeilen: [
               { l: "Nötige Monatsrate", v: eur(rate), gross: true },
-              { l: "Nötige Anfangstilgung", v: tilgProz.toFixed(2).replace(".", ",") + " % p. a.", gross: true },
+              { l: "Nötige Anfangstilgung", v: tilgProz.toFixed(2).replace(".", DEZ()) + " % p. a.", gross: true },
               { l: "Zinskosten gesamt", v: eur(Math.max(0, rate * n - w.summe)) },
               { l: "Gesamtaufwand", v: eur(rate * n) }
             ],
@@ -5036,22 +5068,22 @@
     const anzahl = projekte().filter(p => !istVerworfen(p)).length;
     $("#eyebrow").textContent = "Planen und rechnen";
     $("#pageTitle").textContent = "Tools";
-    $("#pageSub").textContent = mehrzahl(anzahl, "Projekt", "Projekte") + " · " + RECHNER.length + " Rechner · " + WISSEN.length + " Themen";
+    $("#pageSub").textContent = mehrzahl(anzahl, "Projekt", "Projekte") + " · " + RECHNER.length + " Rechner" + (WISSEN.length ? " · " + WISSEN.length + " Themen" : "");
 
     // Projekte stehen ganz oben, über Rechnern und Wissen
     projekteBereich().forEach(k => host.appendChild(k));
-    host.appendChild(abschnittKopf("Rechner und Wissen", "Schnelle Einzelfragen – gespeichert wird hier nichts"));
+    host.appendChild(abschnittKopf(WISSEN.length ? "Rechner und Wissen" : "Rechner", "Schnelle Einzelfragen – gespeichert wird hier nichts"));
 
     const suche = el(`<div class="search-box eq-tl-suche">
       <span class="search-ic">${svg("suche")}</span>
-      <input id="tlSuche" type="search" placeholder="Rechner oder Thema suchen" autocomplete="off" enterkeyhint="search"
-        aria-label="Rechner und Themen durchsuchen" value="${esc(toolSuche)}"></div>`);
+      <input id="tlSuche" type="search" placeholder="${WISSEN.length ? "Rechner oder Thema suchen" : "Rechner suchen"}" autocomplete="off" enterkeyhint="search"
+        aria-label="${WISSEN.length ? "Rechner und Themen durchsuchen" : "Rechner durchsuchen"}" value="${esc(toolSuche)}"></div>`);
     host.appendChild(suche);
 
     // Filterleiste
     const filter = el(`<div class="tl-filter">
       <button class="tl-f${toolFilter === "alle" ? " on" : ""}" data-f="alle">Alles</button>
-      ${THEMEN.map(t => `<button class="tl-f${toolFilter === t.id ? " on" : ""}" data-f="${t.id}">${esc(t.name)}</button>`).join("")}
+      ${THEMEN.filter(t => rechnerVon(t.id).length || t.wissen.length).map(t => `<button class="tl-f${toolFilter === t.id ? " on" : ""}" data-f="${t.id}">${esc(t.name)}</button>`).join("")}
     </div>`);
     filter.querySelectorAll(".tl-f").forEach(b => b.onclick = () => {
       toolFilter = b.dataset.f; route("tools");
@@ -5079,8 +5111,9 @@
       if (worte.length) {
         // Suche: über alle Themenwelten, nach Titel und Frage (bei Rechnern auch die Zielgrößen)
         const passt = (text) => { const t = text.toLowerCase(); return worte.every(w => t.includes(w)); };
-        const rechner = RECHNER.filter(r => passt(r.titel + " " + r.kurz + " " + (ZIELE[r.id] || []).map(z => z.label + " " + (z.frage || "")).join(" ")));
-        const artikel = WISSEN.filter(a => passt(a.titel + " " + a.kurz));
+        const mitEN = (s) => UEB.exakt ? s + " " + T(s) : s;
+        const rechner = RECHNER.filter(r => passt(mitEN(r.titel) + " " + mitEN(r.kurz) + " " + (ZIELE[r.id] || []).map(z => mitEN(z.label) + " " + mitEN(z.frage || "")).join(" ")));
+        const artikel = WISSEN.filter(a => passt(mitEN(a.titel) + " " + mitEN(a.kurz)));
         liste.innerHTML = !rechner.length && !artikel.length
           ? `<div class="card"><div class="eq-leer">Zu „${esc(toolSuche.trim())}“ gibt es keinen Rechner und kein Thema. Versuch ein anderes Wort, zum Beispiel „Rendite“ oder „Kredit“.</div></div>`
           : `<div class="card tw-card"><div class="card-b">
@@ -5133,7 +5166,7 @@
     zeichne();
 
     host.appendChild(el(`<div class="note" style="margin-top:2px">
-      Angaben zu Mietrecht und Betriebskosten dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung.</div>`));
+      ${istUS() ? "Die Rechner dienen der Orientierung und ersetzen keine Rechts-, Steuer- oder Finanzberatung." : "Angaben zu Mietrecht und Betriebskosten dienen der Orientierung und ersetzen keine Rechts- oder Steuerberatung."}</div>`));
   }
 
   function openWissen(id) {
@@ -5156,7 +5189,7 @@
         </div>
         <div class="wi-lead">${esc(a.kurz)}</div>
       </div>
-      <div class="wi-inhalt">${a.inhalt}</div>
+      <div class="wi-inhalt${a.roh ? " eq-roh" : ""}"${a.roh ? ' lang="en"' : ""}>${a.inhalt}</div>
       ${a.verweis === "projekte" ? `<button type="button" class="add-btn wide" id="wiProjekte" style="margin-top:16px">Zu den Projekten</button>` : ""}
       ${passende.length ? `${efTitel("Selbst durchrechnen")}
         <div class="rc-mehr">${passende.map(r => `
@@ -5204,7 +5237,7 @@
       const feldHtml = (f) => {
         // Auswahl, die ein anderes Feld vorbelegt (Bundesland → Grunderwerbsteuer)
         if (f.auswahl) {
-          const optionen = f.auswahl(), jetzt = String(startwert(f, ""));
+          const optionen = f.auswahl(), jetzt = String(startwert(f, f.wert != null ? f.wert : ""));
           return `<div class="rc-row rc-breit">
             <label class="rc-l" for="rc-${f.id}">${esc(f.label)}${f.hinweis ? `<small>${esc(f.hinweis)}</small>` : ""}</label>
             <select class="ef-i rc-s" id="rc-${f.id}" data-s="${f.id}">${optionen.map(o =>
@@ -5405,6 +5438,38 @@
   // Jede Kennzahl bekommt ein kleines "i". Aufbau: Was ist das, wie rechnet ESTRIQ,
   // was ist ein guter Wert, und eine kleine Grafik zur Veranschaulichung.
   const KPI_INFO = {
+    noi: {
+      titel: "NOI (Net Operating Income)",
+      kurz: "Was die Miete im Jahr nach den laufenden Kosten abwirft – vor der Finanzierung.",
+      text: "Von der geplanten Miete gehen Instandhaltung, Verwaltung, weitere Kosten und Mietausfall ab. Kreditraten und Steuern zählen nicht mit.",
+      formel: "(Kaltmiete − laufende Kosten) × 12",
+      gut: "Je höher, desto mehr bleibt für Zins und Tilgung.",
+      merke: "Grundsteuer, Versicherung und HOA stecken im NOI, sobald du sie bei den laufenden Kosten einträgst."
+    },
+    caprate: {
+      titel: "Cap Rate",
+      kurz: "NOI im Verhältnis zum Kaufpreis.",
+      text: "Die Cap Rate zeigt, was das Objekt ohne Kredit abwerfen würde. So vergleichst du Objekte unabhängig von der Finanzierung.",
+      formel: "NOI ÷ Kaufpreis × 100",
+      gut: "Einen festen Zielwert gibt es nicht. Vergleiche mit ähnlichen Objekten in derselben Gegend.",
+      merke: "Im eigenen Objekt rechnet ESTRIQ mit der Gesamtinvestition statt mit dem Kaufpreis."
+    },
+    dscr: {
+      titel: "DSCR (Debt Service Coverage Ratio)",
+      kurz: "Wie oft das NOI die Kreditraten deckt.",
+      text: "1,00 heißt: Das NOI reicht genau für die Raten. Darunter legst du drauf.",
+      formel: "NOI ÷ Kreditraten im Jahr",
+      gut: "Banken legen eigene Mindestwerte fest, meist über 1,00 – frag deine Bank.",
+      merke: "Die laufenden Kosten sind Annahmen. Ändere sie, sobald du genauere Zahlen kennst."
+    },
+    breakeven: {
+      titel: "Break-even-Quote",
+      kurz: "Welcher Teil der Miete für Kosten und Raten draufgeht.",
+      text: "Liegt die Quote unter 100 %, trägt sich das Objekt. Der Abstand zu 100 % zeigt, wie viel Leerstand du verkraftest.",
+      formel: "(laufende Kosten ohne Mietausfall + Kreditraten) ÷ Kaltmiete × 100",
+      gut: "Je niedriger, desto mehr Puffer hast du.",
+      merke: "Der Mietausfall steckt hier nicht in den Kosten, denn die Quote zeigt gerade, wie viel Ausfall du tragen kannst."
+    },
     eigenkapital: {
       titel: "Eigenkapitalbedarf",
       kurz: "So viel Geld musst du selbst mitbringen.",
@@ -6020,8 +6085,8 @@
 
       if (s.kind === "miete" && s.invest) {
         const k = FE.immoKPIs(s);
-        add("Rendite " + shortLabel(s.name), k.bruttoRendite.toLocaleString("de-DE") + " %",
-            "Bruttomietrendite · Cashflow-ROI " + k.cashflowRoi.toLocaleString("de-DE") + " %",
+        add("Rendite " + shortLabel(s.name), k.bruttoRendite.toLocaleString(LOC) + " %",
+            "Bruttomietrendite · Cashflow-ROI " + k.cashflowRoi.toLocaleString(LOC) + " %",
             "rendite " + s.name + " roi ertrag verzinsung prozent", () => route(s.id));
       }
       if (m.nkPuffer) {
@@ -6050,7 +6115,7 @@
       FE.creditsOf(s).forEach(kr => {
         const p = FE.creditPlan(kr);
         add(kr.name, eur(p.restAktuell),
-            "Restschuld · " + eur(kr.abtragMonat) + "/Monat · " + kr.zinsPa.toLocaleString("de-DE")
+            "Restschuld · " + eur(kr.abtragMonat) + "/Monat · " + kr.zinsPa.toLocaleString(LOC)
             + " % · abbezahlt " + (p.abzahlDatum ? monthYear(p.abzahlDatum) : "—"),
             kr.name + " kredit darlehen restschuld zins laufzeit " + s.name,
             () => { route(s.id); setTimeout(() => openCreditSheet(kr), 260); });
@@ -6082,14 +6147,16 @@
     "habe", "haben", "wird", "werden", "für", "von", "mit", "und", "oder", "ich", "mir",
     "mein", "meine", "viel", "hoch", "aktuell", "gerade", "bitte", "zeig", "zeige"]);
 
+  const STOPP_EN = new Set(["what", "who", "how", "where", "when", "which", "the", "are", "does", "much", "many", "show", "for", "and", "with", "from", "have", "has", "can", "get", "please", "current", "currently"]);
   function bewerte(eintrag, frage) {
     const q = frage.toLowerCase().replace(/[?.,!]/g, " ");
     const roh = q.split(/\s+/).filter(w => w.length > 1);
-    const woerter = roh.filter(w => !STOPP.has(w) && w.length > 2);
+    const woerter = roh.filter(w => !STOPP.has(w) && !(UEB.exakt && STOPP_EN.has(w)) && w.length > 2);
     if (!woerter.length && !roh.length) return 0;
     let score = 0;
-    const titel = eintrag.titel.toLowerCase();
-    const heu = (eintrag.titel + " " + eintrag.worte + " " + eintrag.detail).toLowerCase();
+    const en = UEB.exakt ? " " + T(eintrag.titel) : "";
+    const titel = (eintrag.titel + en).toLowerCase();
+    const heu = (eintrag.titel + " " + eintrag.worte + " " + eintrag.detail + (UEB.exakt ? en + " " + T(eintrag.worte) + " " + T(eintrag.detail) : "")).toLowerCase();
 
     // Wohnungsnummern gezielt behandeln: "we 2" / "we2" / "wohnung 2"
     const nr = q.match(/\b(?:we|wohnung|einheit)\s*(\d+)\b/);
@@ -6182,7 +6249,7 @@
       mic.onclick = () => {
         if (laeuft && rec) { rec.stop(); return; }
         rec = new SR();
-        rec.lang = "de-DE";
+        rec.lang = LOC;
         rec.interimResults = true;
         rec.continuous = false;
         rec.onstart = () => { laeuft = true; mic.classList.add("on");
@@ -6201,7 +6268,7 @@
             : "Spracheingabe nicht möglich.";
         };
         rec.onend = () => { mic.classList.remove("on"); laeuft = false;
-          if (hint.textContent === "Ich höre zu…") {
+          if (hint.textContent === "Ich höre zu…" || hint.textContent === T("Ich höre zu…")) {
             hint.textContent = 'Tipp: „Restschuld", „freie Wohnung", „Rendite"';
           }
           if (input.value.trim()) zeige(input.value); };
@@ -6250,7 +6317,7 @@
       if (s.kind === "miete" && s.invest) {
         const k = FE.immoKPIs(s);
         if (k.bruttoRendite > 0)
-          f.push(`${esc(shortLabel(s.name))} erzielt <b>${k.bruttoRendite.toLocaleString("de-DE")} %</b> Bruttomietrendite.`);
+          f.push(`${esc(shortLabel(s.name))} erzielt <b>${k.bruttoRendite.toLocaleString(LOC)} %</b> Bruttomietrendite.`);
       }
     });
 
@@ -6267,7 +6334,7 @@
       .replace("{name}", name).replace(/\s*,\s*!/, "!").trim();
     const fakten = motivierendeFakten();
     const fakt = fakten.length ? fakten[Math.floor(Math.random() * fakten.length)] : "";
-    const datum = new Date().toLocaleDateString("de-DE",
+    const datum = new Date().toLocaleDateString(LOC,
       { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
     const ava = currentUser && currentUser.avatar;
     const avaHtml = ava
@@ -6381,7 +6448,7 @@
       <div class="eq-marken">${marken.join("")}</div>
       <div class="eq-obj-fuss">
         <div><span>Netto-Cashflow</span><b${m.netto < 0 ? ' style="color:var(--danger)"' : ""}>${eur(m.netto)}</b></div>
-        <div><span>Bruttomietrendite</span><b>${s.invest ? k.bruttoRendite.toLocaleString("de-DE") + " %" : "—"}</b></div>
+        <div><span>Bruttomietrendite</span><b>${s.invest ? k.bruttoRendite.toLocaleString(LOC) + " %" : "—"}</b></div>
         <div><span>Fläche</span><b>${flaeche ? qm(flaeche) : "—"}</b></div>
       </div></div>`);
     karte.onclick = () => geheZu(s.id);
@@ -6673,7 +6740,7 @@
       const todayKey = new Date().toISOString().slice(0, 10);
 
       card.querySelector("#calSub").textContent =
-        first.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+        first.toLocaleDateString(LOC, { month: "long", year: "numeric" });
 
       const dows = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
         .map(d => `<div class="cal-dow">${d}</div>`).join("");
@@ -6708,7 +6775,7 @@
         const evts = (map[key] || []);
         if (!key) { detail.innerHTML = `<div class="cal-hint">Tag antippen, um Ereignisse zu sehen.</div>`; return; }
         const d = new Date(key);
-        const head = d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
+        const head = d.toLocaleDateString(LOC, { weekday: "long", day: "2-digit", month: "long" });
         if (!evts.length) {
           detail.innerHTML = `<div class="cal-detail"><div class="cal-detail-h">${esc(head)}</div>
             <div class="cal-hint">Keine Ereignisse an diesem Tag.</div></div>`;
@@ -6816,7 +6883,8 @@
       + `&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m`
       + `&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m`
       + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,sunrise,sunset`
-      + `&timezone=auto&forecast_days=5`;
+      + `&timezone=auto&forecast_days=5`
+      + (istUS() ? "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" : "");
       fetchWetter(url);
     }
 
@@ -6843,8 +6911,8 @@
       const days = (j.daily && j.daily.time || []).map((t, i) => {
         const dc = WCODE[j.daily.weather_code[i]] || ["—", ""];
         const dd = new Date(t);
-        return `<div class="w-day clickable" data-i="${i}" role="button" tabindex="0" aria-label="${esc((i === 0 ? "heute" : dd.toLocaleDateString("de-DE", { weekday: "long" })) + ": " + dc[0])}">
-          <span class="w-dow">${i === 0 ? "heute" : dd.toLocaleDateString("de-DE", { weekday: "short" })}</span>
+        return `<div class="w-day clickable" data-i="${i}" role="button" tabindex="0" aria-label="${esc((i === 0 ? "heute" : dd.toLocaleDateString(LOC, { weekday: "long" })) + ": " + dc[0])}">
+          <span class="w-dow">${i === 0 ? "heute" : dd.toLocaleDateString(LOC, { weekday: "short" })}</span>
           <span class="w-ic">${wetterSymbol(dc[1])}</span>
           <span class="w-t"><b>${Math.round(j.daily.temperature_2m_max[i])}°</b><i>${Math.round(j.daily.temperature_2m_min[i])}°</i></span>
         </div>`;
@@ -6870,7 +6938,7 @@
     const day = j.daily.time[idx];
     const dc = WCODE[j.daily.weather_code[idx]] || ["—", ""];
     const d = new Date(day);
-    const head = d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
+    const head = d.toLocaleDateString(LOC, { weekday: "long", day: "2-digit", month: "long" });
     // Stunden dieses Tages
     const hrs = [];
     (j.hourly && j.hourly.time || []).forEach((t, i) => {
@@ -6889,7 +6957,7 @@
       <div class="eq-werte eq-werte-block">
         <div><span>Höchst</span><b>${Math.round(j.daily.temperature_2m_max[idx])}°</b></div>
         <div><span>Tiefst</span><b>${Math.round(j.daily.temperature_2m_min[idx])}°</b></div>
-        <div><span>Niederschlag</span><b>${(j.daily.precipitation_sum ? j.daily.precipitation_sum[idx] : 0).toLocaleString("de-DE")} mm</b></div>
+        <div><span>Niederschlag</span><b>${(j.daily.precipitation_sum ? j.daily.precipitation_sum[idx] : 0).toLocaleString(LOC)} mm</b></div>
         <div><span>Wind max</span><b>${Math.round(j.daily.wind_speed_10m_max ? j.daily.wind_speed_10m_max[idx] : 0)} km/h</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Tagesverlauf</div>
@@ -6932,8 +7000,8 @@
     if (k && (s.invest || kredite.length))
       karten.push(kpiCard("wallet", eur(m.netto), "Netto-Cashflow / Monat", CF_HINWEIS, m.netto >= 0, "cf", "cashflow"));
     if (k && s.invest) {
-      karten.push(kpiCard("trend", k.bruttoRendite.toLocaleString("de-DE") + " %", "Brutto\u00ADmiet\u00ADrendite", "Jahreskaltmiete ÷ Investition", false, null, "rendite"));
-      karten.push(kpiCard("chart", k.cashflowRoi.toLocaleString("de-DE") + " %", "Cashflow-ROI", "Netto-Cashflow im Jahr ÷ Investition", false, null, "roi"));
+      karten.push(kpiCard("trend", k.bruttoRendite.toLocaleString(LOC) + " %", "Brutto\u00ADmiet\u00ADrendite", "Jahreskaltmiete ÷ Investition", false, null, "rendite"));
+      karten.push(kpiCard("chart", k.cashflowRoi.toLocaleString(LOC) + " %", "Cashflow-ROI", "Netto-Cashflow im Jahr ÷ Investition", false, null, "roi"));
       karten.push(kpiCard("coins", eur(k.invest), "Investition", "eingesetztes Kapital", false, null, "invest"));
     }
     if (k && kredite.length) {
@@ -7081,8 +7149,8 @@
   // Frage: Was schulde ich noch, was kostet es mich monatlich, wann bin ich fertig?
   // Alle Beträge kommen aus FE.creditPlan (Rechenkern). Hier wird nur zusammengestellt und beschriftet.
 
-  const monatLang = (key) => new Date(key + "-01").toLocaleDateString("de-DE", { month: "long", year: "numeric" });
-  const prozent = (n, stellen) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: stellen || 0, maximumFractionDigits: stellen == null ? 3 : stellen })) + " %";
+  const monatLang = (key) => new Date(key + "-01").toLocaleDateString(LOC, { month: "long", year: "numeric" });
+  const prozent = (n, stellen) => echtMinus((Number(n) || 0).toLocaleString(LOC, { minimumFractionDigits: stellen || 0, maximumFractionDigits: stellen == null ? 3 : stellen })) + " %";
   const MONATSNAMEN = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
   // „in 14 Jahren und 8 Monaten"
@@ -7249,7 +7317,7 @@
         ${endeWert(k)}
         ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
         ${wert("Zinsen bis zum Ende", k.tilgtNie ? "—" : eur(k.zinsOffen), k.tilgtNie ? "" : "noch zu zahlen")}
-        ${bindung ? wert("Restschuld nach " + mehrzahl(bindung.jahre, "Jahr", "Jahren"), eur(bindung.rest), bindung.annahme ? "Annahme: 10 Jahre Zinsbindung" : "am Ende der Zinsbindung") : ""}
+        ${bindung ? wert("Restschuld nach " + mehrzahl(bindung.jahre, "Jahr", "Jahren"), eur(bindung.rest), bindung.annahme ? "Annahme: " + ZINSBINDUNG_ANNAHME + " Jahre Zinsbindung" : "am Ende der Zinsbindung") : ""}
       </div>
       ${kreditKurve(kr, k)}
     </div>`);
@@ -7389,18 +7457,18 @@
   ];
   const zeitArt = (k) => ZEIT_TAETIGKEITEN.find(x => x[0] === k) || [k, k || "Sonstiges", null];
   // Umlagefähig? Die Entscheidung am Einsatz geht vor, sonst gilt die Vorgabe der Tätigkeit. null = noch offen.
-  const zeitUmlage = (e) => e.umlagefaehig === true || e.umlagefaehig === false ? e.umlagefaehig : zeitArt(e.taetigkeit)[2];
+  const zeitUmlage = (e) => istUS() ? false : e.umlagefaehig === true || e.umlagefaehig === false ? e.umlagefaehig : zeitArt(e.taetigkeit)[2];
   const zeitStd = (e) => (Number(e.minuten) || 0) / 60;
   const zeitKosten = (e) => zeitStd(e) * (Number(e.stundensatz) || 0);
   const stdText = (h) => zahlKurz(rund2(h)) + " Std.";
   const uhr = (t) => String(t || "").slice(0, 5);
   const minutenVon = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
-  const tagKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(iso) : d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }); };
+  const tagKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(iso) : d.toLocaleDateString(LOC, { weekday: "short", day: "2-digit", month: "2-digit" }); };
   const heuteIso = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
   // Wort und Farbe für die Einordnung eines Einsatzes
-  const zeitMarke = (e) => { const u = zeitUmlage(e); return u === true ? `<span class="eq-marke gut">umlagefähig</span>` : u === false ? `<span class="eq-marke">nicht umlagefähig</span>` : `<span class="eq-marke achtung">noch offen</span>`; };
+  const zeitMarke = (e) => { if (istUS()) return ""; const u = zeitUmlage(e); return u === true ? `<span class="eq-marke gut">umlagefähig</span>` : u === false ? `<span class="eq-marke">nicht umlagefähig</span>` : `<span class="eq-marke achtung">noch offen</span>`; };
   const meldung = (text) => Object.assign(new Error(text), { eqText: text });
-  const datumKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? "" : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+  const datumKurz = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? "" : d.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit", year: "numeric" }); };
   // Zeitkonto je Person über alle Jahre: offene (noch nicht bezahlte) und bezahlte Stunden.
   // Eine Person ist ein Link; Einsätze ohne Link zählen unter dem eingetragenen Namen.
   function zeitKonten(d) {
@@ -7534,8 +7602,8 @@
         <div class="eq-werte">
           ${wert("Stunden " + jahr, stdText(a.std), mehrzahl(a.anzahl, "Einsatz", "Einsätze"))}
           ${wert("Kosten " + jahr, eur2(a.kosten), a.ohneSatz ? "bei " + mehrzahl(a.ohneSatz, "Einsatz", "Einsätzen") + " fehlt der Stundensatz" : "Stunden × Stundensatz")}
-          ${wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd) + ", für die Nebenkosten")}
-          ${wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd) + ", trägst du selbst")}
+          ${istUS() ? "" : wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd) + ", für die Nebenkosten")
+            + wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd) + ", trägst du selbst")}
         </div>
         ${d.eintraege.length ? `<div class="card-t eq-zwischen">Letzte Einsätze</div>
           <div class="eq-zes">${d.eintraege.slice(0, 3).map(e => zeitZeile(e, false)).join("")}</div>` : `<div class="note" style="margin-top:16px">Noch kein Einsatz eingetragen.</div>`}
@@ -7621,7 +7689,7 @@
       ${ef("Pause", "pause_min", e ? (e.pause_min || 0) : 0, "number", { step: "1", einheit: "Minuten", min: 0, max: 600 })}
       <div class="eq-live" id="zeLive" role="status"></div>
       ${efTitel("Abrechnung")}
-      ${efSel("Umlagefähig auf die Mieter", "umlage", e && e.umlagefaehig === true ? "ja" : e && e.umlagefaehig === false ? "nein" : "",
+      ${istUS() ? "" : efSel("Umlagefähig auf die Mieter", "umlage", e && e.umlagefaehig === true ? "ja" : e && e.umlagefaehig === false ? "nein" : "",
         [{ v: "", t: "Vorgabe der Tätigkeit" }, { v: "ja", t: "Ja, umlagefähig" }, { v: "nein", t: "Nein, nicht umlagefähig" }],
         { hinweis: "Die Vorgabe folgt der Betriebskostenverordnung. Ob du Kosten umlegen darfst, hängt auch von deinem Mietvertrag ab." })}
       ${ef("Stundensatz", "stundensatz", e ? (e.stundensatz != null ? e.stundensatz : "") : (erster && erster.stundensatz != null ? erster.stundensatz : ""), "number", { einheit: "€ je Stunde", min: 0 })}
@@ -7636,9 +7704,9 @@
       return { a, b, p, min, satz };
     };
     const live = () => {
-      const r = rechne(), k = feld("taetigkeit").value, u = feld("umlage").value;
+      const r = rechne(), k = feld("taetigkeit").value, u = feld("umlage") ? feld("umlage").value : "";
       sheet.querySelector("#zeLive").innerHTML = `<span>Arbeitszeit</span><b>${r.min != null && r.min > 0 ? stdText(r.min / 60) : "—"}</b>
-        <small>${r.min != null && r.min > 0 && r.satz > 0 ? "Kosten " + eur2(r.min / 60 * r.satz) + " · " : ""}${u === "ja" ? "umlagefähig" : u === "nein" ? "nicht umlagefähig" : "Vorgabe: " + vorgabe(k)}</small>`;
+        <small>${r.min != null && r.min > 0 && r.satz > 0 ? "Kosten " + eur2(r.min / 60 * r.satz) + " · " : ""}${istUS() ? "" : u === "ja" ? "umlagefähig" : u === "nein" ? "nicht umlagefähig" : "Vorgabe: " + vorgabe(k)}</small>`;
     };
     sheet.querySelectorAll("[data-f]").forEach(n => { n.addEventListener("input", live); n.addEventListener("change", live); });
     live();
@@ -7746,8 +7814,8 @@
         <div class="eq-werte eq-werte-block">
           ${wert("Stunden", stdText(a.std), mehrzahl(a.anzahl, "Einsatz", "Einsätze"))}
           ${wert("Kosten", eur2(a.kosten), a.ohneSatz ? "bei " + mehrzahl(a.ohneSatz, "Einsatz", "Einsätzen") + " fehlt der Stundensatz" : "Stunden × Stundensatz")}
-          ${wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd))}
-          ${wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd))}
+          ${istUS() ? "" : wert("Umlagefähig", eur2(a.umlKosten), stdText(a.umlStd))
+            + wert("Nicht umlagefähig", eur2(a.nichtKosten), stdText(a.nichtStd))}
         </div>
         ${a.offen ? `<div class="eq-zustand achtung"><div class="eq-zustand-tx">
           <div class="eq-zustand-t">${a.offen === 1 ? "Ein Einsatz ist" : a.offen + " Einsätze sind"} noch nicht eingeordnet (${stdText(a.offenStd)})</div>
@@ -7764,7 +7832,7 @@
           <div class="eq-zes">${m.liste.map(e => zeitZeile(e, true)).join("")}</div>`).join("")
           : `<div class="eq-leer" style="padding:20px 8px">Für ${jahr} ist kein Einsatz eingetragen.</div>`}
         <div class="eq-zeit-fuss"><button type="button" class="add-btn" id="zeHand">+ Einsatz von Hand</button></div>
-        ${a.anzahl ? `<div class="card-t eq-zwischen">Nebenkosten ${jahr}</div>
+        ${a.anzahl && !istUS() ? `<div class="card-t eq-zwischen">Nebenkosten ${jahr}</div>
           <div class="note">Umlagefähig sind ${eur2(a.umlKosten)} aus ${mehrzahl(a.umlAnzahl, "Einsatz", "Einsätzen")}${a.nichtKosten > 0 ? ", nicht umlagefähig " + eur2(a.nichtKosten) : ""}. Beim Übernehmen entsteht in den Nebenkosten ${jahr} die Kostenart „${ZEIT_NK_UML}“${a.nichtKosten > 0 ? " und „" + ZEIT_NK_NICHT + "“" : ""}. Gibt es sie schon, wird nur der Betrag angepasst.${a.offen ? " Offene Einsätze zählen nicht mit." : ""}</div>
           <div class="eq-zeit-fuss"><button type="button" class="eq-btn" id="zeNk">In die Nebenkosten ${jahr} übernehmen</button></div>
           <div class="ef-msg" id="zeNkMsg" role="status"></div>` : ""}`;
@@ -7805,7 +7873,7 @@
     try {
       const { data: vorhanden, error } = await window.sb.from("nebenkosten").select("*").eq("objekt_id", s._id).eq("jahr", a.jahr);
       if (error) throw error;
-      const stand = new Date().toLocaleDateString("de-DE");
+      const stand = new Date().toLocaleDateString(LOC);
       const setze = async (art, betrag, umlagefaehig, std, anzahl) => {
         const alt = (vorhanden || []).find(p => p.art === art);
         const d = { betrag: rund2(betrag), umlagefaehig, notiz: stdText(std).replace(" ", " ") + " aus " + mehrzahl(anzahl, "Einsatz", "Einsätzen") + ", Stand " + stand };
@@ -7848,7 +7916,7 @@
       plan: plan === "Unentschieden" ? "" : plan, einheiten: einheiten.replace("-", " bis "), ueber: ueber.trim() };
   }
   const WL_FEHLT = "Die Auswertung ist noch nicht eingerichtet. Führ dafür 6-warteliste.txt im SQL-Editor aus.";
-  const wlZeit = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) + ", " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); };
+  const wlZeit = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit", year: "numeric" }) + ", " + d.toLocaleTimeString(LOC, { hour: "2-digit", minute: "2-digit" }); };
   const csvFeld = (v) => { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 
   function openWarteliste(stand) {
@@ -7973,6 +8041,798 @@
       () => { zurueck(); showToast("Anmeldung gelöscht."); });
   }
 
+  /* ================= SPRACHE UND REGION ================= */
+  // Region je Konto (de | us) und Sprache je Nutzer (de | en), gelesen über meine_region() aus 7-region.txt.
+  // Deutsch ist Standard: Fehlt die Funktion oder scheitert die Abfrage, bleibt alles wie bisher.
+  // Englisch entsteht beim Anzeigen: Der Übersetzer tauscht sichtbare Texte und einige Attribute gegen die
+  // Einträge aus en.js (wird nur für englische Konten geladen). Für die Region USA gelten dazu Dollar, sq ft und
+  // eigene Vorgaben; was es nur in Deutschland gibt, ist ausgeblendet.
+  let REGION = "de", SPRACHE = "de";
+  const istUS = () => REGION === "us";
+  const istEN = () => SPRACHE === "en";
+  const SQFT_JE_M2 = 10.7639;
+
+  async function regionLaden() {
+    REGION = "de"; SPRACHE = "de";
+    try {
+      const { data, error } = await window.sb.rpc("meine_region");
+      if (!error && data) {
+        if (data.region === "us") REGION = "us";
+        SPRACHE = data.sprache === "en" || data.sprache === "de" ? data.sprache : (REGION === "us" ? "en" : "de");
+      }
+    } catch (_) {}
+    window.ESTRIQ_REGION = REGION;
+    LOC = istEN() ? "en-US" : "de-DE";
+    WAEHRUNG = istUS() ? "USD" : "EUR";
+    if (istUS()) regionUSA();
+    if (istEN() || istUS()) await uebersetzerStarten();
+  }
+
+  // Vorgaben und Umfang für Konten in den USA. Läuft einmal je Seitenaufruf (Abmelden lädt die Seite neu).
+  let usaGesetzt = false;
+  function regionUSA() {
+    if (usaGesetzt) return;
+    usaGesetzt = true;
+    try { localStorage.setItem("estriq_region", "us"); } catch (_) {}
+    // Preise und Leistungen in Dollar
+    TARIFE.basic.preis = istEN() ? "$29.99" : "29,99 $";
+    TARIFE.premium.preis = istEN() ? "$39.99" : "39,99 $";
+    TARIFE.basic.leistungen = TARIFE.basic.leistungen.map(l => l === "Kennzahlen, Kalender und Lernecke" ? "Kennzahlen, Kalender und Rechner" : l);
+    TARIFE.premium.leistungen = TARIFE.premium.leistungen.map(l => l === "Nebenkostenabrechnung je Einheit" ? "Zeiterfassung für Hausmeister und Helfer" : l);
+    // Objektseite ohne Nebenkosten-Rücklage und Nebenkostenabrechnung
+    ["ruecklage", "nebenkosten"].forEach(k => { const i = OBJEKT_REIHENFOLGE.indexOf(k); if (i >= 0) OBJEKT_REIHENFOLGE.splice(i, 1); });
+    // Rechner mit deutschem Recht und die Lernecke (deutsches Recht) entfallen
+    for (let i = RECHNER.length - 1; i >= 0; i--) if (RECHNER_NUR_DE.includes(RECHNER[i].id)) RECHNER.splice(i, 1);
+    WISSEN.length = 0;
+    THEMEN.forEach(t => { t.wissen = []; });
+    // Beispielwerte der Rechner: Abschlusskosten statt deutscher Kaufnebenkosten, Zins und Laufzeit einer
+    // 30-jährigen Festzins-Hypothek, Flächen in sq ft, Steuer auf Kapitalerträge
+    const anpassen = (felder) => {
+      (felder || []).forEach(f => {
+        if (f.id === "nebenkosten" && f.label === "Kaufnebenkosten") { f.wert = US_VORGABE.abschluss; f.hinweis = "Titel, Grundbuch, Gebühren der Bank"; }
+        if (f.id === "zins" && f.wert === 3.5) f.wert = US_VORGABE.zins;
+        if (f.id === "tilgung" && f.wert === 2) f.wert = tilgungFuer(US_VORGABE.zins, US_VORGABE.laufzeit);
+        if (f.einheit === "m²") f.wert = Math.round(f.wert * SQFT_JE_M2 / 5) * 5;
+        if (f.id === "instand" && f.hinweis === "Faustregel: 1 € je m² und Monat") f.hinweis = "Annahme: etwa 1 % des Kaufpreises im Jahr";
+        if (f.id === "steuer" && f.wert === 26.375) { f.wert = 15; f.hinweis = "Annahme: häufiger Satz auf langfristige Kapitalerträge in den USA"; }
+      });
+      // Beispielrate passend zu den neuen Werten
+      const wert = (id) => { const x = (felder || []).find(f => f.id === id); return x ? x.wert : null; };
+      (felder || []).forEach(f => {
+        if (f.id !== "rate" || f.wahl) return;
+        const r = rateFuer(wert("summe") || wert("darlehen"), wert("zins") != null ? wert("zins") : US_VORGABE.zins, US_VORGABE.laufzeit);
+        if (r) f.wert = Math.round(r);
+      });
+      (felder || []).forEach(f => {
+        if (!f.wahl || typeof f.wahl.zuRate !== "function") return;
+        const w = {}; felder.forEach(x => { w[x.id] = x.wert; });
+        const r = f.wahl.zuRate(w);
+        if (isFinite(r) && r > 0) f.wahl.wert = Math.round(r);
+      });
+    };
+    // Finanzierungsangebote: 30 Jahre fest gegen eine Hypothek mit 5 Jahren Festzins (ARM)
+    const fa = (rid, fid) => { const r = RECHNER.find(x => x.id === rid); return r ? r.felder.find(f => f.id === fid) : null; };
+    [["zinsA", 6.5], ["bindA", 30], ["zinsB", 6], ["bindB", 5]].forEach(([fid, v]) => { const f = fa("angebote", fid); if (f) f.wert = v; });
+    [["tilgA", 6.5], ["tilgB", 6]].forEach(([fid, z]) => { const f = fa("angebote", fid); if (f) f.wert = tilgungFuer(z, US_VORGABE.laufzeit); });
+    RECHNER.forEach(r => anpassen(r.felder));
+    Object.keys(ZIELE).forEach(k => (ZIELE[k] || []).forEach(z => anpassen(z.felder)));
+    ZINSBINDUNG_ANNAHME = US_VORGABE.laufzeit;
+    // Phase 3: Rechner und Artikel für die USA, Karte „Regeln und Steuern" auf der Objektseite
+    RECHNER.unshift(...US_RECHNER);
+    WISSEN.push(...US_WISSEN);
+    THEMEN.forEach(t => { t.wissen = (US_THEMEN[t.id] || []).slice(); });
+    Object.keys(US_FOLGE).forEach(k => { RECHNER_FOLGE[k] = US_FOLGE[k].concat((RECHNER_FOLGE[k] || []).filter(x => !US_FOLGE[k].includes(x))); });
+    const fi = OBJEKT_REIHENFOLGE.indexOf("finanzierung");
+    OBJEKT_BAUSTEINE.usa = (s) => usObjektKarte(s);
+    if (!OBJEKT_REIHENFOLGE.includes("usa")) OBJEKT_REIHENFOLGE.splice(fi < 0 ? OBJEKT_REIHENFOLGE.length : fi + 1, 0, "usa");
+  }
+  const RECHNER_NUR_DE = ["kauffaktor", "kaufneben", "anschluss", "instandhaltung", "mieterhoehung", "afa", "grenze15", "modernisierung", "index", "vorauszahlung", "kaution"];
+  // Vorgaben für die USA – Annahmen, im Projekt jederzeit änderbar
+  const US_VORGABE = {
+    abschluss: 3,        // Abschlusskosten (Closing Costs) in % des Kaufpreises
+    zins: 7.4,           // Durchschnitt 30 Jahre fest, Freddie Mac PMMS, Stand 8.10.2026 (US_QUELLEN.zins)
+    laufzeit: 30,        // Jahre
+    instand_sqft: 0.09   // Instandhaltung je sq ft und Monat (entspricht 1 € je m²)
+  };
+  // Anfangstilgung in % im Jahr, mit der ein Darlehen in „jahre" Jahren bei „zins" % abbezahlt ist
+  function tilgungFuer(zins, jahre) {
+    const i = (Number(zins) || 0) / 1200, n = Math.round((Number(jahre) || 0) * 12);
+    if (!(n > 0)) return 0;
+    const faktor = i > 0 ? i / (1 - Math.pow(1 + i, -n)) : 1 / n;
+    return Math.round((faktor * 1200 - (Number(zins) || 0)) * 10000) / 10000;
+  }
+  // Monatsrate eines Annuitätendarlehens über „jahre" Jahre
+  function rateFuer(summe, zins, jahre) {
+    const i = (Number(zins) || 0) / 1200, n = Math.round((Number(jahre) || 0) * 12);
+    if (!(summe > 0) || !(n > 0)) return null;
+    return rund2(i > 0 ? summe * i / (1 - Math.pow(1 + i, -n)) : summe / n);
+  }
+
+  // ---------- Sprache im Profil (nur für Konten in den USA) ----------
+  function spracheBlock() {
+    if (!istUS()) return "";
+    const k = (v, t) => `<button type="button" class="eq-wahl-k eq-roh${SPRACHE === v ? " on" : ""}" data-sprache="${v}" aria-pressed="${SPRACHE === v}" lang="${v}">${t}</button>`;
+    return `${efTitel("Sprache")}
+      <div class="eq-wahl" role="group" aria-label="Sprache">${k("en", "English")}${k("de", "Deutsch")}</div>
+      <div class="ef-msg" id="pSpracheMsg" role="status"></div>`;
+  }
+  function spracheVerdrahten(sheet) {
+    sheet.querySelectorAll("[data-sprache]").forEach(b => b.onclick = async () => {
+      const neu = b.dataset.sprache;
+      if (neu === SPRACHE) return;
+      const msg = sheet.querySelector("#pSpracheMsg");
+      sheet.querySelectorAll("[data-sprache]").forEach(x => { x.disabled = true; });
+      try {
+        const { data, error } = await window.sb.rpc("sprache_setzen", { p_sprache: neu });
+        if (error) throw error;
+        if (data !== "ok") throw new Error(String(data));
+        location.reload();
+      } catch (e) {
+        sheet.querySelectorAll("[data-sprache]").forEach(x => { x.disabled = false; });
+        if (msg) { msg.textContent = funktionFehlt(e) ? "Führ dafür 7-region.txt im SQL-Editor aus." : window.fehlerText(e); msg.className = "ef-msg bad"; }
+      }
+    });
+  }
+
+  // ---------- Übersetzer ----------
+  const UEB = { an: false, exakt: null, muster: null, praefix: null };
+  const T_CACHE = new Map();
+  function enLaden() {
+    if (window.ESTRIQ_EN) return Promise.resolve(window.ESTRIQ_EN);
+    return new Promise((fertig) => {
+      const s = document.createElement("script");
+      const app = document.querySelector('script[src*="app.js"]');
+      const v = app && /[?&]v=(\d+)/.exec(app.getAttribute("src") || "");
+      s.src = "./en.js" + (v ? "?v=" + v[1] : "");
+      s.onload = () => fertig(window.ESTRIQ_EN || null);
+      s.onerror = () => fertig(null);
+      document.head.appendChild(s);
+    });
+  }
+  const schluessel = (t) => String(t).replace(/­/g, "").replace(/[\s ]+/g, " ").trim();
+  const HAT_WORT = /[A-Za-zÄÖÜäöüß]/;
+  // Text mit Leerraum am Rand: den Rand behalten, die Mitte übersetzen
+  function mitRand(t, f) {
+    const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(t);
+    return m[1] + f(m[2]) + m[3];
+  }
+  function zeit12(t) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t).trim());
+    if (!m) return t;
+    const h = Number(m[1]);
+    return ((h + 11) % 12 + 1) + ":" + m[2] + (h < 12 ? " AM" : " PM");
+  }
+  function ordnung(t) {
+    const n = Number(String(t).replace(/\D/g, ""));
+    if (!n) return t;
+    const r = n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" })[n % 10] || "th";
+    return n + r;
+  }
+  function einsetzen(ziel, uebersetzt, roh) {
+    return ziel.replace(/\{(\d+)(?:\|([^|}]*)\|([^}]*)|\?([^|}]*)\|([^}]*)|(:t)|(:o))?\}/g, (_, i, eins, mehr, ja, nein, uhr, ord) => {
+      i = Number(i);
+      if (eins !== undefined) {
+        const n = Number(String(roh[i] || "").replace(/[^\d.,]/g, "").replace(",", "."));
+        return n === 1 ? eins : mehr;
+      }
+      if (ja !== undefined) return String(roh[i] || "").trim() ? ja : nein;
+      if (uhr) return zeit12(roh[i]);
+      if (ord) return ordnung(roh[i]);
+      return uebersetzt[i] == null ? "" : uebersetzt[i];
+    });
+  }
+  // Übersetzt ein Stück: genau → Muster mit viel festem Text → Zerlegung in bekannte Stücke → übrige Muster
+  function uebersetze(t, tiefe) {
+    const k = schluessel(t);
+    if (!k || !UEB.exakt) return t;
+    if (Object.prototype.hasOwnProperty.call(UEB.exakt, k)) return UEB.exakt[k];
+    if (tiefe > 2 || !HAT_WORT.test(k)) return t;
+    const muster = (min) => {
+      for (let j = 0; j < UEB.muster.length; j++) {
+        const [re, ziel, fest] = UEB.muster[j];
+        if (fest < min) break;   // nach festem Text absteigend sortiert
+        const m = re.exec(k);
+        if (!m) continue;
+        const roh = m.slice(1);
+        return einsetzen(ziel, roh.map(g => mitRand(g, x => uebersetze(x, tiefe + 1))), roh);
+      }
+      return null;
+    };
+    let r = muster(5);
+    if (r != null) return r;
+    const z = zerlege(k);
+    if (z && z.anteil >= 0.5) return z.text;
+    r = muster(0);
+    if (r != null) return r;
+    return z ? z.text : t;
+  }
+  // Zerlegt einen Text in bekannte Stücke (das längste zuerst). Zahlen, Zeichen und unbekannte Wörter bleiben stehen.
+  const RAND_ZEICHEN = /[\s·–—,;:()\/.!?…"“”„]/;
+  const EIGENNAMEN = new Set(["Premium", "Basic", "ESTRIQ", "Stripe", "English", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+    "Jan", "Feb", "Mar", "Apr", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+  function zerlege(k) {
+    const aus = []; let i = 0, gedeckt = 0, buchstaben = 0, treffer = 0;
+    while (i < k.length) {
+      const rest = k.slice(i);
+      const leer = /^\s+/.exec(rest);
+      if (leer) { aus.push(leer[0]); i += leer[0].length; continue; }
+      const token = /^\S+/.exec(rest)[0];
+      let key = null;
+      for (const kand of (UEB.praefix.get(token.replace(/[.,;:!?)]+$/, "")) || UEB.praefix.get(token) || [])) {
+        if (rest.startsWith(kand) && (rest.length === kand.length || RAND_ZEICHEN.test(rest[kand.length]) || RAND_ZEICHEN.test(kand[kand.length - 1]))) { key = kand; break; }
+      }
+      if (key) {
+        let e = UEB.exakt[key];
+        const davor = aus.join("").replace(/\s+$/, "");
+        if (davor && /[\p{L}\d,%$]$/u.test(davor) && /^\p{Lu}\p{Ll}/u.test(e) && !EIGENNAMEN.has(e.split(" ")[0])) e = e[0].toLowerCase() + e.slice(1);
+        aus.push(e); i += key.length; treffer++;
+        const n = (key.match(/[A-Za-zÄÖÜäöüß]/g) || []).length; gedeckt += n; buchstaben += n;
+        continue;
+      }
+      // Zeichen und Zahlen ohne Buchstaben bleiben, ebenso unbekannte Wörter
+      const w = /^[^\sA-Za-zÄÖÜäöüß]+/.exec(rest) || /^\S+?(?=[,;:()·]|\s|$)/.exec(rest) || [token];
+      aus.push(w[0]); i += w[0].length;
+      buchstaben += (w[0].match(/[A-Za-zÄÖÜäöüß]/g) || []).length;
+    }
+    if (!treffer) return null;
+    return { text: aus.join(""), anteil: buchstaben ? gedeckt / buchstaben : 1 };
+  }
+  // Einheiten und Schreibweisen der Region
+  function regeln(t) {
+    if (istUS()) {
+      t = t.replace(/(−|-)?\s?(\d[\d.,]*)[\s ]?€/g, (_, minus, zahl) => (minus ? "−" : "") + "$" + zahl)
+        .replace(/€/g, "$")
+        .replace(/(\d)[\s ]?m²/g, "$1 sq ft").replace(/m²/g, "sq ft")
+        .replace(/(\d)[\s ]?km\/h/g, "$1 mph");
+    }
+    if (istEN()) t = t.replace(/(\d)[\s\u00A0]%/g, "$1%").replace(/(\d),(\d{1,2})(?![\d,])/g, "$1.$2");
+    return t;
+  }
+  // Übersetzt einen Text. Ohne englische Sprache gelten nur die Regeln der Region.
+  function T(roh) {
+    if (!UEB.an || roh == null) return roh;
+    const s = String(roh);
+    if (!/[A-Za-zÄÖÜäöüß€²%]/.test(s)) return s;
+    const alt = T_CACHE.get(s);
+    if (alt !== undefined) return alt;
+    const aus = mitRand(s, (kern) => {
+      let e = UEB.exakt ? uebersetze(kern, 0) : kern;
+      // Beginnt der deutsche Text groß, beginnt auch der englische groß („Basic wählen" → „Choose Basic")
+      if (e !== kern && /^\p{Lu}/u.test(kern) && /^\p{Ll}/u.test(e) && !(UEB.exakt && Object.prototype.hasOwnProperty.call(UEB.exakt, schluessel(kern)))) e = e[0].toUpperCase() + e.slice(1);
+      return regeln(e);
+    });
+    if (T_CACHE.size > 30000) T_CACHE.clear();
+    T_CACHE.set(s, aus);
+    return aus;
+  }
+  window.eqT = (s) => T(s);
+
+  const UEB_ATTR = ["placeholder", "aria-label", "title", "alt"];
+  const UEB_STOP = "script,style,textarea,#landing,#login,.eq-roh";
+  const UEB_STAND = new WeakMap();   // Textknoten → zuletzt geschriebener Text
+  function textUebersetzen(n) {
+    const p = n.parentElement;
+    if (!p || p.closest(UEB_STOP)) return;
+    const alt = n.data;
+    if (UEB_STAND.get(n) === alt) return;
+    const neu = T(alt);
+    UEB_STAND.set(n, neu);
+    if (neu !== alt) n.data = neu;
+  }
+  const UEB_ATTR_STAND = new WeakMap();   // Element → { Attribut: zuletzt geschriebener Wert }
+  function attributUebersetzen(e, name) {
+    const alt = e.getAttribute(name);
+    if (!alt) return;
+    const stand = UEB_ATTR_STAND.get(e) || {};
+    if (stand[name] === alt) return;
+    const neu = T(alt);
+    stand[name] = neu; UEB_ATTR_STAND.set(e, stand);
+    if (neu !== alt) e.setAttribute(name, neu);
+  }
+  function baumUebersetzen(wurzel) {
+    if (wurzel.nodeType === 3) { textUebersetzen(wurzel); return; }
+    if (wurzel.nodeType !== 1) return;
+    if (wurzel.closest(UEB_STOP)) return;
+    const w = document.createTreeWalker(wurzel, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => n.nodeType === 1 && n.matches(UEB_STOP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+    });
+    let n = wurzel;
+    do {
+      if (n.nodeType === 3) textUebersetzen(n);
+      else UEB_ATTR.forEach(a => { if (n.hasAttribute(a)) attributUebersetzen(n, a); });
+    } while ((n = w.nextNode()));
+  }
+  let uebBeobachter = null;
+  async function uebersetzerStarten() {
+    if (UEB.an) return;
+    if (istEN()) {
+      const d = await enLaden();
+      if (d) {
+        UEB.exakt = d.e;
+        UEB.muster = d.m.map(([quelle, ziel, fest]) => [new RegExp(quelle), ziel, fest || 0]);
+        // Stücke nach dem ersten Wort, längste zuerst – für die Zerlegung
+        UEB.praefix = new Map();
+        Object.keys(d.e).forEach(key => { const w = key.split(" ")[0]; if (!UEB.praefix.has(w)) UEB.praefix.set(w, []); UEB.praefix.get(w).push(key); });
+        UEB.praefix.forEach(l => l.sort((a, b) => b.length - a.length));
+      }
+    }
+    UEB.an = true;
+    T_CACHE.clear();
+    if (istEN()) document.documentElement.lang = "en";
+    document.title = T(document.title);
+    baumUebersetzen(document.body);
+    uebBeobachter = new MutationObserver((liste) => {
+      for (const m of liste) {
+        if (m.type === "childList") m.addedNodes.forEach(baumUebersetzen);
+        else if (m.type === "characterData") textUebersetzen(m.target);
+        else if (m.type === "attributes" && !m.target.closest(UEB_STOP)) attributUebersetzen(m.target, m.attributeName);
+      }
+    });
+    uebBeobachter.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: UEB_ATTR });
+  }
+
+  /* ================= USA: DATEN, REGELN, STEUERÜBERSICHT, RECHNER (Phase 3) ================= */
+  // Alles hier gilt nur für Konten der Region USA. Werte aus Statistik oder Gesetz stehen mit Quelle und Stand da
+  // und bleiben änderbar. Englische Inhalte (Regeln, Schedule E, Artikel) tragen die Klasse eq-roh: Der Übersetzer
+  // lässt sie so, wie sie sind.
+  const US_QUELLEN = {
+    steuer: { name: "Tax Foundation, 2026 state tax data: effective property tax rate on owner-occupied housing value", url: "https://taxfoundation.org/data/all/state/2026-state-tax-data/", stand: "2026" },
+    kaution: { name: "Nolo, State Laws on Security Deposit Limits", url: "https://www.nolo.com/legal-encyclopedia/utah-security-deposits-36235.html", stand: "April 11, 2024" },
+    rueckgabe: { name: "Nolo, State Laws on Deadlines for Returning Security Deposits", url: "https://www.nolo.com/legal-encyclopedia/chart-deadline-returning-security-deposits-29018.html", stand: "November 14, 2023" },
+    kuendigung: { name: "Nolo, State Rules on Notice Required to Change or Terminate a Month-to-Month Tenancy", url: "https://www.nolo.com/legal-encyclopedia/georgia-notice-requirements-terminate-month-month-tenancy.html", stand: "April 25, 2024" },
+    mahnung: { name: "Nolo, State Landlord-Tenant Laws", url: "https://www.nolo.com/legal-encyclopedia/state-landlord-tenant-laws", stand: "" },
+    afa: { name: "IRS Publication 527, Residential Rental Property", url: "https://www.irs.gov/publications/p527", stand: "" },
+    schedule: { name: "IRS Schedule E (Form 1040), Supplemental Income and Loss", url: "https://www.irs.gov/forms-pubs/about-schedule-e-form-1040", stand: "" },
+    pmi: { name: "Consumer Financial Protection Bureau: What is private mortgage insurance?", url: "https://www.consumerfinance.gov/ask-cfpb/what-is-private-mortgage-insurance-en-122/", stand: "" },
+    fmr: { name: "HUD, Fair Market Rents", url: "https://www.huduser.gov/portal/datasets/fmr.html", stand: "" },
+    zins: { name: "Freddie Mac, Primary Mortgage Market Survey (30-year fixed)", url: "https://www.freddiemac.com/pmms", stand: "October 8, 2026" },
+    abschluss: { name: "Freddie Mac, Budgeting for Upfront Homebuying Costs (closing costs 2–5% of the purchase price)", url: "https://myhome.freddiemac.com/blog/homebuying/budgeting-upfront-homebuying-costs", stand: "June 4, 2025" }
+  };
+  // Bundesstaaten: Kürzel, Name, Grundsteuer (effektiver Satz in %, Tax Foundation 2026; DC ohne Wert),
+  // Kaution höchstens, Rückgabe der Kaution, Kündigungsfrist monatlicher Mietverhältnisse (T = Mieter, L = Vermieter).
+  // Die Rechtsangaben sind von Nolo zusammengefasst – Hinweise, keine Rechtsberatung.
+  const US_STAATEN = [
+    ["AL", "Alabama", 0.37, "1 month's rent (exceptions for pets, alterations, higher-liability activities)", "60 days after tenancy ends and possession is delivered", "Tenant 30 days, landlord 30 days"],
+    ["AK", "Alaska", 0.94, "2 months' rent (unless rent exceeds $2,000/month)", "14 days if tenant gave proper notice; 30 days otherwise or if deductions cover damage", "Tenant 30 days, landlord 30 days"],
+    ["AZ", "Arizona", 0.48, "1.5 months' rent", "14 days, excluding weekends and legal holidays", "Tenant 30 days, landlord 30 days"],
+    ["AR", "Arkansas", 0.56, "2 months' rent (small landlords may be exempt)", "60 days", "Tenant 30 days, landlord 30 days"],
+    ["CA", "California", 0.70, "Since July 1, 2024: 1 month's rent for most landlords (2 months for certain small landlords)", "21 days", "30 days in the first year; just cause after 12 months; 30–90 days for rent changes"],
+    ["CO", "Colorado", 0.50, "2 months' rent (plus refundable pet deposit up to $300)", "1 month, or up to 60 days if the lease says so", "21 days (under 12 months); 90 days and just cause after 12 months"],
+    ["CT", "Connecticut", 1.54, "2 months' rent (1 month if tenant is 60 or older)", "21 days, or 15 days after forwarding address if later", "Tenant: none stated; landlord: 3-day notice to quit"],
+    ["DE", "Delaware", 0.54, "1 month's rent for leases of 1 year or more; other rules for month-to-month and furnished units", "20 days", "Tenant 60 days, landlord 60 days"],
+    ["DC", "District of Columbia", null, "1 month's rent", "45 days", "Tenant 30 days; landlord 30–120 days depending on reason"],
+    ["FL", "Florida", 0.78, "No statutory limit", "15 to 60 days, depending on whether deductions are claimed", "Tenant 30 days, landlord 30 days"],
+    ["GA", "Georgia", 0.79, "No statutory limit", "30 days", "Tenant 30 days, landlord 60 days"],
+    ["HI", "Hawaii", 0.29, "1 month's rent", "14 days", "Tenant 28 days, landlord 45 days"],
+    ["ID", "Idaho", 0.50, "No statutory limit", "21 days, or up to 30 days if agreed", "1 month (15–30 days to change terms)"],
+    ["IL", "Illinois", 1.88, "No statutory limit", "30 days; 45 days in some cases with itemized deductions", "Tenant 30 days, landlord 30 days"],
+    ["IN", "Indiana", 0.76, "No statutory limit", "45 days", "1 month"],
+    ["IA", "Iowa", 1.33, "2 months' rent", "30 days", "Tenant 30 days, landlord 30 days"],
+    ["KS", "Kansas", 1.21, "1 month unfurnished, 1.5 months furnished (plus up to 0.5 month for pets)", "14 days after deductions are determined, at most 30 days", "Tenant 30 days, landlord 30 days"],
+    ["KY", "Kentucky", 0.74, "No statutory limit", "30 to 60 days, depending on whether deductions are disputed", "Tenant 30 days, landlord 30 days"],
+    ["LA", "Louisiana", 0.55, "No statutory limit", "1 month", "Tenant 10 days, landlord 10 days"],
+    ["ME", "Maine", 0.98, "2 months' rent", "30 days (written lease) or 21 days (tenancy at will)", "Tenant 30 days, landlord 30 days"],
+    ["MD", "Maryland", 0.92, "2 months' rent", "45 days", "Tenant 30 days, landlord 60 days"],
+    ["MA", "Massachusetts", 1.00, "1 month's rent", "30 days", "Interval between rent payments or 30 days, whichever is longer"],
+    ["MI", "Michigan", 1.19, "1.5 months' rent", "30 days", "1 month"],
+    ["MN", "Minnesota", 1.00, "No statutory limit", "3 weeks after move-out and forwarding address", "Interval between rent due dates or 3 months, whichever is less"],
+    ["MS", "Mississippi", 0.58, "No statutory limit", "45 days", "Tenant 30 days, landlord 30 days"],
+    ["MO", "Missouri", 0.89, "2 months' rent", "30 days", "1 month"],
+    ["MT", "Montana", 0.61, "No statutory limit", "30 days; 10 days if no deductions", "Tenant 30 days, landlord 30 days"],
+    ["NE", "Nebraska", 1.44, "1 month's rent (1.25 months with pets)", "14 days", "Tenant 30 days, landlord 30 days"],
+    ["NV", "Nevada", 0.50, "3 months' rent", "30 days", "30 days (60 days for rent increases)"],
+    ["NH", "New Hampshire", 1.50, "1 month's rent or $100, whichever is greater", "30 days", "30 days; just cause required for landlords"],
+    ["NJ", "New Jersey", 1.88, "1.5 months' rent", "30 days", "1 month; just cause required for landlords"],
+    ["NM", "New Mexico", 0.63, "1 month's rent for leases under 1 year", "30 days", "Tenant 30 days, landlord 30 days"],
+    ["NY", "New York", 1.30, "1 month's rent (outside certain rent-regulated units)", "14 days", "Tenant 1 month; landlord 30–90 days"],
+    ["NC", "North Carolina", 0.66, "1.5 months (month-to-month) or 2 months (longer terms)", "30 days; up to 60 days with an interim accounting", "Tenant 7 days, landlord 7 days"],
+    ["ND", "North Dakota", 0.92, "1 month's rent (plus pet deposit; exceptions)", "30 days", "1 calendar month"],
+    ["OH", "Ohio", 1.36, "No statutory limit", "30 days", "Tenant 30 days, landlord 30 days"],
+    ["OK", "Oklahoma", 0.79, "No statutory limit", "45 days", "Tenant 30 days, landlord 30 days"],
+    ["OR", "Oregon", 0.81, "No statutory limit", "31 days", "Tenant 30 days; landlord 30 days in the first year, 90 days after"],
+    ["PA", "Pennsylvania", 1.26, "2 months' rent in the first year, 1 month afterward", "30 days", "Tenant: none stated; landlord 15 days (10 for nonpayment)"],
+    ["RI", "Rhode Island", 1.19, "1 month's rent (unfurnished)", "20 days", "Tenant 30 days, landlord 30 days"],
+    ["SC", "South Carolina", 0.49, "No statutory limit", "30 days", "Tenant 30 days, landlord 30 days"],
+    ["SD", "South Dakota", 1.00, "1 month's rent (exceptions)", "2 weeks; 45 days for an itemized accounting on request", "Tenant 1 month, landlord 15 days"],
+    ["TN", "Tennessee", 0.52, "No statutory limit", "No fixed deadline; special notice rules apply", "Tenant 30 days, landlord 30 days"],
+    ["TX", "Texas", 1.40, "No statutory limit", "30 days after receiving the tenant's forwarding address", "1 month (unless agreed otherwise)"],
+    ["UT", "Utah", 0.48, "No statutory limit", "30 days", "Tenant: none stated; landlord 15 days"],
+    ["VT", "Vermont", 1.51, "No statutory limit", "14 days (60 days for seasonal rentals)", "Tenant 1 rental period; landlord 30 days"],
+    ["VA", "Virginia", 0.78, "2 months' rent", "45 days", "Tenant 30 days, landlord 30 days"],
+    ["WA", "Washington", 0.75, "No overall cap; installment rules apply", "30 days", "Tenant 20 days before period ends; landlord needs just cause"],
+    ["WV", "West Virginia", 0.51, "No statutory limit", "60 days", "1 month"],
+    ["WI", "Wisconsin", 1.32, "No statutory limit", "21 days", "Tenant 28 days, landlord 28 days"],
+    ["WY", "Wyoming", 0.53, "No statutory limit", "30 days (15 days after forwarding address if later); 30 more days for damage", "None stated"]
+  ];
+  const usStaat = (k) => US_STAATEN.find(x => x[0] === k) || null;
+  const usSteuerVon = (k) => { const z = usStaat(k); return z ? z[2] : null; };
+  const usStaatAuswahl = (leer) => [{ v: "", t: leer || "Bitte wählen" }].concat(US_STAATEN.map(x => ({ v: x[0], t: x[1] })));
+  const usQuelle = (q) => `<a class="eq-quelle" href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.name)}</a>${q.stand ? ", " + esc(q.stand) : ""}`;
+
+  // ---------- HUD Fair Market Rents (Datei us-fmr.js, wird erst bei Bedarf geladen) ----------
+  // Aufbau: window.ESTRIQ_FMR = { jahr, stand, gebiete: { "TX": [[county, gebiet, [0 BR, 1 BR, 2 BR, 3 BR, 4 BR]], …] } }
+  let fmrVersprechen = null;
+  function fmrLaden() {
+    if (window.ESTRIQ_FMR) return Promise.resolve(window.ESTRIQ_FMR);
+    if (fmrVersprechen) return fmrVersprechen;
+    fmrVersprechen = new Promise((fertig) => {
+      const s = document.createElement("script");
+      const app = document.querySelector('script[src*="app.js"]');
+      const v = app && /[?&]v=(\d+)/.exec(app.getAttribute("src") || "");
+      s.src = "./us-fmr.js" + (v ? "?v=" + v[1] : "");
+      s.onload = () => fertig(window.ESTRIQ_FMR || null);
+      s.onerror = () => fertig(null);
+      document.head.appendChild(s);
+    });
+    return fmrVersprechen;
+  }
+  const fmrGebiet = (staat, county) => {
+    const d = window.ESTRIQ_FMR;
+    return d && d.gebiete && (d.gebiete[staat] || []).find(x => x[0] === county) || null;
+  };
+  const SCHLAFZIMMER = ["Studio", "1 bedroom", "2 bedrooms", "3 bedrooms", "4 bedrooms"];
+
+  // ---------- Projekt: laufende Kosten in den USA ----------
+  // Grundsteuer (vom Kaufpreis bzw. Wert), Versicherung, HOA zählen zu den laufenden Kosten (NOI),
+  // PMI zur Finanzierung. Escrow = Steuer + Versicherung, die oft mit der Rate abgebucht werden.
+  function usProjektKosten(plan, KP, INV) {
+    const basis = plan.vorhaben === "sanierung" ? (Number(plan.bestandswert) || INV) : KP;
+    const steuer = (Number(plan.steuer_pct) || 0) * (basis || 0) / 100 / 12;
+    const versicherung = (Number(plan.versicherung_jahr) || 0) / 12;
+    const hoa = Number(plan.hoa_monat) || 0;
+    const pmi = Number(plan.pmi_monat) || 0;
+    return { steuer, versicherung, hoa, pmi, escrow: steuer + versicherung, summe: steuer + versicherung + hoa };
+  }
+
+  // ---------- Mietobjekt: Angaben für die USA (Spalte objekte.us_daten aus 9-usa.txt) ----------
+  const usDaten = (s) => (s && s.usDaten) || {};
+  function usObjektFelder(s) {
+    const d = usDaten(s);
+    return `${efTitel("USA")}
+      ${efSel("Bundesstaat", "us_staat", d.staat || "", usStaatAuswahl(), { hinweis: "Für Grundsteuer und die Regeln zu Kaution und Kündigung." })}
+      ${ef("Grundsteuer im Jahr", "us_grundsteuer", d.grundsteuer_jahr ?? "", "number", { einheit: "$", min: 0, hinweis: "Laut Steuerbescheid deines County." })}
+      ${ef("Versicherung im Jahr", "us_versicherung", d.versicherung_jahr ?? "", "number", { einheit: "$", min: 0, hinweis: "Gebäude- und Haftpflichtversicherung." })}
+      ${ef("HOA im Monat", "us_hoa", d.hoa_monat ?? "", "number", { einheit: "$", min: 0 })}
+      ${ef("Vermietet seit", "us_in_betrieb", d.in_betrieb || "", "date", { hinweis: "Ab diesem Tag wird abgeschrieben (placed in service)." })}
+      ${ef("Anteil Grundstück", "us_grund_pct", d.grund_pct ?? "", "number", { einheit: "%", min: 0, max: 100, hinweis: "Das Grundstück wird nicht abgeschrieben. Oft dient das Verhältnis aus dem Bescheid des County Assessor als Grundlage." })}`;
+  }
+  function usObjektWerte(w) {
+    return { staat: text(w.us_staat), grundsteuer_jahr: zahl(w.us_grundsteuer), versicherung_jahr: zahl(w.us_versicherung),
+      hoa_monat: zahl(w.us_hoa), in_betrieb: text(w.us_in_betrieb), grund_pct: zahl(w.us_grund_pct) };
+  }
+
+  // Abschreibung eines Wohngebäudes: 27,5 Jahre linear, Mid-Month-Konvention (IRS Publication 527)
+  function usAfa(basis, inBetrieb, jahr) {
+    const d = new Date(String(inBetrieb || "") + "T12:00:00");
+    if (!(basis > 0) || isNaN(d)) return null;
+    const jahrBeginn = d.getFullYear(), monat = d.getMonth() + 1;   // 1 … 12
+    const proJahr = basis / 27.5;
+    // Monate im Jahr gemäß Mid-Month-Konvention, über die ganze Dauer verteilt
+    const vorher = jahr < jahrBeginn ? 0 : (jahr === jahrBeginn ? 0 : (12 - monat + 0.5) + (jahr - jahrBeginn - 1) * 12);
+    const imJahr = jahr < jahrBeginn ? 0 : (jahr === jahrBeginn ? 12 - monat + 0.5 : 12);
+    const gesamtMonate = 27.5 * 12;
+    const monate = Math.max(0, Math.min(imJahr, gesamtMonate - vorher));
+    return { jahr: monate * proJahr / 12, proJahr, monate };
+  }
+
+  // Karte auf der Objektseite: Regeln im Bundesstaat und der Weg zur Steuerübersicht
+  function usObjektKarte(s) {
+    if (!istUS() || s.istProjekt) return null;
+    const d = usDaten(s), st = usStaat(d.staat);
+    const karte = el(`<div class="card">
+      <div class="card-h"><div><div class="card-t">USA: Regeln und Steuern</div>
+        <div class="card-s">${st ? esc(st[1]) : "Bundesstaat noch offen"}</div></div>
+        <button type="button" class="add-btn" id="usSched">Schedule E</button></div>
+      <div class="card-b">
+        ${st ? `<div class="eq-kauf eq-roh" lang="en">
+            <div class="kv"><span class="eq-kauf-n">Security deposit limit</span><b class="eq-us-regel">${esc(st[3])}</b></div>
+            <div class="kv"><span class="eq-kauf-n">Return deadline</span><b class="eq-us-regel">${esc(st[4])}</b></div>
+            <div class="kv"><span class="eq-kauf-n">Notice, month-to-month</span><b class="eq-us-regel">${esc(st[5])}</b></div>
+            <div class="kv"><span class="eq-kauf-n">Late fees</span><b class="eq-us-regel">Limits and grace periods differ by state and city.</b></div>
+          </div>
+          <div class="note eq-roh" lang="en" style="margin-top:12px">Summaries for orientation, not legal advice. Laws change and cities can add rules – check the statute before you act. Sources: ${usQuelle(US_QUELLEN.kaution)}; ${usQuelle(US_QUELLEN.rueckgabe)}; ${usQuelle(US_QUELLEN.kuendigung)}; late fees: ${usQuelle(US_QUELLEN.mahnung)}.</div>`
+        : `<div class="eq-leer"><div>Trag den Bundesstaat ein. Dann stehen hier die Regeln zu Kaution und Kündigung.</div>
+            <div><button type="button" class="eq-btn" id="usStaat">Bundesstaat eintragen</button></div></div>`}
+      </div></div>`);
+    karte.querySelector("#usSched").onclick = () => openScheduleE(s);
+    const b = karte.querySelector("#usStaat"); if (b) b.onclick = () => openObjektEdit(s, false);
+    return karte;
+  }
+
+  // Steuerübersicht nach dem Aufbau von Schedule E (Teil I) – zum Ausfüllen mit deinem Steuerberater
+  async function openScheduleE(s, jahrStart) {
+    let jahr = jahrStart || new Date().getFullYear() - 1;
+    const body = `<div class="eq-roh" lang="en" id="seInhalt"><div class="eq-leer">Loading…</div></div>`;
+    const sheet = openSheet("Schedule E", s.name, body);
+    const ort = sheet.querySelector("#seInhalt");
+    const zeichne = async () => {
+      ort.innerHTML = `<div class="eq-leer">Loading…</div>`;
+      const z = await scheduleEZahlen(s, jahr);
+      if (!ort.isConnected) return;
+      const zeile = (nr, l, v, zus) => `<div class="kv"><span class="eq-kauf-n">${nr ? "Line " + nr + " · " : ""}${esc(l)}${zus ? `<small>${esc(zus)}</small>` : ""}</span><b>${v == null ? "—" : eur(v)}</b></div>`;
+      ort.innerHTML = `
+        <div class="nk-jahr">
+          <button type="button" class="cal-btn" id="sePrev" aria-label="Previous year">‹</button>
+          <span>Tax year <b>${jahr}</b></span>
+          <button type="button" class="cal-btn" id="seNext" aria-label="Next year">›</button>
+        </div>
+        <div class="eq-kauf">
+          ${zeile(3, "Rents received", z.miete, z.mieteQuelle)}
+          ${zeile(7, "Cleaning and maintenance", z.pflege, "time tracking, hours paid in " + jahr)}
+          ${zeile(9, "Insurance", z.versicherung, z.versicherung == null ? "enter it under Edit property" : "")}
+          ${zeile(12, "Mortgage interest paid to banks", z.zins, "from your loans' amortization schedules")}
+          ${zeile(14, "Repairs", z.reparatur, "time tracking marked “Repairs and maintenance”, paid in " + jahr)}
+          ${zeile(16, "Taxes", z.steuer, z.steuer == null ? "enter property tax under Edit property" : "property tax")}
+          ${zeile(18, "Depreciation expense", z.afa, z.afaText)}
+          ${zeile(19, "Other: HOA dues", z.hoa, "")}
+          <div class="kv eq-summe"><span>Line 20 · Total expenses (entered lines)</span><b>${eur(z.summe)}</b></div>
+          <div class="kv eq-summe"><span>Line 21 · Income or (loss)</span><b>${eur(z.miete - z.summe)}</b></div>
+        </div>
+        ${z.handwerker > 0 ? `<div class="eq-zustand achtung" style="margin-top:14px"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Contractor invoices paid in ${jahr}: ${eur(z.handwerker)}</div>
+          <div class="eq-zustand-d">Not included above. Repairs go on line 14; improvements are usually depreciated instead. Decide with your tax advisor.</div></div></div>` : ""}
+        <div class="eq-zeit-fuss"><button type="button" class="add-btn" id="seCsv">Download as CSV</button></div>
+        <div class="note" style="margin-top:12px">A worksheet that follows the layout of ${usQuelle(US_QUELLEN.schedule)}, Part I. It is not tax advice and not a tax form. Depreciation: 27.5 years straight-line with the mid-month convention for residential rental buildings, land excluded – see ${usQuelle(US_QUELLEN.afa)}. Check every number with your tax advisor.</div>`;
+      ort.querySelector("#sePrev").onclick = () => { jahr--; zeichne(); };
+      ort.querySelector("#seNext").onclick = () => { jahr++; zeichne(); };
+      ort.querySelector("#seCsv").onclick = () => {
+        const z2 = [["Line", "Item", "Amount (USD)", "Note"],
+          ["3", "Rents received", z.miete, z.mieteQuelle], ["7", "Cleaning and maintenance", z.pflege, "time tracking, paid in " + jahr], ["9", "Insurance", z.versicherung ?? "", ""],
+          ["12", "Mortgage interest paid to banks", z.zins, ""], ["14", "Repairs", z.reparatur, "time tracking, paid in " + jahr], ["16", "Taxes", z.steuer ?? "", "property tax"],
+          ["18", "Depreciation expense", z.afa ?? "", z.afaText], ["19", "Other: HOA dues", z.hoa, ""], ["20", "Total expenses", z.summe, ""], ["21", "Income or (loss)", z.miete - z.summe, ""],
+          ["", "Contractor invoices paid (not included)", z.handwerker, "repair or improvement – decide with your tax advisor"]];
+        const zelle = (v) => { const t = typeof v === "number" ? (Math.round(v * 100) / 100).toFixed(2) : String(v == null ? "" : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+        const csv = "﻿" + z2.map(r => r.map(zelle).join(",")).join("\r\n") + "\r\n";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        a.download = "estriq-schedule-e-" + (s.id || "property") + "-" + jahr + ".csv";
+        document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+      };
+    };
+    zeichne();
+  }
+  // Zahlen für Schedule E. Fehlt eine Angabe, steht null (die Zeile bleibt leer statt geschätzt).
+  async function scheduleEZahlen(s, jahr) {
+    const d = usDaten(s), einheiten = s.einheiten || [];
+    // Zeile 3: bestätigte Mieteingänge des Jahres; ohne sie die vereinbarte Miete der vermieteten Einheiten als Schätzung
+    let miete = 0, mieteQuelle = "confirmed rent payments";
+    try {
+      const ids = einheiten.map(u => u._id).filter(Boolean);
+      const { data, error } = ids.length ? await window.sb.from("mietzahlungen").select("*").in("einheit_id", ids).eq("jahr", jahr) : { data: [], error: null };
+      if (error) throw error;
+      const eing = (data || []).filter(z => z.status === "eingegangen");
+      if (eing.length) miete = eing.reduce((a, z) => {
+        const u = einheiten.find(x => x._id === z.einheit_id);
+        return a + (z.betrag != null ? Number(z.betrag) || 0 : (u ? FE.unitIncome(u).gesamt : 0));
+      }, 0);
+      else { miete = einheiten.filter(u => u.status === "vermietet").reduce((a, u) => a + FE.unitIncome(u).gesamt * 12, 0); mieteQuelle = "estimate: current rent × 12 (no confirmed payments for this year)"; }
+    } catch (_) {
+      miete = einheiten.filter(u => u.status === "vermietet").reduce((a, u) => a + FE.unitIncome(u).gesamt * 12, 0); mieteQuelle = "estimate: current rent × 12";
+    }
+    // Zeile 12: Zinsen aus den Tilgungsplänen
+    const zins = FE.creditsOf(s).reduce((a, k) => { const pl = FE.creditPlan(k); return a + (pl ? pl.rows.filter(r => r.monat.slice(0, 4) === String(jahr)).reduce((x, r) => x + r.zins, 0) : 0); }, 0);
+    // Zeilen 7 und 14: Zeiterfassung, gezählt im Jahr der Bezahlung (wie bei der üblichen Steuer nach Zahlungsfluss)
+    let pflege = 0, reparatur = 0;
+    try {
+      const z = await ladeZeiten(s._id);
+      (z && z.eintraege || []).filter(e => e.bezahlt_am && String(e.bezahlt_am).slice(0, 4) === String(jahr)).forEach(e => {
+        if (e.taetigkeit === "reparatur") reparatur += zeitKosten(e); else pflege += zeitKosten(e);
+      });
+    } catch (_) {}
+    // Handwerker: bezahlte Rechnungen des Jahres (nicht eingerechnet)
+    const gIds = (D.gewerke || []).filter(g => g.objekt_id === s._id).map(g => g.id);
+    const handwerker = (D.rechnungen || []).filter(r => gIds.includes(r.gewerk_id) && r.bezahlt && String(r.datum || "").slice(0, 4) === String(jahr)).reduce((a, r) => a + (Number(r.betrag) || 0), 0);
+    // Zeile 18: Abschreibung aus Investition, Anteil Grundstück und Datum
+    const basis = s.invest && d.grund_pct != null ? s.invest * (1 - Number(d.grund_pct) / 100) : null;
+    const af = basis ? usAfa(basis, d.in_betrieb, jahr) : null;
+    const afaText = !s.invest ? "enter the investment amount" : d.grund_pct == null ? "enter the land share under Edit property" : !d.in_betrieb ? "enter “rented since” under Edit property"
+      : "basis " + eur(basis) + " (investment minus " + zahlKurz(d.grund_pct) + "% land) ÷ 27.5 years";
+    const versicherung = d.versicherung_jahr != null ? Number(d.versicherung_jahr) : null;
+    const steuer = d.grundsteuer_jahr != null ? Number(d.grundsteuer_jahr) : null;
+    const hoa = (Number(d.hoa_monat) || 0) * 12;
+    const afa = af ? af.jahr : null;
+    const summe = pflege + (versicherung || 0) + zins + reparatur + (steuer || 0) + (afa || 0) + hoa;
+    return { miete, mieteQuelle, pflege, versicherung, zins, reparatur, steuer, afa, afaText, hoa, summe, handwerker };
+  }
+
+  // Hinweis im Fenster einer Einheit: Kaution im Bundesstaat
+  function usKautionHinweis(s) {
+    if (!istUS()) return null;
+    const st = usStaat(usDaten(s).staat);
+    if (!st) return null;
+    return el(`<div class="note eq-roh" lang="en" style="margin-top:14px"><b>${esc(st[1])}:</b> deposit limit ${esc(st[3].replace(/^./, c => c.toLowerCase()))}; return within ${esc(st[4].replace(/^./, c => c.toLowerCase()))}. Orientation only – ${usQuelle(US_QUELLEN.kaution)}.</div>`);
+  }
+
+  // ---------- Rechner für die USA ----------
+  const annuitaet = (summe, zins, jahre) => { const i = zins / 1200, n = Math.round(jahre * 12); if (!(n > 0) || !(summe > 0)) return 0; return i > 0 ? summe * i / (1 - Math.pow(1 + i, -n)) : summe / n; };
+  const US_RECHNER = [
+    {
+      id: "us-hypothek", titel: "Hypothekenrechner (PITI)", icon: "bank", kat: "finanzierung",
+      kurz: "Was kostet dich das Haus im Monat – mit Steuer, Versicherung, HOA und PMI?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "$", wert: 350000 },
+        { id: "anzahlung", label: "Anzahlung", einheit: "%", wert: 20 },
+        { id: "zins", label: "Zinssatz", einheit: "% p. a.", wert: US_VORGABE.zins, hinweis: "Durchschnitt laut Freddie Mac, Stand 8.10.2026. Nimm den Zins deiner Bank." },
+        { id: "laufzeit", label: "Laufzeit", einheit: "Jahre", wert: 30 },
+        { id: "staat", label: "Bundesstaat", wert: "TX", hinweis: "Belegt die Grundsteuer vor (Tax Foundation 2026).",
+          auswahl: () => usStaatAuswahl().filter(x => x.v === "" || usSteuerVon(x.v) != null).map(x => x.v ? { v: x.v, t: x.t + " · " + prozent(usSteuerVon(x.v), 2) } : x),
+          setzt: { feld: "steuer", wert: (k) => usSteuerVon(k) } },
+        { id: "steuer", label: "Grundsteuer", einheit: "% p. a.", wert: 1.40 },
+        { id: "versicherung", label: "Versicherung im Jahr", einheit: "$", wert: 0, hinweis: "Aus deinem Angebot." },
+        { id: "hoa", label: "HOA im Monat", einheit: "$", wert: 0 },
+        { id: "pmi", label: "PMI im Monat", einheit: "$", wert: 0, hinweis: "Meist nötig bei weniger als 20 % Anzahlung. Der Betrag steht im Loan Estimate." }
+      ],
+      rechne: (w) => {
+        const darlehen = w.kaufpreis * (1 - w.anzahlung / 100);
+        const pi = annuitaet(darlehen, w.zins, w.laufzeit);
+        const steuer = w.kaufpreis * w.steuer / 100 / 12, vers = w.versicherung / 12;
+        const piti = pi + steuer + vers + w.hoa + w.pmi;
+        const zinsen = pi * Math.round(w.laufzeit * 12) - darlehen;
+        return {
+          zeilen: [
+            { l: "Darlehen", v: eur(darlehen) },
+            { l: "Zins und Tilgung", v: eur2(pi) },
+            { l: "+ Grundsteuer", v: eur2(steuer) },
+            { l: "+ Versicherung", v: eur2(vers) },
+            { l: "+ HOA", v: eur2(w.hoa) },
+            { l: "+ PMI", v: eur2(w.pmi) },
+            { l: "Im Monat zusammen", v: eur2(piti), gross: true },
+            { l: "Zinsen über die ganze Laufzeit", v: eur(zinsen) }
+          ],
+          fazit: w.anzahlung < 20 && !(w.pmi > 0)
+            ? "Bei weniger als 20 % Anzahlung verlangt die Bank meist eine PMI. Trag den Betrag aus dem Loan Estimate ein."
+            : "Steuer und Versicherung zahlst du oft über ein Escrow-Konto mit der Rate."
+        };
+      }
+    },
+    {
+      id: "us-refinanz", titel: "Umschuldung (Refinance)", icon: "debt", kat: "finanzierung",
+      kurz: "Ab wann lohnt sich ein neuer Kredit zu einem niedrigeren Zins?",
+      felder: [
+        { id: "rest", label: "Restschuld heute", einheit: "$", wert: 250000 },
+        { id: "zinsAlt", label: "Bisheriger Zins", einheit: "% p. a.", wert: 7.25 },
+        { id: "jahreAlt", label: "Restlaufzeit bisher", einheit: "Jahre", wert: 28 },
+        { id: "zinsNeu", label: "Neuer Zins", einheit: "% p. a.", wert: 6.25 },
+        { id: "jahreNeu", label: "Laufzeit neu", einheit: "Jahre", wert: 30 },
+        { id: "kosten", label: "Kosten der Umschuldung", einheit: "$", wert: 5000, hinweis: "Closing Costs des neuen Kredits." }
+      ],
+      rechne: (w) => {
+        const alt = annuitaet(w.rest, w.zinsAlt, w.jahreAlt), neu = annuitaet(w.rest, w.zinsNeu, w.jahreNeu);
+        const spar = alt - neu, monate = spar > 0 ? Math.ceil(w.kosten / spar) : null;
+        const zinsAlt = alt * Math.round(w.jahreAlt * 12) - w.rest, zinsNeu = neu * Math.round(w.jahreNeu * 12) - w.rest;
+        return {
+          zeilen: [
+            { l: "Rate bisher", v: eur2(alt) },
+            { l: "Rate neu", v: eur2(neu) },
+            { l: "Ersparnis im Monat", v: eur2(spar), gross: true },
+            { l: "Kosten eingespielt nach", v: monate ? rcDauer(monate) : "—", gross: true },
+            { l: "Zinsen bisher bis zum Ende", v: eur(zinsAlt) },
+            { l: "Zinsen neu bis zum Ende", v: eur(zinsNeu) }
+          ],
+          fazit: !monate ? "Die neue Rate ist nicht niedriger. So lohnt sich die Umschuldung nicht."
+            : w.jahreNeu > w.jahreAlt ? "Achtung: Die längere Laufzeit senkt die Rate, kann aber insgesamt mehr Zinsen kosten. Vergleiche beide Summen."
+            : "Bleibst du länger als bis zum Ausgleich im Objekt, rechnet sich der Wechsel."
+        };
+      }
+    },
+    {
+      id: "us-caprate", titel: "Cap-Rate-Rechner", icon: "trend", kat: "kauf",
+      kurz: "Was wirft das Objekt ohne Kredit ab – im Verhältnis zum Preis?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "$", wert: 300000 },
+        { id: "miete", label: "Miete im Monat", einheit: "$", wert: 2400 },
+        { id: "leerstand", label: "Leerstand", einheit: "%", wert: 5 },
+        { id: "kosten", label: "Laufende Kosten im Jahr", einheit: "$", wert: 9000, hinweis: "Grundsteuer, Versicherung, Instandhaltung, Verwaltung, HOA – ohne Kreditrate." }
+      ],
+      rechne: (w) => {
+        const brutto = w.miete * 12, effektiv = brutto * (1 - w.leerstand / 100), noi = effektiv - w.kosten;
+        const cap = w.kaufpreis > 0 ? noi / w.kaufpreis * 100 : 0;
+        return {
+          zeilen: [
+            { l: "Mieteinnahmen im Jahr", v: eur(brutto) },
+            { l: "− Leerstand", v: "− " + eur(brutto - effektiv) },
+            { l: "− Laufende Kosten", v: "− " + eur(w.kosten) },
+            { l: "NOI", v: eur(noi), gross: true },
+            { l: "Cap Rate", v: prozent2(cap), gross: true }
+          ],
+          fazit: "Vergleiche die Cap Rate nur mit ähnlichen Objekten in derselben Gegend. Die Finanzierung zählt hier nicht."
+        };
+      }
+    },
+    {
+      id: "us-coc", titel: "Cash-on-Cash-Rechner", icon: "wallet", kat: "kauf",
+      kurz: "Was bringt dein eingesetztes Geld im Jahr – nach der Kreditrate?",
+      felder: [
+        { id: "eingesetzt", label: "Eingesetztes Geld", einheit: "$", wert: 75000, hinweis: "Anzahlung, Closing Costs und Sanierung aus eigener Tasche." },
+        { id: "miete", label: "Miete im Monat", einheit: "$", wert: 2400 },
+        { id: "kosten", label: "Laufende Kosten im Monat", einheit: "$", wert: 750 },
+        { id: "rate", label: "Kreditrate im Monat", einheit: "$", wert: 1450 }
+      ],
+      rechne: (w) => {
+        const cf = w.miete - w.kosten - w.rate, coc = w.eingesetzt > 0 ? cf * 12 / w.eingesetzt * 100 : 0;
+        return {
+          zeilen: [
+            { l: "Cashflow im Monat", v: eur2(cf) },
+            { l: "Cashflow im Jahr", v: eur(cf * 12) },
+            { l: "Cash-on-Cash", v: prozent2(coc), gross: true }
+          ],
+          fazit: cf < 0 ? "Negativer Cashflow: Du legst jeden Monat " + eur(-cf) + " drauf." : "Die Tilgung ist hier nicht eingerechnet – sie erhöht dein Vermögen zusätzlich."
+        };
+      }
+    },
+    {
+      id: "us-brrrr", titel: "BRRRR-Rechner", icon: "layers", kat: "kauf",
+      kurz: "Kaufen, sanieren, vermieten, neu finanzieren: Wie viel Geld bleibt im Objekt?",
+      felder: [
+        { id: "kaufpreis", label: "Kaufpreis", einheit: "$", wert: 150000 },
+        { id: "sanierung", label: "Sanierung", einheit: "$", wert: 40000 },
+        { id: "abschluss", label: "Closing Costs beim Kauf", einheit: "$", wert: 6000 },
+        { id: "arv", label: "Wert nach der Sanierung (ARV)", einheit: "$", wert: 260000 },
+        { id: "ltv", label: "Beleihung beim Refinance", einheit: "% des ARV", wert: 75 },
+        { id: "zins", label: "Zinssatz neu", einheit: "% p. a.", wert: 7 },
+        { id: "laufzeit", label: "Laufzeit neu", einheit: "Jahre", wert: 30 },
+        { id: "miete", label: "Miete im Monat", einheit: "$", wert: 2000 },
+        { id: "kosten", label: "Laufende Kosten im Monat", einheit: "$", wert: 600 }
+      ],
+      rechne: (w) => {
+        const eingesetzt = w.kaufpreis + w.sanierung + w.abschluss, kredit = w.arv * w.ltv / 100;
+        const bleibt = eingesetzt - kredit, rate = annuitaet(kredit, w.zins, w.laufzeit), cf = w.miete - w.kosten - rate;
+        return {
+          zeilen: [
+            { l: "Eingesetzt (Kauf, Sanierung, Closing Costs)", v: eur(eingesetzt) },
+            { l: "Neuer Kredit", v: eur(kredit) },
+            { l: bleibt > 0 ? "Bleibt im Objekt" : "Kommt heraus", v: eur(Math.abs(bleibt)), gross: true },
+            { l: "Rate neu", v: eur2(rate) },
+            { l: "Cashflow im Monat", v: eur2(cf), gross: true },
+            { l: "Cash-on-Cash", v: bleibt > 0 ? prozent2(cf * 12 / bleibt * 100) : "—" }
+          ],
+          fazit: bleibt <= 0 ? "Du bekommst dein ganzes Geld zurück. Prüf, ob der Cashflow die höhere Rate trägt."
+            : "Je weniger Geld im Objekt bleibt, desto höher die Rendite auf dein Geld – aber auch der Kredit."
+        };
+      }
+    }
+  ];
+
+  // ---------- Lernecke für die USA (englisch, mit Quellen, ohne erfundene Zahlen) ----------
+  const US_WISSEN = [
+    { id: "us-kennzahlen", kat: "kauf", icon: "chart", roh: true, rechner: ["us-caprate", "us-coc"],
+      titel: "Cap rate, cash-on-cash and DSCR", kurz: "Three numbers, three questions – and why you need all of them.",
+      inhalt: `<p><b>Cap rate</b> answers: what does the property earn without a loan? It is net operating income (NOI) – rent minus vacancy and operating costs such as property tax, insurance, maintenance, management and HOA – divided by the purchase price.</p>
+        <p><b>Cash-on-cash</b> answers: what does my own money earn? It is the cash flow after the mortgage payment over a year, divided by the cash you put in (down payment, closing costs, renovation).</p>
+        <p><b>DSCR</b> (debt service coverage ratio) answers: can the rent carry the loan? It is NOI divided by the annual loan payments. Below 1.00, NOI doesn’t cover the payments. Lenders set their own minimums – ask yours.</p>
+        <p>Cap rate compares properties regardless of financing. Cash-on-cash and DSCR show what your financing does to the deal. ESTRIQ shows all three on every project.</p>` },
+    { id: "us-piti", kat: "finanzierung", icon: "bank", roh: true, rechner: ["us-hypothek"],
+      titel: "PITI and escrow", kurz: "What your monthly housing payment really includes.",
+      inhalt: `<p><b>PITI</b> stands for principal, interest, taxes and insurance. Principal and interest go to the lender. Property tax and homeowners insurance are often collected with the payment and held in an <b>escrow account</b>, from which the servicer pays the bills.</p>
+        <p>With a conventional loan and less than 20% down, lenders usually require <b>private mortgage insurance (PMI)</b>. It protects the lender, not you, and can typically be removed once you have enough equity – see the <a href="${US_QUELLEN.pmi.url}" target="_blank" rel="noopener">CFPB explanation</a>.</p>
+        <p>HOA dues are usually paid separately. Your Loan Estimate lists every part – use those numbers in ESTRIQ.</p>` },
+    { id: "us-1prozent", kat: "kauf", icon: "trend", roh: true, rechner: ["us-caprate"],
+      titel: "The 1% rule", kurz: "A quick screen, not a verdict.",
+      inhalt: `<p>The 1% rule says: monthly rent should be at least 1% of the purchase price. A $200,000 house would need $2,000 in monthly rent.</p>
+        <p>It is a fast way to sort listings. It ignores property tax, insurance, HOA, repairs, vacancy and the interest rate – which differ a lot between states and cities. A property can pass the rule and still lose money, or fail it and still work.</p>
+        <p>ESTRIQ uses the rule only as one point in the rating. The cash flow after all costs decides.</p>` },
+    { id: "us-afa", kat: "kauf", icon: "beleg", roh: true,
+      titel: "Depreciation: 27.5 years", kurz: "How the IRS lets you write off a rental building.",
+      inhalt: `<p>For residential rental property, the IRS lets you recover the cost of the <b>building</b> over <b>27.5 years</b> using the straight-line method and the mid-month convention. <b>Land is never depreciated</b>, so you split the purchase price between land and building – for example in the ratio of your county’s assessed values.</p>
+        <p>Depreciation starts when the property is <b>placed in service</b> – ready and available for rent. Capital improvements are depreciated separately; repairs are usually deducted in the year you pay them.</p>
+        <p>When you sell, depreciation you took (or could have taken) can be taxed. Details are in <a href="${US_QUELLEN.afa.url}" target="_blank" rel="noopener">IRS Publication 527</a>. ESTRIQ’s Schedule E worksheet calculates the yearly amount from your entries – it is not tax advice.</p>` },
+    { id: "us-kaution", kat: "betrieb", icon: "key", roh: true,
+      titel: "Deposits, notice and late fees", kurz: "Every state has its own rules – here is where to look.",
+      inhalt: `<p>Security deposit limits, the deadline to return a deposit, the notice needed to end a month-to-month tenancy and the rules for late fees are set by state law, and some cities add their own.</p>
+        <p>On each property page, ESTRIQ shows a short summary for the property’s state, based on <a href="${US_QUELLEN.kaution.url}" target="_blank" rel="noopener">Nolo’s state charts</a> with their dates. Use it as a starting point, then check the statute or a local attorney before you act – laws change.</p>` },
+    { id: "us-brrrr-wissen", kat: "kauf", icon: "layers", roh: true, rechner: ["us-brrrr"],
+      titel: "BRRRR in plain words", kurz: "Buy, rehab, rent, refinance, repeat.",
+      inhalt: `<p>You buy a property below its potential value, renovate it, rent it out and then refinance based on the higher after-repair value (ARV). The new loan pays back part or all of the cash you put in, which you use for the next property.</p>
+        <p>The risks: renovation costs and time run over, the appraisal comes in lower than planned, or rates are higher at refinance. The calculator shows how much cash stays in the deal and whether the rent still carries the bigger loan.</p>` },
+    { id: "us-fmr", kat: "betrieb", icon: "home", roh: true,
+      titel: "HUD Fair Market Rents", kurz: "What the government’s rent benchmark tells you – and what it doesn’t.",
+      inhalt: `<p>HUD publishes Fair Market Rents (FMRs) every fiscal year, starting October 1, for each metro area and non-metro county and for units from studio to four bedrooms. They are used for Housing Choice Vouchers.</p>
+        <p>FMRs are <b>gross rents</b> – rent plus utilities – for standard-quality units, generally set at the 40th percentile of recent movers’ rents. A renovated unit in a good neighborhood often rents above FMR; a unit without utilities included should be compared with that in mind.</p>
+        <p>Source and data: <a href="${US_QUELLEN.fmr.url}" target="_blank" rel="noopener">HUD User, Fair Market Rents</a>.</p>` }
+  ];
+  const US_THEMEN = { kauf: ["us-kennzahlen", "us-1prozent", "us-brrrr-wissen", "us-afa"], finanzierung: ["us-piti"], betrieb: ["us-kaution", "us-fmr"], vermoegen: [] };
+  const US_FOLGE = { kauf: ["rendite", "cashflow", "us-caprate", "us-coc", "us-brrrr"], finanzierung: ["us-hypothek", "kredit", "us-refinanz", "budget", "angebote"] };
+
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
   // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
@@ -8002,8 +8862,8 @@
 
   const zahlOder = (v, vorgabe) => { const n = Number(v); return v === null || v === undefined || v === "" || !isFinite(n) ? vorgabe : n; };
   const rund2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-  const prozent2 = (n) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + " %";
-  const zahl2 = (n) => echtMinus((Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const prozent2 = (n) => echtMinus((Number(n) || 0).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + " %";
+  const zahl2 = (n) => echtMinus((Number(n) || 0).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
   // Planungsdaten mit allen Vorgaben. Die Grunderwerbsteuer kommt aus dem Bundesland, solange sie nicht eigens gesetzt ist.
   function planVon(p) {
@@ -8011,12 +8871,19 @@
     const plan = { ...roh };
     plan.kaufpreis = zahlOder(roh.kaufpreis, null);
     plan.grest_pct = zahlOder(roh.grest_pct, zahlOder(grestVon(roh.bundesland), 0));
-    plan.notar_pct = zahlOder(roh.notar_pct, 2);
-    plan.makler_pct = zahlOder(roh.makler_pct, 3.57);
+    plan.notar_pct = zahlOder(roh.notar_pct, istUS() ? US_VORGABE.abschluss : 2);
+    plan.makler_pct = zahlOder(roh.makler_pct, istUS() ? 0 : 3.57);
     plan.kaufkosten_sonst = zahlOder(roh.kaufkosten_sonst, 0);
     plan.sanierung = zahlOder(roh.sanierung, 0);
     plan.sanierung_auto = !!roh.sanierung_auto;
-    plan.instand_m2 = zahlOder(roh.instand_m2, 1);
+    plan.instand_m2 = zahlOder(roh.instand_m2, istUS() ? US_VORGABE.instand_sqft : 1);
+    if (istUS()) {
+      // Grundsteuer: ohne eigene Angabe der Satz des Bundesstaats (Tax Foundation 2026)
+      plan.steuer_pct = zahlOder(roh.steuer_pct, zahlOder(usSteuerVon(roh.us_state), 0));
+      plan.versicherung_jahr = zahlOder(roh.versicherung_jahr, null);
+      plan.hoa_monat = zahlOder(roh.hoa_monat, 0);
+      plan.pmi_monat = zahlOder(roh.pmi_monat, 0);
+    }
     plan.verwaltung_einheit = zahlOder(roh.verwaltung_einheit, 25);
     plan.kosten_sonst = zahlOder(roh.kosten_sonst, 0);
     plan.ausfall_pct = zahlOder(roh.ausfall_pct, 3);
@@ -8051,15 +8918,17 @@
     const RATE = kredite.reduce((a, k) => a + (Number(k.abtragMonat) || 0), 0) + (fall.rateZusatz || 0);
     const EK = Math.max(0, INV - DAR);
     const instand = plan.instand_m2 * F, verwaltung = plan.verwaltung_einheit * N, ausfall = KM * plan.ausfall_pct / 100;
-    const BK = instand + verwaltung + plan.kosten_sonst + ausfall;
-    const cashflow = KM - BK - RATE;
+    // USA: Grundsteuer, Versicherung und HOA zählen zu den laufenden Kosten, PMI zur Finanzierung
+    const usKosten = istUS() ? usProjektKosten(plan, KP, INV) : null;
+    const BK = instand + verwaltung + plan.kosten_sonst + ausfall + (usKosten ? usKosten.summe : 0);
+    const cashflow = KM - BK - RATE - (usKosten ? usKosten.pmi : 0);
     const tilgung1 = kredite.reduce((a, k) => {
       const pl = FE.creditPlan(k);
       return a + (pl ? pl.rows.slice(0, 12).reduce((x, r) => x + r.tilgung, 0) : 0);
     }, 0);
     return {
       plan, KP, grest, notar, makler, KNK, SAN, angebote, INV, KM, kmVoll, F, N, DAR, RATE, EK,
-      instand, verwaltung, ausfall, BK, cashflow, tilgung1,
+      instand, verwaltung, ausfall, BK, cashflow, tilgung1, usKosten,
       zuVielFinanziert: DAR > INV + 0.005,
       hoechsterZins: kredite.reduce((a, k) => Math.max(a, Number(k.zinsPa) || 0), 0),
       kredite: kredite.length,
@@ -8235,7 +9104,7 @@
   // Einheiten, Finanzierung, Handwerker und Nebenkosten sind die Bausteine der Objektseite – sie bekommen das
   // Projekt mit und entscheiden über das Kennzeichen istProjekt, was anders heißt.
 
-  const zahlKurz = (n) => (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  const zahlKurz = (n) => (Number(n) || 0).toLocaleString(LOC, { maximumFractionDigits: 2 });
 
   // Kopf: Rückweg zu den Tools, Status zum Antippen, Hauptknopf und Menü
   function projektKopf(p, z) {
@@ -8318,6 +9187,19 @@
   }
 
   // Neun Kennzahlen in fester Reihenfolge. Jede hat ihr Erklärfenster.
+  // Kennzahlen, wie US-Vermieter sie kennen. Sie kommen zu den bestehenden dazu und ändern keine Rechnung.
+  function usKennzahlen(z) {
+    if (!(z.KM > 0)) return { noi: null, capRate: null, dscr: null, breakEven: null };
+    const noi = (z.KM - z.BK) * 12;
+    const basis = z.bestand ? z.INV : z.KP;
+    const pmi = z.usKosten ? z.usKosten.pmi : 0;
+    return {
+      noi,
+      capRate: basis > 0 ? noi / basis * 100 : null,
+      dscr: z.RATE + pmi > 0 ? noi / ((z.RATE + pmi) * 12) : null,
+      breakEven: (z.BK - z.ausfall + z.RATE + pmi) / z.KM * 100
+    };
+  }
   function projektKennzahlen(p, z) {
     const u = projektUrteil(z);
     const oder = (ok, text) => ok ? text : "—";
@@ -8337,6 +9219,14 @@
         : kpiCard("home", oder(z.kpM2 != null, eur2(z.kpM2)), "Kaufpreis je m²", z.F ? "bei " + qm(z.F) : "noch ohne Fläche", false, null, "preism2"),
       kpiCard("home", oder(z.kmM2 != null && z.KM > 0, eur2(z.kmM2)), "Kaltmiete je m²", "im Monat", false, null, z.bestand ? "sanierungm2" : "preism2")
     ];
+    if (istUS()) {
+      const us = usKennzahlen(z);
+      karten.push(
+        kpiCard("coins", oder(us.noi != null, eur(us.noi)), "NOI", "im Jahr, vor Kreditraten", false, null, "noi"),
+        kpiCard("trend", oder(us.capRate != null, prozent2(us.capRate)), "Cap Rate", z.bestand ? "NOI ÷ Gesamtinvestition" : "NOI ÷ Kaufpreis", false, null, "caprate"),
+        kpiCard("bank", oder(us.dscr != null, zahl2(us.dscr)), "DSCR", us.dscr != null ? "NOI ÷ Kreditraten im Jahr" : "ohne Kredit keine Zahl", false, null, "dscr"),
+        kpiCard("chart", oder(us.breakEven != null, prozent(us.breakEven, 0)), "Break-even-Quote", "Kosten und Raten ÷ Miete", false, null, "breakeven"));
+    }
     return el(`<div class="grid g-kpi eq-kpi-plan">${karten.join("")}</div>`);
   }
 
@@ -8349,11 +9239,15 @@
   }
 
   // Verweise zu Rechnern, vorbelegt mit den Werten des Projekts. liste = [{ text, id, start }]
+  const verfuegbar = (liste) => liste.filter(x => RECHNER.some(r => r.id === x.id));
   function rechnerVerweise(liste) {
+    liste = verfuegbar(liste);
+    if (!liste.length) return "";
     return `<div class="eq-verweise"><span>Im Rechner weiterrechnen</span>${liste.map((x, i) =>
       `<button type="button" class="eq-verweis" data-rv="${i}">${esc(x.text)}</button>`).join("")}</div>`;
   }
   function rechnerVerweiseBinden(wurzel, liste) {
+    liste = verfuegbar(liste);
     wurzel.querySelectorAll("[data-rv]").forEach(b => b.onclick = (e) => {
       e.stopPropagation();
       const x = liste[Number(b.dataset.rv)];
@@ -8435,8 +9329,13 @@
           <div class="kv"><span class="eq-kauf-n">Verwaltung<small>Annahme: ${zahlKurz(plan.verwaltung_einheit)} € je Einheit</small></span><b>${eur2(z.verwaltung)}</b></div>
           <div class="kv"><span class="eq-kauf-n">Weitere Kosten<small>fester Betrag</small></span><b>${eur2(plan.kosten_sonst)}</b></div>
           <div class="kv"><span class="eq-kauf-n">Mietausfall<small>Annahme: ${prozent(plan.ausfall_pct, null)} der Kaltmiete</small></span><b>${eur2(z.ausfall)}</b></div>
+          ${z.usKosten ? `<div class="kv"><span class="eq-kauf-n">Grundsteuer<small>${prozent(plan.steuer_pct, 2)} ${z.bestand ? "vom Wert" : "vom Kaufpreis"} im Jahr${p.planRoh && p.planRoh.steuer_pct != null ? "" : usStaat(plan.us_state) ? " · Durchschnitt " + esc(usStaat(plan.us_state)[1]) : " · noch offen"}</small></span><b>${eur2(z.usKosten.steuer)}</b></div>
+          <div class="kv${plan.versicherung_jahr == null ? " muted" : ""}"><span class="eq-kauf-n">Versicherung<small>${plan.versicherung_jahr == null ? "noch offen" : eur(plan.versicherung_jahr) + " im Jahr"}</small></span><b>${plan.versicherung_jahr == null ? "—" : eur2(z.usKosten.versicherung)}</b></div>
+          <div class="kv"><span class="eq-kauf-n">HOA</span><b>${eur2(z.usKosten.hoa)}</b></div>` : ""}
           <div class="kv eq-summe"><span>Laufende Kosten im Monat</span><b>${eur2(z.BK)}</b></div>
+          ${z.usKosten && z.usKosten.pmi > 0 ? `<div class="kv"><span class="eq-kauf-n">Dazu PMI<small>zählt zur Finanzierung, nicht zum NOI</small></span><b>${eur2(z.usKosten.pmi)}</b></div>` : ""}
         </div>
+        ${z.usKosten && z.usKosten.escrow > 0 ? `<div class="note" style="margin-top:12px">Steuer und Versicherung: ${eur2(z.usKosten.escrow)} im Monat – oft zahlst du sie über ein Escrow-Konto mit der Rate.</div>` : ""}
         <div class="note" style="margin-top:12px">Das sind Annahmen. Ändere sie, sobald du genauere Zahlen kennst.</div>
       </div></div>`);
     karte.querySelector("#pKosten").onclick = () => openKostenEdit(p);
@@ -8782,7 +9681,7 @@
 
   // Zinsbindung je Darlehen: eigener Wert (Planungsdaten zinsbindung[Kennung des Kredits]), sonst der Wert aus dem
   // Ablauf (zinsbindung_jahre), sonst die Annahme von 10 Jahren. Dazu die Restschuld am Ende der Bindung.
-  const ZINSBINDUNG_ANNAHME = 10;
+  let ZINSBINDUNG_ANNAHME = 10;   // in den USA 30 (regionUSA)
   function zinsbindungVon(p) {
     const roh = (p && p.planRoh) || {}, karte = roh.zinsbindung || {};
     const vorgabe = Number(roh.zinsbindung_jahre) > 0 ? Number(roh.zinsbindung_jahre) : null;
@@ -8928,7 +9827,7 @@
   const BEWERTUNG_SKALA = { kritisch: [0.03, 0.22], achtung: [0.25, 0.46], mittel: [0.48, 0.70], gut: [0.72, 0.97] };
   const k01 = (x) => isFinite(x) ? Math.max(0, Math.min(1, x)) : (x > 0 ? 1 : 0.5);
   const bewertungStelle = (x) => { const b = BEWERTUNG_SKALA[x.stufe]; return b ? b[0] + (b[1] - b[0]) * k01(x.t == null ? 0.5 : x.t) : null; };
-  const einKomma = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const einKomma = (n) => (Number(n) || 0).toLocaleString(LOC, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   // Die Bewertung im Einzelnen: jeder Punkt mit Stufe, Wort und einem Satz. Faustregeln sind als solche benannt.
   // Punkte, die noch Angaben brauchen, tragen tun und tunText – damit kommt man direkt zum passenden Fenster.
@@ -8957,7 +9856,12 @@
         punkt("preis", "Investition und Miete", z.rueckfluss <= 15 ? "gut" : z.rueckfluss <= 22 ? "mittel" : "achtung", f, "Wert des Hauses eintragen", () => openKaufdaten(p)).t = z.rueckfluss <= 15 ? (15 - z.rueckfluss) / 10 : z.rueckfluss <= 22 ? (22 - z.rueckfluss) / 7 : 1 - (z.rueckfluss - 22) / 10;
       }
     } else if (z.faktor == null) punkt("preis", "Kaufpreis und Miete", "offen", braucht);
-    else {
+    else if (istUS()) {
+      const quote = 100 / (12 * z.faktor), f = "Die Miete im Monat ist " + prozent2(quote) + " des Kaufpreises. Faustregel (1-%-Regel): ";
+      if (quote >= 1) punkt("preis", "Kaufpreis und Miete", "gut", f + "Ab 1 % gilt der Preis als günstig.").t = Math.min(1, (quote - 1) / 0.5);
+      else if (quote >= 0.7) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen 0,7 und 1 % ist üblich.").t = (quote - 0.7) / 0.3;
+      else punkt("preis", "Kaufpreis und Miete", "achtung", f + "Unter 0,7 % ist teuer – ein positiver Cashflow wird schwer.").t = Math.max(0, quote / 0.7);
+    } else {
       const f = "Der Kaufpreis ist das " + einKomma(z.faktor) + "-Fache der Jahreskaltmiete. Faustregel: ";
       if (z.faktor <= 22) punkt("preis", "Kaufpreis und Miete", "gut", f + "Bis zum 22-Fachen gilt als günstig.").t = (22 - z.faktor) / 10;
       else if (z.faktor <= 28) punkt("preis", "Kaufpreis und Miete", "mittel", f + "Zwischen dem 22- und dem 28-Fachen ist üblich.").t = (28 - z.faktor) / 6;
@@ -8992,11 +9896,29 @@
       else punkt("eigenkapital", "Eigenkapital", "achtung", "Dein Eigenkapital von " + eur(z.EK) + " deckt die Kaufnebenkosten von " + eur(z.KNK) + " nicht. Banken verlangen dafür meist einen höheren Zins.").t = z.EK / (z.KNK / 2);
       const t = z.DAR > 0 ? z.tilgung1 / z.DAR * 100 : 0;
       const ts = "Im ersten Jahr tilgst du " + prozent2(t) + " des Darlehens.";
-      if (t >= 1.5) punkt("tilgung", "Tilgung", "gut", ts).t = (t - 1.5) / 1.5;
+      if (istUS()) {
+        // In den USA zählt die Laufzeit: Eine Hypothek ist üblich in 30 Jahren abbezahlt
+        const jahre = Math.max(...FE.creditsOf(p).map(k => { const pl = FE.creditPlan(k); return pl && pl.monate ? pl.monate / 12 : Infinity; }));
+        const js = isFinite(jahre) ? "Mit diesen Raten ist alles in " + einKomma(jahre) + " Jahren abbezahlt." : "Die Raten decken kaum die Zinsen.";
+        if (jahre <= 30.5) punkt("tilgung", "Tilgung", "gut", js + " Üblich sind 30 Jahre.").t = Math.min(1, (30.5 - jahre) / 15);
+        else if (jahre <= 40) punkt("tilgung", "Tilgung", "mittel", js + " Üblich sind 30 Jahre – länger kostet viel Zins.").t = (40 - jahre) / 9.5;
+        else punkt("tilgung", "Tilgung", "achtung", js + " Prüf Rate und Laufzeit mit deiner Bank.").t = 0.2;
+      }
+      else if (t >= 1.5) punkt("tilgung", "Tilgung", "gut", ts).t = (t - 1.5) / 1.5;
       else if (t >= 1) punkt("tilgung", "Tilgung", "mittel", ts + " Üblich sind etwa 2 % – mit weniger dauert es lange, bis du schuldenfrei bist.").t = (t - 1) / 0.5;
       else punkt("tilgung", "Tilgung", "achtung", ts + " Mit so wenig Tilgung wird der Kredit kaum kleiner.").t = t;
     }
 
+    // USA: Deckt das NOI die Kreditraten? (Faustregel ab 1,25 komfortabel)
+    if (istUS() && !u.offen) {
+      const us = usKennzahlen(z);
+      if (us.dscr != null) {
+        const d = us.dscr, s = "Das NOI deckt die Kreditraten " + zahl2(d) + "-mal (DSCR).";
+        if (d >= 1.25) punkt("dscr", "Schuldendienst", "gut", s + " Ein komfortabler Abstand.").t = Math.min(1, (d - 1.25) / 0.75);
+        else if (d >= 1) punkt("dscr", "Schuldendienst", "mittel", s + " Es reicht, aber mit wenig Puffer.").t = (d - 1) / 0.25;
+        else punkt("dscr", "Schuldendienst", "achtung", s + " Nach den laufenden Kosten trägt die Miete die Raten nicht.").t = Math.max(0, d);
+      }
+    }
     // 6. Stresstest
     if (u.offen) punkt("stress", "Stresstest", "offen", braucht);
     else if (z.cashflow < 0) punkt("stress", "Stresstest", u.stufe === "achtung" ? "achtung" : "kritisch", "Trägt sich schon nach Plan " + (u.stufe === "achtung" ? "knapp " : "") + "nicht – für Überraschungen ist kein Platz.");
@@ -9021,6 +9943,16 @@
       else if (ab > 15) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.").t = (30 - ab) / 15;
       else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.").t = 1;
       else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an der ortsüblichen Miete.").t = 1 - Math.max(0, ab) / 15 * 0.8;
+    } else if (istUS()) {
+      const g = fmrGebiet(roh.us_state, roh.fmr_county), bz = Number(roh.schlafzimmer) >= 0 && Number(roh.schlafzimmer) <= 4 ? Number(roh.schlafzimmer) : 2;
+      if (g && z.N > 0 && g[2][bz] > 0) {
+        const jeEinheit = z.KM / z.N, fmr = g[2][bz], ab = (jeEinheit / fmr - 1) * 100;
+        const s = "Du planst " + eur(jeEinheit) + " je Einheit. Die Fair Market Rent für " + SCHLAFZIMMER_DE[bz] + " in " + g[0] + " liegt bei " + eur(fmr) + " (mit Nebenkosten).";
+        if (ab > 30) punkt("miete", "Miete im Vergleich", "achtung", s + " Das sind " + prozent(ab, 0) + " mehr. Prüf, ob sich diese Miete halten lässt.").t = 1 - (ab - 30) / 30;
+        else if (ab > 15) punkt("miete", "Miete im Vergleich", "mittel", s + " Das sind " + prozent(ab, 0) + " mehr. Das kann passen, wenn Ausstattung und Zustand gut sind.").t = (30 - ab) / 15;
+        else if (ab < -10) punkt("miete", "Miete im Vergleich", "gut", s + " Das sind " + prozent(-ab, 0) + " weniger – hier ist Luft nach oben.").t = 1;
+        else punkt("miete", "Miete im Vergleich", "gut", s + " Deine Planung liegt nah an diesem Wert.").t = 1 - Math.max(0, ab) / 15 * 0.8;
+      } else punkt("miete", "Miete im Vergleich", "offen", "Du planst " + eur2(z.kmM2) + " je m². Trag die ortsübliche Miete ein oder wähl das County für die Fair Market Rent, dann vergleicht ESTRIQ.", "Vergleich einrichten", () => openLageEdit(p));
     } else {
       const ref = mietReferenz(roh)[0], s = "Du planst " + eur2(z.kmM2) + " je m². " + ref.text + ": " + eur2(ref.wert) + ".";
       if (z.kmM2 > ref.wert * 1.75) punkt("miete", "Miete im Vergleich", "achtung", s + " Deine Miete liegt deutlich darüber. Prüf im Mietspiegel, ob sie zum Ort passt.", "Ortsübliche Miete eintragen", () => openLageEdit(p));
@@ -9099,11 +10031,12 @@
     const geplant = z.kmM2 != null && z.KM > 0 ? z.kmM2 : null;
     const land = MIETE_LAND[roh.bundesland] ? bundeslandName(roh.bundesland) : "";
     // Reihen des Vergleichs: erst die eigenen Werte, dann die Statistik
+    const usa = istUS();
     const reihen = [
       geplant != null ? { name: "Deine geplante Miete", wert: geplant, eigen: true } : null,
       eigene ? { name: "Ortsübliche Miete", unter: "deine Angabe", wert: eigene, eigen: true } : null,
-      { name: land ? "Durchschnitt in " + land : "Durchschnitt in Deutschland", wert: land ? MIETE_LAND[roh.bundesland] : MIETE_BUND }
-    ].filter(Boolean).concat(GEMEINDETYP.map(g => ({ name: g[4] + " in Deutschland", unter: typ && typ[0] === g[0] ? "passt zu deinem Objekt" : g[2], wert: g[3], passt: typ && typ[0] === g[0] })));
+      usa ? null : { name: land ? "Durchschnitt in " + land : "Durchschnitt in Deutschland", wert: land ? MIETE_LAND[roh.bundesland] : MIETE_BUND }
+    ].filter(Boolean).concat(usa ? [] : GEMEINDETYP.map(g => ({ name: g[4] + " in Deutschland", unter: typ && typ[0] === g[0] ? "passt zu deinem Objekt" : g[2], wert: g[3], passt: typ && typ[0] === g[0] })));
     const max = Math.max(...reihen.map(r => r.wert), 0.01);
     const vergleich = `<div class="eq-ref" role="group" aria-label="Kaltmiete je Quadratmeter im Vergleich">${reihen.map(r => `<div class="eq-ref-z${r.eigen ? " eq-ref-eigen" : ""}${r.passt ? " eq-ref-passt" : ""}">
         <span class="eq-ref-n">${esc(r.name)}${r.unter ? `<small>${esc(r.unter)}</small>` : ""}</span><b>${eur2(r.wert)}</b>
@@ -9124,11 +10057,12 @@
           <div class="eq-zustand-t">Einfache Lage: lieber vorsichtiger rechnen</div>
           <div class="eq-zustand-d">Du rechnest mit ${esc(prozent(z.plan.ausfall_pct, null))} Mietausfall. In einfachen Lagen stehen Wohnungen eher leer. 5 % sind eine vorsichtigere Annahme.</div></div>
           <button type="button" class="eq-btn" id="pLageAusfall">Mit 5 % rechnen</button></div>` : ""}
-        <div class="card-t eq-zwischen">Kaltmiete je m² im Vergleich</div>
-        ${vergleich}
-        <div class="note" style="margin-top:12px">${geplant == null ? "Trag bei den Einheiten Fläche und Kaltmiete ein, dann steht deine geplante Miete daneben. " : ""}Die Durchschnitte kommen aus der amtlichen Statistik (Zensus und Mikrozensus 2022). ${MIETE_STAND} Den genauen Wert für deine Straße nennt der Mietspiegel deiner Gemeinde.</div>
+        ${usa && !reihen.length ? "" : `<div class="card-t eq-zwischen">Kaltmiete je m² im Vergleich</div>
+        ${vergleich}`}
+        <div class="note" style="margin-top:12px">${geplant == null ? "Trag bei den Einheiten Fläche und Kaltmiete ein, dann steht deine geplante Miete daneben. " : ""}${usa ? "Eine amtliche Statistik je sq ft gibt es für die USA nicht. Trag die ortsübliche Miete ein, wenn du sie kennst – zum Beispiel aus vergleichbaren Inseraten. Je Einheit vergleicht ESTRIQ mit den Fair Market Rents von HUD." : `Die Durchschnitte kommen aus der amtlichen Statistik (Zensus und Mikrozensus 2022). ${MIETE_STAND} Den genauen Wert für deine Straße nennt der Mietspiegel deiner Gemeinde.`}</div>
       </div></div>`);
     karte.querySelector("#pLage").onclick = () => openLageEdit(p);
+    if (usa) usFmrBlock(karte.querySelector(".card-b"), p, z);
     const b = karte.querySelector("#pLageAusfall");
     if (b) b.onclick = async () => {
       if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
@@ -9140,28 +10074,61 @@
     return karte;
   }
 
+  // USA: Fair Market Rents (HUD) für das gewählte County, wenn die Datei us-fmr.js da ist
+  const SCHLAFZIMMER_DE = ["ein Studio", "1 Schlafzimmer", "2 Schlafzimmer", "3 Schlafzimmer", "4 Schlafzimmer"];
+  let fmrNeuGezeichnet = false;
+  function usFmrBlock(wurzel, p, z) {
+    const ort = el(`<div class="eq-us-fmr"></div>`);
+    wurzel.appendChild(ort);
+    const roh = p.planRoh || {};
+    fmrLaden().then(d => {
+      if (!ort.isConnected) return;
+      if (!d) { ort.innerHTML = `<div class="note" style="margin-top:12px">Die Fair Market Rents von HUD sind noch nicht eingespielt.</div>`; return; }
+      // Erst nach dem Laden der Datei kennt die Bewertung die Werte: die Seite einmal neu zeichnen
+      if (!fmrNeuGezeichnet && roh.fmr_county) { fmrNeuGezeichnet = true; setTimeout(() => { if (currentView === projektAnsicht(p)) route(currentView); }, 0); return; }
+      const g = fmrGebiet(roh.us_state, roh.fmr_county), bz = Number(roh.schlafzimmer) >= 0 && Number(roh.schlafzimmer) <= 4 ? Number(roh.schlafzimmer) : 2;
+      if (!g) { ort.innerHTML = `<div class="note" style="margin-top:12px">Wähl unter „Bearbeiten" das County, dann steht hier die Fair Market Rent von HUD.</div>`; return; }
+      const jeEinheit = z.N > 0 && z.KM > 0 ? z.KM / z.N : null;
+      ort.innerHTML = `<div class="card-t eq-zwischen">Fair Market Rent ${esc(String(d.jahr || ""))}</div>
+        <div class="eq-kauf eq-roh" lang="en">${SCHLAFZIMMER.map((n, i) => `<div class="kv${i === bz ? " eq-summe" : ""}"><span class="eq-kauf-n">${esc(n)}${i === bz ? "<small>compared with your plan</small>" : ""}</span><b>${eur(g[2][i])}</b></div>`).join("")}</div>
+        ${jeEinheit != null ? `<div class="note" style="margin-top:8px">Deine geplante Miete: ${eur(jeEinheit)} je Einheit.</div>` : ""}
+        <div class="note eq-roh" lang="en" style="margin-top:8px">${esc(g[1])} · Gross rent (rent plus utilities), generally the 40th percentile, per HUD. Source: ${usQuelle(Object.assign({}, US_QUELLEN.fmr, { stand: d.stand || "" }))}.</div>`;
+    });
+  }
+
   // Fenster: Größe der Gemeinde, die drei Fragen zur Lage und die ortsübliche Miete
   function openLageEdit(p) {
     const roh = p.planRoh || {}, lage = roh.lage || {};
     const wahl = (v) => v === 0 || v === 1 || v === 2 || v === "0" || v === "1" || v === "2" ? String(v) : "";
     const ref = mietReferenz(roh).map(r => r.text + " " + eur2(r.wert)).join(", ");
     const body = `
-      ${efSel("Größe der Gemeinde", "gemeindetyp", roh.gemeindetyp || "",
+      ${istUS() ? "" : efSel("Größe der Gemeinde", "gemeindetyp", roh.gemeindetyp || "",
         [{ v: "", t: "Bitte wählen" }].concat(GEMEINDETYP.map(g => ({ v: g[0], t: g[1] + " · " + g[2] }))),
         { hinweis: "Damit zeigt ESTRIQ die passende Vergleichsmiete." })}
       ${efTitel("Lage")}
       ${LAGE_FRAGEN.map(f => efSel(f.frage, "lage_" + f.id, wahl(lage[f.id]),
         [{ v: "", t: "Bitte wählen" }].concat(f.optionen.map(o => ({ v: String(o[0]), t: o[1] + " – " + o[2] }))),
         { hinweis: f.hinweis })).join("")}
+      ${istUS() ? `${efTitel("Fair Market Rent (HUD)")}<div id="usFmrFelder"></div>` : ""}
       ${efTitel("Vergleichsmiete")}
       ${ef("Ortsübliche Miete", "vergleichsmiete_m2", roh.vergleichsmiete_m2 || "", "number", { einheit: "€ je m²", min: 0, platzhalter: "z. B. 8,50",
-        hinweis: "Aus dem Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + ref + "." })}
+        hinweis: istUS() ? "Zum Beispiel aus vergleichbaren Inseraten oder von einer Hausverwaltung vor Ort." : "Aus dem Mietspiegel deiner Gemeinde. Ohne Angabe vergleicht ESTRIQ mit der Statistik: " + ref + "." })}
       ${efAktionen()}`;
     const sheet = openSheet("Lage und Vergleichsmiete", p.name, body);
+    if (istUS()) fmrLaden().then(d => {
+      const ort = sheet.querySelector("#usFmrFelder");
+      if (!ort || !ort.isConnected) return;
+      const liste = d && d.gebiete && d.gebiete[roh.us_state];
+      if (!roh.us_state) { ort.innerHTML = `<div class="ef-h">Trag zuerst unter „Kaufdaten" den Bundesstaat ein.</div>`; return; }
+      if (!liste) { ort.innerHTML = `<div class="ef-h">Die Fair Market Rents von HUD sind noch nicht eingespielt.</div>`; return; }
+      ort.innerHTML = efSel("County", "fmr_county", roh.fmr_county || "", [{ v: "", t: "Bitte wählen" }].concat(liste.map(x => ({ v: x[0], t: x[0] }))))
+        + efSel("Schlafzimmer je Einheit", "schlafzimmer", String(roh.schlafzimmer != null ? roh.schlafzimmer : 2), [0, 1, 2, 3, 4].map(i => ({ v: String(i), t: i === 0 ? "Studio" : String(i) })),
+          { hinweis: "Damit vergleicht ESTRIQ deine Miete je Einheit mit der Fair Market Rent." });
+    });
     efBind(sheet, async (w) => {
       const neu = { ...lage };
       LAGE_FRAGEN.forEach(f => { const v = w["lage_" + f.id]; if (v === "") delete neu[f.id]; else neu[f.id] = Number(v); });
-      await planSpeichern(p, { gemeindetyp: text(w.gemeindetyp), lage: neu, vergleichsmiete_m2: zahl(w.vergleichsmiete_m2) > 0 ? zahl(w.vergleichsmiete_m2) : null });
+      await planSpeichern(p, { ...(istUS() ? { fmr_county: text(w.fmr_county) || roh.fmr_county || null, schlafzimmer: w.schlafzimmer != null && w.schlafzimmer !== "" ? Number(w.schlafzimmer) : (roh.schlafzimmer ?? null) } : {}), gemeindetyp: istUS() ? (roh.gemeindetyp || null) : text(w.gemeindetyp), lage: neu, vergleichsmiete_m2: zahl(w.vergleichsmiete_m2) > 0 ? zahl(w.vergleichsmiete_m2) : null });
     });
   }
 
@@ -9183,7 +10150,7 @@
       projektKopf(p, z), projektUrteilKarte(p, z), projektKennzahlen(p, z), bewertungKarte(p, z), z.bestand ? investitionKarte(p, z) : kaufKarte(p, z),
       einheitenKarte(p), lageKarte(p, z), finanzierungBereich(p), kostenKarte(p, z),
       (hatModul() || z.plan.sanierung_auto) ? sanierungSchalter(p, z) : null, gewerkeKarte(p),
-      nebenkostenKarte(p), stresstestKarte(p, z), prueflisteKarte(p), notizKarte(p, z)
+      istUS() ? null : nebenkostenKarte(p), stresstestKarte(p, z), prueflisteKarte(p), notizKarte(p, z)
     ];
     teile.forEach(t => (Array.isArray(t) ? t : [t]).forEach(k => { if (k) host.appendChild(k); }));
     // Die gespeicherte Gesamtinvestition folgt der Rechnung (etwa nach einem neuen Angebot)
@@ -9200,12 +10167,12 @@
     const body = `
       ${ef("Kaufpreis", "kaufpreis", plan.kaufpreis != null ? plan.kaufpreis : "", "number", { einheit: "€", min: 0, platzhalter: "z. B. 250000" })}
       ${efTitel("Kaufnebenkosten")}
-      ${efSel("Bundesland", "bundesland", plan.bundesland || "",
+      ${istUS() ? efSel("Bundesstaat", "us_state", plan.us_state || "", usStaatAuswahl(), { hinweis: "Belegt die Grundsteuer vor." }) : efSel("Bundesland", "bundesland", plan.bundesland || "",
         [{ v: "", t: "Bitte wählen" }].concat(GREST.map(x => ({ v: x[0], t: x[1] + " · " + prozent(x[2], 1) }))),
         { hinweis: "Das Bundesland belegt die Grunderwerbsteuer vor. " + GREST_STAND })}
-      ${ef("Grunderwerbsteuer", "grest_pct", plan.grest_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Bleibt änderbar." })}
-      ${ef("Notar und Grundbuch", "notar_pct", plan.notar_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Annahme: 2 %. Die genaue Rechnung kommt vom Notar." })}
-      ${ef("Makler", "makler_pct", plan.makler_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Annahme: 3,57 %. Ohne Makler trägst du 0 ein." })}
+      ${ef("Grunderwerbsteuer", "grest_pct", plan.grest_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: istUS() ? "Hängt vom Bundesstaat und vom Ort ab, oft 0 bis 2 %." : "Bleibt änderbar." })}
+      ${ef("Notar und Grundbuch", "notar_pct", plan.notar_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: istUS() ? "Annahme: " + US_VORGABE.abschluss + " % (Freddie Mac: 2 bis 5 % des Kaufpreises, Stand 4.6.2025). Die genaue Summe steht in deinem Closing Disclosure." : "Annahme: 2 %. Die genaue Rechnung kommt vom Notar." })}
+      ${ef("Makler", "makler_pct", plan.makler_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: istUS() ? "Zahlt meist der Verkäufer. Trag ihn ein, wenn du einen Käufermakler bezahlst." : "Annahme: 3,57 %. Ohne Makler trägst du 0 ein." })}
       ${ef("Weitere Kaufkosten", "kaufkosten_sonst", plan.kaufkosten_sonst || "", "number", { einheit: "€", min: 0, hinweis: "Zum Beispiel Gutachter oder Finanzierungskosten" })}
       ${efTitel("Sanierung")}
       ${auto
@@ -9217,7 +10184,7 @@
     const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
     const lesen = () => {
       const w = efWerte(sheet);
-      const o = { kaufpreis: zahl(w.kaufpreis), bundesland: text(w.bundesland), grest_pct: zahl(w.grest_pct), notar_pct: zahl(w.notar_pct),
+      const o = { kaufpreis: zahl(w.kaufpreis), bundesland: istUS() ? (plan.bundesland || null) : text(w.bundesland), ...(istUS() ? { us_state: text(w.us_state) } : {}), grest_pct: zahl(w.grest_pct), notar_pct: zahl(w.notar_pct),
         makler_pct: zahl(w.makler_pct), kaufkosten_sonst: zahl(w.kaufkosten_sonst) || 0 };
       if (!auto) o.sanierung = zahl(w.sanierung) || 0;
       return o;
@@ -9227,7 +10194,7 @@
       sheet.querySelector("#kdLive").innerHTML = `<span>Gesamtinvestition</span><b>${eur2(n.INV)}</b>
         <small>Kaufpreis ${eur2(n.KP)} + Kaufnebenkosten ${eur2(n.KNK)} + Sanierung ${eur2(n.SAN)}</small>`;
     };
-    feld("bundesland").onchange = () => { const g = grestVon(feld("bundesland").value); if (g != null) feld("grest_pct").value = g; live(); };
+    if (feld("bundesland")) feld("bundesland").onchange = () => { const g = grestVon(feld("bundesland").value); if (g != null) feld("grest_pct").value = g; live(); };
     sheet.querySelectorAll("input[data-f]").forEach(n => n.addEventListener("input", live));
     live();
     efBind(sheet, async () => await planSpeichern(p, lesen()));
@@ -9238,16 +10205,21 @@
     const plan = planVon(p);
     const body = `
       <div class="note" style="margin-bottom:14px">Das sind Annahmen für Kosten, die du nicht auf die Mieter umlegen kannst. Ändere sie, sobald du genauere Zahlen kennst.</div>
-      ${ef("Instandhaltung", "instand_m2", plan.instand_m2, "number", { einheit: "€ je m²", min: 0, hinweis: "Im Monat. Annahme: 1 € je m²" })}
+      ${ef("Instandhaltung", "instand_m2", plan.instand_m2, "number", { einheit: "€ je m²", min: 0, hinweis: istUS() ? "Im Monat. Annahme von ESTRIQ ohne Statistik: 0,09 $ je sq ft" : "Im Monat. Annahme: 1 € je m²" })}
       ${ef("Verwaltung", "verwaltung_einheit", plan.verwaltung_einheit, "number", { einheit: "€ je Einheit", min: 0, hinweis: "Im Monat. Annahme: 25 € je Einheit" })}
       ${ef("Weitere Kosten", "kosten_sonst", plan.kosten_sonst || "", "number", { einheit: "€", min: 0, hinweis: "Im Monat, zum Beispiel Kontoführung" })}
       ${ef("Mietausfall", "ausfall_pct", plan.ausfall_pct, "number", { einheit: "%", min: 0, max: 100, hinweis: "Anteil der Kaltmiete, der im Schnitt ausfällt. Annahme: 3 %" })}
+      ${istUS() ? `${efTitel("USA")}
+      ${ef("Grundsteuer", "steuer_pct", plan.steuer_pct, "number", { step: "0.01", einheit: "% im Jahr", min: 0, max: 20, hinweis: usStaat(plan.us_state) && usSteuerVon(plan.us_state) != null ? "Durchschnitt " + usStaat(plan.us_state)[1] + ": " + prozent(usSteuerVon(plan.us_state), 2) + " (Tax Foundation 2026). Der genaue Betrag steht im Steuerbescheid." : "Laut Steuerbescheid des County." })}
+      ${ef("Versicherung im Jahr", "versicherung_jahr", plan.versicherung_jahr ?? "", "number", { einheit: "€", min: 0, hinweis: "Aus deinem Angebot." })}
+      ${ef("HOA im Monat", "hoa_monat", plan.hoa_monat || "", "number", { einheit: "€", min: 0 })}
+      ${ef("PMI im Monat", "pmi_monat", plan.pmi_monat || "", "number", { einheit: "€", min: 0, hinweis: "Zählt zur Finanzierung. Der Betrag steht im Loan Estimate." })}` : ""}
       ${efAktionen()}`;
     const sheet = openSheet("Laufende Kosten", p.name, body);
-    efBind(sheet, async (w) => await planSpeichern(p, {
+    efBind(sheet, async (w) => await planSpeichern(p, Object.assign({
       instand_m2: zahl(w.instand_m2), verwaltung_einheit: zahl(w.verwaltung_einheit),
       kosten_sonst: zahl(w.kosten_sonst) || 0, ausfall_pct: zahl(w.ausfall_pct)
-    }));
+    }, istUS() ? { steuer_pct: zahl(w.steuer_pct), versicherung_jahr: zahl(w.versicherung_jahr), hoa_monat: zahl(w.hoa_monat) || 0, pmi_monat: zahl(w.pmi_monat) || 0 } : {})));
   }
 
   // Projekt bearbeiten: Name, Ort, Baujahr, Inserat, Notiz. Die Art wird nie mitgeschickt.
@@ -9386,9 +10358,9 @@
     sheet.querySelector("#pVerstanden").onclick = closeSheet;
   }
 
-  function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+  function dateDE(iso) { const d = new Date(iso); return d.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit", year: "numeric" }); }
 
-  function monthYear(key) { const d = new Date(key + "-01"); return d.toLocaleDateString("de-DE", { month: "2-digit", year: "numeric" }); }
+  function monthYear(key) { const d = new Date(key + "-01"); return d.toLocaleDateString(LOC, { month: "2-digit", year: "numeric" }); }
 
   /* ---------- DETAIL-SHEETS ---------- */
   // opt.geradeGeaendert: Das Fenster zeigt den Stand direkt nach „Eingegangen" oder „Zurücknehmen".
@@ -9459,7 +10431,7 @@
       <div class="eq-werte eq-werte-block">
         <div><span>Warmmiete</span><b>${eur(inc.gesamt)}</b></div>
         <div><span>Ertrag${s.nkAlsPuffer ? " ohne Nebenkosten" : ""}</span><b>${eur(ertrag)}</b></div>
-        <div><span>€ / m²</span><b>${proM2.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+        <div><span>€ / m²</span><b>${proM2.toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
         <div><span>Anteil Objekt</span><b>${anteil} %</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Zusammensetzung</div>
@@ -9478,9 +10450,11 @@
       ${kv("Laufzeit", v.laufzeit ? esc(v.laufzeit) : "—", !v.laufzeit)}
       ${kv("Kündigungsfrist", v.kuendigungsfrist ? esc(v.kuendigungsfrist) : "—", !v.kuendigungsfrist)}
       ${v.notiz ? `<div class="note" style="margin-top:14px">${esc(v.notiz)}</div>` : ""}
-      <div class="note" style="margin-top:16px">Vergleich: ${proM2 >= schnitt ? "über" : "unter"} dem Objektschnitt von ${schnitt.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/m².</div>
+      <div class="note" style="margin-top:16px">Vergleich: ${proM2 >= schnitt ? "über" : "unter"} dem Objektschnitt von ${schnitt.toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/m².</div>
       <button class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet((u.wohnung || "Einheit") + (u.flaeche ? " · " + qm(u.flaeche) : ""), s.name, body);
+    const usH = usKautionHinweis(s);
+    if (usH) { const b = sh.querySelector(".sheet-b") || sh; b.insertBefore(usH, b.querySelector(".eq-fuss")); }
     sh.querySelector("#efEdit").onclick = () => openUnitEdit(s, u, false);
     // Mieteingang in einem Schritt bestätigen oder zurücknehmen; danach zeigt das Fenster den neuen Stand
     const mb = sh.querySelector("[data-miete]");
@@ -9539,7 +10513,7 @@
       byYear[y].sonder += r.sonder; byYear[y].rest = r.rest;
     });
     const dieses = String(new Date().getFullYear());
-    const ganz = (n) => Math.round(Number(n) || 0).toLocaleString("de-DE");   // in der Tabelle ohne Euro-Zeichen, damit fünf Spalten aufs Handy passen
+    const ganz = (n) => Math.round(Number(n) || 0).toLocaleString(LOC);   // in der Tabelle ohne Euro-Zeichen, damit fünf Spalten aufs Handy passen
     const mitSonder = p.sonderGesamt > 0;
     const trs = Object.keys(byYear).sort().map(y => {
       const b = byYear[y];
@@ -9595,7 +10569,7 @@
       <div class="card-t" style="font-size:14px;margin:20px 0 10px">Wenn alles vermietet wäre</div>
       ${kv("Ertrag bei Vollvermietung", eur(m.gesamtPotenzial))}
       ${kv("Netto-Cashflow im Monat", eur(m.gesamtPotenzial - m.kreditAbtrag))}
-      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - m.kreditAbtrag) * 12 / s.invest * 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %" : "—")}
+      ${kv("Cashflow-ROI", s.invest ? ((m.gesamtPotenzial - m.kreditAbtrag) * 12 / s.invest * 100).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %" : "—")}
       <div class="note" style="margin-top:14px">Differenz zu heute: ${eur(m.gesamtPotenzial - m.gesamt)}/Monat aus leerstehenden Einheiten.</div>`;
     const sh = openSheet("Netto-Cashflow", s.name, body);
     sh.querySelector("#cfRechner").onclick = () => openRechner("cashflow");
@@ -9624,7 +10598,7 @@
       <div class="eq-werte eq-werte-block">
         <div><span>je Monat</span><b>${eur(m.nkPuffer)}</b></div>
         <div><span>je Jahr</span><b>${eur(jahr)}</b></div>
-        <div><span>je m²</span><b>${(s.einheiten || [])[0] ? ((s.einheiten[0].nkProM2 != null ? s.einheiten[0].nkProM2 : (FE.unitIncome(s.einheiten[0]).nk / (s.einheiten[0].flaeche || 1)))).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} €</b></div>
+        <div><span>je m²</span><b>${(s.einheiten || [])[0] ? ((s.einheiten[0].nkProM2 != null ? s.einheiten[0].nkProM2 : (FE.unitIncome(s.einheiten[0]).nk / (s.einheiten[0].flaeche || 1)))).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} €</b></div>
         <div><span>Einheiten</span><b>${verm.length} vermietet</b></div>
       </div>
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Beitrag je Wohnung</div>
@@ -9662,7 +10636,7 @@
     }));
 
     const trs = monate.map(x => `<tr>
-      <td>${x.d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" })}</td>
+      <td>${x.d.toLocaleDateString(LOC, { month: "short", year: "2-digit" })}</td>
       <td>${x.typen.miete || 0}</td><td>${x.typen.einzug || 0}</td>
       <td>${x.typen.zahlung || 0}</td><td class="hl">${x.anzahl}</td></tr>`).join("");
 
@@ -9796,13 +10770,13 @@
       const quote = c.debtOrig ? (c.paidSoFar / c.debtOrig * 100) : 0;
       const trs = list.map(x => `<tr><td>${esc(x.kr.name || "Kredit")}</td>
         <td>${eur(x.kr.summe)}</td><td>${eur(x.p.restAktuell)}</td>
-        <td>${(x.kr.zinsPa || 0).toLocaleString("de-DE")} %</td>
-        <td class="hl">${x.p.jahre.toLocaleString("de-DE")} J</td></tr>`).join("");
+        <td>${(x.kr.zinsPa || 0).toLocaleString(LOC)} %</td>
+        <td class="hl">${x.p.jahre.toLocaleString(LOC)} J</td></tr>`).join("");
       const body = `
         <div class="eq-werte eq-werte-block">
           <div><span>Restschuld</span><b>${eur(c.debtRest)}</b></div>
           <div><span>getilgt</span><b>${eur(c.paidSoFar)}</b></div>
-          <div><span>davon getilgt</span><b>${quote.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</b></div>
+          <div><span>davon getilgt</span><b>${quote.toLocaleString(LOC, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</b></div>
           <div><span>Rate/Monat</span><b>${eur(c.debtMonth)}</b></div>
         </div>
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Restschuld je Kredit</div>
@@ -9911,15 +10885,17 @@
       ${efTitel("Grunddaten")}
       ${ef("Bezeichnung", "name", kr ? kr.name : (plan ? "Darlehen" : ""), "text", { pflicht: true, platzhalter: "z. B. KfW-Darlehen" })}
       ${ef("Darlehenssumme", "summe", kr ? kr.summe : "", "number", { pflicht: true, einheit: "€", min: 0 })}
-      ${ef("Zinssatz", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true, einheit: "% im Jahr", min: 0, max: 100, platzhalter: plan ? "z. B. 3,5" : "" })}
-      ${plan ? ef("Anfangstilgung", "tilgung_pa", "", "number", { step: "0.001", einheit: "% im Jahr", min: 0, max: 100, platzhalter: "z. B. 2",
+      ${ef("Zinssatz", "zins_pa", kr ? kr.zinsPa : "", "number", { step: "0.001", pflicht: true, einheit: "% im Jahr", min: 0, max: 100, platzhalter: istUS() ? "z. B. " + String(US_VORGABE.zins).replace(".", DEZ()) : plan ? "z. B. 3,5" : "" })}
+      ${istUS() ? ef("Laufzeit", "laufzeit_j", neu ? US_VORGABE.laufzeit : "", "number", { step: "1", einheit: "Jahre", min: 1, max: 50, platzhalter: String(US_VORGABE.laufzeit),
+        hinweis: "Nur eine Rechenhilfe: Aus Summe, Zins und Laufzeit schlägt ESTRIQ die Rate vor. Gespeichert wird die Rate." })
+        : plan ? ef("Anfangstilgung", "tilgung_pa", "", "number", { step: "0.001", einheit: "% im Jahr", min: 0, max: 100, platzhalter: "z. B. 2",
         hinweis: "Nur eine Rechenhilfe: Aus Summe, Zins und Tilgung schlägt ESTRIQ die Rate vor. Gespeichert wird die Rate." }) : ""}
       ${ef("Rate im Monat", "rate_monat", kr ? kr.abtragMonat : "", "number",
         { pflicht: true, einheit: "€", min: 0, hinweis: "Zins und Tilgung zusammen – so, wie die Bank die Rate abbucht" })}
       ${ef("Erste Rate am", "start", kr ? (kr.start || "") : "", "date",
         { hinweis: plan ? "Kannst du leer lassen, solange der Beginn offen ist" : "Ab diesem Monat rechnet ESTRIQ den Tilgungsplan" })}
       ${plan ? ef("Zinsbindung", "zinsbindung_jahre", (kr && zinsbindungVon(s).je[kr._id] && !zinsbindungVon(s).je[kr._id].annahme ? zinsbindungVon(s).je[kr._id].jahre : "") || (neu ? zinsbindungVon(s).vorgabe || "" : ""), "number", { step: "1", einheit: "Jahre", min: 1, max: 40, platzhalter: "10",
-        hinweis: "So lange ist der Zins für dieses Darlehen fest. ESTRIQ zeigt dir, was danach noch offen ist. Ohne Angabe rechnet ESTRIQ mit 10 Jahren." }) : ""}
+        hinweis: "So lange ist der Zins für dieses Darlehen fest. ESTRIQ zeigt dir, was danach noch offen ist. Ohne Angabe rechnet ESTRIQ mit " + ZINSBINDUNG_ANNAHME + " Jahren." }) : ""}
       ${plan ? "" : `${efTitel("Kontostand der Bank")}
       ${ef("Restschuld laut Bank", "rest_stand_betrag", kr && kr.restStand ? kr.restStand.betrag : "", "number",
         { einheit: "€", min: 0, hinweis: "Trägst du sie ein, zeigt ESTRIQ diesen Stand und rechnet von dort weiter. Leer lassen, wenn ESTRIQ selbst rechnen soll." })}
@@ -9934,7 +10910,15 @@
     const sheet = openSheet(neu ? "Neuer Kredit" : "Kredit bearbeiten",
       (neu ? "" : (kr.name + " · ")) + s.name, body);
 
-    if (plan) {
+    if (istUS()) {
+      // Rate eines Annuitätendarlehens aus Summe, Zins und Laufzeit – nur, solange eine Laufzeit im Feld steht
+      const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
+      const vorschlag = () => {
+        const r = rateFuer(zahl(feld("summe").value), zahl(feld("zins_pa").value), zahl(feld("laufzeit_j").value));
+        if (r != null && zahl(feld("zins_pa").value) != null) feld("rate_monat").value = r;
+      };
+      ["summe", "zins_pa", "laufzeit_j"].forEach(n => feld(n).addEventListener("input", vorschlag));
+    } else if (plan) {
       // Rate = Summe × (Zins + Tilgung) ÷ 100 ÷ 12 – nur, solange eine Anfangstilgung im Feld steht
       const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
       const vorschlag = () => {
@@ -10009,6 +10993,7 @@
       ${efArea("Nebenkosten-Arten", "nk_positionen",
         nkPos.map(p => p.titel + " | " + (p.betrag != null ? p.betrag : (p.anteil || 0))).join("\n"),
         { hinweis: "Je Zeile eine Position: Bezeichnung | Betrag pro Monat in €. Beispiel: Grundsteuer | 45" })}
+      ${istUS() && !neu ? usObjektFelder(s) : ""}
       ${efTitel("Intern")}
       ${ef("Kurzname", "slug", s ? s.id : "", "text",
         { hinweis: neu ? "Kannst du leer lassen. ESTRIQ bildet ihn dann aus dem Namen." : "Nur für die App, ohne Leerzeichen, z. B. haus-nord. Im Zweifel so lassen." })}
@@ -10041,6 +11026,10 @@
         else {
           const d = bauen(w);
           await speichereObjekt(s._id, d);
+          if (istUS()) {
+            try { await speichereObjekt(s._id, { us_daten: usObjektWerte(w) }); }
+            catch (e) { if (/us_daten/.test(String((e && (e.message || e.details)) || ""))) throw new Error("Die US-Angaben lassen sich gerade nicht speichern. Bitte melde dich unter info@buecking-immobilien.de."); throw e; }
+          }
           if (d.slug !== s.id && currentView === s.id) { currentView = d.slug; gezeigteAnsicht = d.slug; }
         }
       },
@@ -10486,16 +11475,16 @@
     const kurz = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const zielB = 8326, zielR = 6.11;
     if (kurz) {
-      el1.textContent = zielB.toLocaleString("de-DE") + " €";
-      if (el2) el2.textContent = zielR.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " %";
+      el1.textContent = zielB.toLocaleString(LOC) + " €";
+      if (el2) el2.textContent = zielR.toLocaleString(LOC, { minimumFractionDigits: 2 }) + " %";
       return;
     }
     const start = performance.now(), dauer = 1500;
     const lauf = (t) => {
       const p = Math.min(1, (t - start) / dauer);
       const e = 1 - Math.pow(1 - p, 3);   // weich auslaufend
-      el1.textContent = Math.round(zielB * e).toLocaleString("de-DE") + " €";
-      if (el2) el2.textContent = (zielR * e).toLocaleString("de-DE",
+      el1.textContent = Math.round(zielB * e).toLocaleString(LOC) + " €";
+      if (el2) el2.textContent = (zielR * e).toLocaleString(LOC,
         { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %";
       if (p < 1) requestAnimationFrame(lauf);
     };
