@@ -242,6 +242,40 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
     ["treppenhaus", "Treppenhaus und Gemeinschaftsräume reinigen"], ["muell", "Mülltonnen und Müllplatz"],
     ["neuanlage", "Garten neu anlegen oder umgestalten"], ["reparatur", "Reparatur und Instandhaltung"], ["sonstiges", "Sonstiges"]
   ];
+  var TAETIGKEITEN_EN = { rasen: "Mow the lawn", hecke: "Trim hedges and shrubs", beete: "Tend beds, pull weeds", laub: "Clear leaves", baum: "Prune and care for trees",
+    giessen: "Water plants", wege: "Clean paths, yard and driveway", winter: "Snow removal: plow and salt", treppenhaus: "Clean stairwell and common areas",
+    muell: "Trash cans and trash area", neuanlage: "Plant or redesign the garden", reparatur: "Repairs and maintenance", sonstiges: "Other" };
+  var FEHLER_EN = {
+    zeit_ungueltig: "The end has to be after the start.",
+    pause_ungueltig: "The break is longer than the working time.",
+    tag_ungueltig: "This day is too far in the past or in the future.",
+    taetigkeit_fehlt: "Please choose a task.",
+    text_zu_lang: "The description is too long. Please shorten it a little.",
+    zu_viele: "There have been a lot of entries today already. Please contact the person who sent you the link.",
+    bezahlt: "This entry has already been paid. It can’t be changed anymore.",
+    zu_spaet: "This entry is too old to change here. Please contact the person who sent you the link.",
+    nicht_gefunden: "This entry doesn’t exist anymore."
+  };
+  // Feste Texte der Seite auf Englisch (nur für Konten in den USA)
+  var STATISCH_EN = {
+    "Wird geladen…": "Loading…", "Dieser Link gilt nicht": "This link isn’t valid", "Bitte frag deinen Auftraggeber nach einem neuen Link.": "Please ask the person who sent it for a new link.",
+    "ESTRIQ · Zeiterfassung": "ESTRIQ · Time tracking", "Zeiten für": "Hours for", "Dein Zeitkonto": "Your hours", "Guthaben": "Not yet paid", "Bezahlt": "Paid",
+    "Arbeitstag": "Work day", "Tätigkeit": "Task", "Was hast du gemacht?": "What did you do?", "z. B. Rasen vorne und hinten gemäht": "e.g. mowed front and back lawn",
+    "Ein paar Stichworte reichen.": "A few words are enough.", "Zeit eingeben mit": "Enter time with", "Schieberegler": "Sliders", "Direkteingabe": "Type it in",
+    "Pause": "Break", "Arbeitszeit": "Working time", "Beginn": "Start", "Ende": "End", "Pause in Minuten": "Break in minutes", "Abbrechen": "Cancel",
+    "Zeiten übermitteln": "Submit hours", "Deine letzten Einträge": "Your latest entries", "Tipp: Leg diese Seite auf deinem Startbildschirm ab.": "Tip: Add this page to your home screen.",
+    "Zeiten eintragen": "Log hours"
+  };
+  function englisch() {
+    document.documentElement.lang = "en-US";
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) { var k = n.data.replace(/\s+/g, " ").trim(); if (STATISCH_EN[k]) n.data = n.data.replace(k, STATISCH_EN[k]); }
+    Array.prototype.forEach.call(document.querySelectorAll("[placeholder],[aria-label]"), function (e) {
+      ["placeholder", "aria-label"].forEach(function (a) { var v = e.getAttribute(a); if (v && STATISCH_EN[v]) e.setAttribute(a, STATISCH_EN[v]); });
+    });
+    if (STATISCH_EN[document.title]) document.title = STATISCH_EN[document.title];
+    Array.prototype.forEach.call($("taetigkeit").options, function (o) { if (TAETIGKEITEN_EN[o.value]) o.textContent = TAETIGKEITEN_EN[o.value]; });
+  }
   var FEHLER = {
     zeit_ungueltig: "Das Ende muss nach dem Beginn liegen.",
     pause_ungueltig: "Die Pause ist länger als die Arbeitszeit.",
@@ -255,14 +289,21 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   };
 
   var $ = function (id) { return document.getElementById(id); };
+  var merk0 = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  // Konten in den USA (7-region.txt): Seite auf Englisch, Uhrzeit mit AM/PM, Datum wie in den USA
+  var US = merk0("estriq_zeit_region") === "us";
+  var L = function (de, en) { return US ? en : de; };
+  var LOC = function () { return US ? "en-US" : "de-DE"; };
   var zwei = function (n) { return (n < 10 ? "0" : "") + n; };
   var uhr = function (min) { return zwei(Math.floor(min / 60)) + ":" + zwei(min % 60); };
   var minuten = function (t) { var m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
-  var std = function (min) { return (Math.round(min / 60 * 100) / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Std."; };
+  var std = function (min) { return (Math.round(min / 60 * 100) / 100).toLocaleString(LOC(), { maximumFractionDigits: 2 }) + L(" Std.", " hrs"); };
+  var zeigUhr = function (min) { if (!US) return uhr(min); var h = Math.floor(min / 60) % 24, m = min % 60; return ((h + 11) % 12 + 1) + ":" + zwei(m) + (h < 12 || min >= 1440 ? " AM" : " PM"); };
+  var zeigText = function (t) { var m = minuten(t); return m == null ? String(t || "").slice(0, 5) : zeigUhr(m); };
   var iso = function (d) { return d.getFullYear() + "-" + zwei(d.getMonth() + 1) + "-" + zwei(d.getDate()); };
-  var datum = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); };
-  var tagText = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }); };
-  var artName = function (k) { for (var i = 0; i < TAETIGKEITEN.length; i++) if (TAETIGKEITEN[i][0] === k) return TAETIGKEITEN[i][1]; return k || "Sonstiges"; };
+  var datum = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString(LOC(), { day: "2-digit", month: "2-digit", year: "numeric" }); };
+  var tagText = function (s) { var d = new Date(String(s).slice(0, 10) + "T12:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString(LOC(), { weekday: "short", day: "2-digit", month: "2-digit" }); };
+  var artName = function (k) { for (var i = 0; i < TAETIGKEITEN.length; i++) if (TAETIGKEITEN[i][0] === k) return US ? TAETIGKEITEN_EN[k] : TAETIGKEITEN[i][1]; return k || L("Sonstiges", "Other"); };
   var merk = { lesen: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, setzen: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 
   // Der Schlüssel steht im Link. Er wird gemerkt, falls die Seite später ohne ihn geöffnet wird.
@@ -283,6 +324,7 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   }
   function zeige(welche) { ["laedt", "gesperrt", "seite"].forEach(function (id) { $(id).hidden = id !== welche; }); }
   function sperre(titel, text) { $("gesperrtTitel").textContent = titel; $("gesperrtText").textContent = text; zeige("gesperrt"); }
+  function fehlerText(k) { return (US ? FEHLER_EN : FEHLER)[k]; }
   function sag(text, art) { var m = $("meldung"); m.textContent = text; m.className = "meldung" + (art ? " " + art : ""); }
 
   // ---------- Zeit: zwei Eingabewege, ein Stand ----------
@@ -291,10 +333,10 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   var arbeit = function () { return stand.ende - stand.beginn - stand.pause; };
   var gueltig = function () { return stand.ende > stand.beginn && stand.pause >= 0 && stand.pause < stand.ende - stand.beginn; };
   function zeichneZeit(quelle) {
-    $("zBeginn").textContent = uhr(stand.beginn); $("zEnde").textContent = uhr(stand.ende);
-    $("zPause").textContent = stand.pause + " Min"; $("zStd").textContent = gueltig() ? std(arbeit()) : "—";
+    $("zBeginn").textContent = zeigUhr(stand.beginn); $("zEnde").textContent = zeigUhr(stand.ende);
+    $("zPause").textContent = stand.pause + L(" Min", " min"); $("zStd").textContent = gueltig() ? std(arbeit()) : "—";
     $("zeit").classList.toggle("falsch", !gueltig());
-    $("oBeginn").textContent = uhr(stand.beginn); $("oEnde").textContent = uhr(stand.ende); $("oPause").textContent = stand.pause + " Min";
+    $("oBeginn").textContent = zeigUhr(stand.beginn); $("oEnde").textContent = zeigUhr(stand.ende); $("oPause").textContent = stand.pause + L(" Min", " min");
     if (quelle !== "regler") { $("rBeginn").value = stand.beginn; $("rEnde").value = stand.ende; $("rPause").value = Math.min(180, stand.pause); }
     if (quelle !== "direkt") { $("dBeginn").value = uhr(Math.min(1439, stand.beginn)); $("dEnde").value = uhr(Math.min(1439, stand.ende)); $("dPause").value = stand.pause; }
     merk.setzen("estriq_zeit_v", JSON.stringify(stand));
@@ -325,7 +367,7 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   var letzte = merk.lesen("estriq_zeit_art"); if (letzte && artName(letzte) !== letzte) $("taetigkeit").value = letzte;
   function hinweisBeschreibung() {
     $("beschreibungHinweis").textContent = $("taetigkeit").value === "sonstiges"
-      ? "Bei „Sonstiges“ bitte kurz beschreiben, was du gemacht hast." : "Ein paar Stichworte reichen.";
+      ? L("Bei „Sonstiges“ bitte kurz beschreiben, was du gemacht hast.", "For “Other”, please briefly describe what you did.") : L("Ein paar Stichworte reichen.", "A few words are enough.");
   }
   $("taetigkeit").onchange = function () { hinweisBeschreibung(); sag(""); };
   hinweisBeschreibung();
@@ -334,25 +376,25 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   function knopf(text, klasse) { var b = document.createElement("button"); b.type = "button"; b.className = "klein" + (klasse ? " " + klasse : ""); b.textContent = text; return b; }
   function zeichneListe() {
     var l = $("liste"); l.textContent = "";
-    if (!eintraege.length) { var leer = document.createElement("div"); leer.className = "leer"; leer.textContent = "Noch kein Eintrag. Dein erster erscheint hier, sobald du ihn übermittelt hast."; l.appendChild(leer); return; }
+    if (!eintraege.length) { var leer = document.createElement("div"); leer.className = "leer"; leer.textContent = L("Noch kein Eintrag. Dein erster erscheint hier, sobald du ihn übermittelt hast.", "No entries yet. Your first one appears here once you submit it."); l.appendChild(leer); return; }
     eintraege.forEach(function (e) {
       var z = document.createElement("div"); z.className = "eintrag";
       var links = document.createElement("div"); links.className = "links";
       var n = document.createElement("div"); n.className = "n"; n.textContent = artName(e.taetigkeit); links.appendChild(n);
       var m = document.createElement("div"); m.className = "m";
-      m.textContent = tagText(e.tag) + (e.beginn && e.ende ? " · " + String(e.beginn).slice(0, 5) + "–" + String(e.ende).slice(0, 5) : "") + (Number(e.pause_min) > 0 ? " · " + e.pause_min + " Min Pause" : "");
+      m.textContent = tagText(e.tag) + (e.beginn && e.ende ? " · " + zeigText(e.beginn) + "–" + zeigText(e.ende) : "") + (Number(e.pause_min) > 0 ? " · " + e.pause_min + L(" Min Pause", " min break") : "");
       links.appendChild(m);
       if (e.beschreibung) { var b = document.createElement("div"); b.className = "b"; b.textContent = e.beschreibung; links.appendChild(b); }
       // Ob bezahlt oder offen, steht als Wort da (nur, wenn die Datenbank das Zeitkonto schon kennt)
       if (e.bezahlt_am !== undefined) {
         var st = document.createElement("div"); st.className = "s" + (e.bezahlt_am ? " bezahlt" : "");
-        st.textContent = e.bezahlt_am ? "Bezahlt am " + datum(e.bezahlt_am) : "Noch nicht bezahlt"; links.appendChild(st);
+        st.textContent = e.bezahlt_am ? L("Bezahlt am ", "Paid on ") + datum(e.bezahlt_am) : L("Noch nicht bezahlt", "Not paid yet"); links.appendChild(st);
       }
       var s = document.createElement("div"); s.className = "std"; s.textContent = std(Number(e.minuten) || 0);
       z.appendChild(links); z.appendChild(s);
       if (e.aenderbar && e.id) {
         var k = document.createElement("div"); k.className = "knoepfe";
-        var ae = knopf("Ändern"), lo = knopf("Löschen", "warn");
+        var ae = knopf(L("Ändern", "Edit")), lo = knopf(L("Löschen", "Delete"), "warn");
         ae.onclick = function () { bearbeiten(e); };
         lo.onclick = function () { loeschen(e, lo); };
         k.appendChild(ae); k.appendChild(lo); z.appendChild(k);
@@ -367,11 +409,11 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
     $("konto").hidden = false;
     var offen = Number(k.offen_min) || 0, bezahlt = Number(k.bezahlt_min) || 0, anzahl = Number(k.offen_anzahl) || 0;
     $("kOffen").textContent = std(offen);
-    $("kOffenU").textContent = offen > 0 ? (anzahl === 1 ? "1 Eintrag" : anzahl + " Einträge") + ", noch nicht bezahlt" : "Alles ist bezahlt.";
+    $("kOffenU").textContent = offen > 0 ? (anzahl === 1 ? L("1 Eintrag", "1 entry") : anzahl + L(" Einträge", " entries")) + L(", noch nicht bezahlt", ", not paid yet") : L("Alles ist bezahlt.", "Everything is paid.");
     $("kBezahlt").textContent = std(bezahlt);
-    $("kBezahltU").textContent = k.zuletzt_am ? "zuletzt am " + datum(k.zuletzt_am) + ": " + std(Number(k.zuletzt_min) || 0) : "Noch keine Zahlung gemeldet.";
+    $("kBezahltU").textContent = k.zuletzt_am ? L("zuletzt am ", "last on ") + datum(k.zuletzt_am) + ": " + std(Number(k.zuletzt_min) || 0) : L("Noch keine Zahlung gemeldet.", "No payment recorded yet.");
     $("kJahr").textContent = "";
-    $("kJahr").appendChild(document.createTextNode("Im Jahr " + k.jahr + " eingetragen: "));
+    $("kJahr").appendChild(document.createTextNode(L("Im Jahr " + k.jahr + " eingetragen: ", "Logged in " + k.jahr + ": ")));
     var b = document.createElement("b"); b.textContent = std(Number(k.jahr_min) || 0); $("kJahr").appendChild(b);
   }
 
@@ -387,16 +429,16 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
     stand.beginn = a != null ? a : stand.beginn; stand.ende = b != null ? b : stand.ende; stand.pause = p;
     // Minutengenaue Zeiten passen nicht auf die Schieberegler
     modus(stand.beginn % 15 || stand.ende % 15 || p % 5 || p > 180 ? "direkt" : stand.modus);
-    $("aendertText").textContent = "Du änderst den Eintrag vom " + tagText(e.tag).replace(/\.$/, "") + ".";
+    $("aendertText").textContent = L("Du änderst den Eintrag vom " + tagText(e.tag).replace(/\.$/, "") + ".", "You’re editing the entry from " + tagText(e.tag) + ".");
     $("aendert").hidden = false;
-    $("senden").textContent = "Änderung speichern";
+    $("senden").textContent = L("Änderung speichern", "Save changes");
     sag("");
     $("form").scrollIntoView({ block: "start" });
   }
   function bearbeitenEnde() {
     bearbeite = null;
     $("aendert").hidden = true;
-    $("senden").textContent = "Zeiten übermitteln";
+    $("senden").textContent = L("Zeiten übermitteln", "Submit hours");
     $("tag").value = iso(new Date());
     $("beschreibung").value = "";
     var letzte = merk.lesen("estriq_zeit_art"); if (letzte && artName(letzte) !== letzte) $("taetigkeit").value = letzte;
@@ -408,36 +450,47 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
   // Löschen fragt einmal nach: erst das zweite Tippen löscht.
   function loeschen(e, b) {
     if (b.dataset.sicher !== "1") {
-      b.dataset.sicher = "1"; b.textContent = "Wirklich löschen?";
-      setTimeout(function () { if (b.isConnected && b.dataset.sicher === "1") { b.dataset.sicher = ""; b.textContent = "Löschen"; } }, 4000);
+      b.dataset.sicher = "1"; b.textContent = L("Wirklich löschen?", "Really delete?");
+      setTimeout(function () { if (b.isConnected && b.dataset.sicher === "1") { b.dataset.sicher = ""; b.textContent = L("Löschen", "Delete"); } }, 4000);
       return;
     }
     b.disabled = true;
     rpc("zeit_loeschen", { p_token: token, p_id: e.id }).then(function (antwort) {
       if (bearbeite === e.id) bearbeitenEnde();
-      if (antwort === "ok") { sag("Eintrag gelöscht.", "gut"); return lade(); }
-      sag(FEHLER[antwort] || "Das hat nicht geklappt. Bitte versuch es noch einmal.", "schlecht");
+      if (antwort === "ok") { sag(L("Eintrag gelöscht.", "Entry deleted."), "gut"); return lade(); }
+      sag(fehlerText(antwort) || L("Das hat nicht geklappt. Bitte versuch es noch einmal.", "That didn’t work. Please try again."), "schlecht");
       return lade();
-    }).catch(function () { b.disabled = false; sag("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "schlecht"); });
+    }).catch(function () { b.disabled = false; sag(L("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "No connection. Please check your network and try again."), "schlecht"); });
   }
 
+  // Region des Kontos: einmal je Seitenaufruf gefragt. Fehlt die Funktion (7-region.txt), bleibt alles deutsch.
+  var regionGefragt = false;
+  function region() {
+    if (regionGefragt) return Promise.resolve();
+    regionGefragt = true;
+    return rpc("zeit_link_region", { p_token: token }).then(function (r) {
+      var us = r === "us";
+      merk.setzen("estriq_zeit_region", us ? "us" : "de");
+      if (us && !US) { US = true; englisch(); hinweisBeschreibung(); zeichneZeit(); if (!bearbeite) $("senden").textContent = "Submit hours"; }
+    }).catch(function () {});
+  }
   function lade() {
-    return rpc("zeit_link_laden", { p_token: token }).then(function (d) {
+    return region().then(function () { return rpc("zeit_link_laden", { p_token: token }); }).then(function (d) {
       if (!d || d.status !== "ok") {
-        if (d && d.status === "gesperrt") sperre("Dieser Link ist gesperrt", "Über diesen Link lassen sich keine Zeiten mehr eintragen. Bitte frag deinen Auftraggeber.");
-        else sperre("Dieser Link gilt nicht", "Bitte frag deinen Auftraggeber nach einem neuen Link.");
+        if (d && d.status === "gesperrt") sperre(L("Dieser Link ist gesperrt", "This link is locked"), L("Über diesen Link lassen sich keine Zeiten mehr eintragen. Bitte frag deinen Auftraggeber.", "Hours can no longer be logged with this link. Please ask the person who sent it."));
+        else sperre(L("Dieser Link gilt nicht", "This link isn’t valid"), L("Bitte frag deinen Auftraggeber nach einem neuen Link.", "Please ask the person who sent it for a new link."));
         return false;
       }
-      $("firma").textContent = d.firma || "Zeiterfassung";
+      $("firma").textContent = d.firma || L("Zeiterfassung", "Time tracking");
       $("objekt").textContent = [d.objekt, d.ort].filter(Boolean).join(" · ");
       $("person").textContent = d.name || "";
-      document.title = "Zeiten · " + (d.objekt || "ESTRIQ");
+      document.title = L("Zeiten · ", "Hours · ") + (d.objekt || "ESTRIQ");
       eintraege = d.eintraege || [];
       zeichneListe();
       zeichneKonto(d.konto);
       var frist = Number(d.frist_tage) || 0;
       $("listeHinweis").hidden = !(frist > 0 && eintraege.length);
-      $("listeHinweis").textContent = "Eigene Einträge kannst du " + frist + " Tage lang ändern oder löschen, solange sie nicht bezahlt sind.";
+      $("listeHinweis").textContent = L("Eigene Einträge kannst du " + frist + " Tage lang ändern oder löschen, solange sie nicht bezahlt sind.", "You can edit or delete your own entries for " + frist + " days, as long as they haven’t been paid.");
       zeige("seite");
       return true;
     });
@@ -448,46 +501,47 @@ input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color
     var knopf = $("senden");
     if (knopf.disabled) return;
     var tag = $("tag").value, art = $("taetigkeit").value, text = $("beschreibung").value.trim();
-    if (!tag) { sag("Bitte wähl den Arbeitstag.", "schlecht"); $("tag").focus(); return; }
-    if (!(stand.ende > stand.beginn)) { sag(FEHLER.zeit_ungueltig, "schlecht"); return; }
-    if (!gueltig()) { sag(FEHLER.pause_ungueltig, "schlecht"); return; }
-    if (art === "sonstiges" && !text) { sag("Bitte beschreib kurz, was du gemacht hast.", "schlecht"); $("beschreibung").focus(); return; }
+    if (!tag) { sag(L("Bitte wähl den Arbeitstag.", "Please choose the work day."), "schlecht"); $("tag").focus(); return; }
+    if (!(stand.ende > stand.beginn)) { sag(fehlerText("zeit_ungueltig"), "schlecht"); return; }
+    if (!gueltig()) { sag(fehlerText("pause_ungueltig"), "schlecht"); return; }
+    if (art === "sonstiges" && !text) { sag(L("Bitte beschreib kurz, was du gemacht hast.", "Please briefly describe what you did."), "schlecht"); $("beschreibung").focus(); return; }
     // Schutz vor doppeltem Senden: derselbe Tag mit derselben Zeit steht schon in der Liste
     var kennung = tag + "|" + uhr(stand.beginn) + "|" + uhr(stand.ende);
     var doppelt = eintraege.some(function (e) { return (!bearbeite || e.id !== bearbeite) && String(e.tag).slice(0, 10) === tag && String(e.beginn).slice(0, 5) === uhr(stand.beginn) && String(e.ende).slice(0, 5) === uhr(stand.ende); });
     if (doppelt && doppeltBestaetigt !== kennung) {
       doppeltBestaetigt = kennung;
-      sag("Für diesen Tag gibt es schon einen Eintrag mit genau dieser Zeit. Tipp noch einmal auf den Knopf, wenn du ihn trotzdem senden willst.", "schlecht");
+      sag(L("Für diesen Tag gibt es schon einen Eintrag mit genau dieser Zeit. Tipp noch einmal auf den Knopf, wenn du ihn trotzdem senden willst.", "There’s already an entry for this day with exactly this time. Tap the button again if you want to send it anyway."), "schlecht");
       return;
     }
     var aendern = bearbeite;
-    knopf.disabled = true; knopf.textContent = aendern ? "Wird gespeichert…" : "Wird übermittelt…"; sag("");
-    var fertig = function () { knopf.disabled = false; knopf.textContent = bearbeite ? "Änderung speichern" : "Zeiten übermitteln"; };
+    knopf.disabled = true; knopf.textContent = aendern ? L("Wird gespeichert…", "Saving…") : L("Wird übermittelt…", "Sending…"); sag("");
+    var fertig = function () { knopf.disabled = false; knopf.textContent = bearbeite ? L("Änderung speichern", "Save changes") : L("Zeiten übermitteln", "Submit hours"); };
     var angaben = { p_token: token, p_tag: tag, p_beginn: uhr(Math.min(1439, stand.beginn)), p_ende: stand.ende >= 1440 ? "23:59" : uhr(stand.ende),
       p_pause: stand.pause, p_taetigkeit: art, p_beschreibung: text || null };
     if (aendern) angaben.p_id = aendern;
-    var zeile = tagText(tag) + ", " + uhr(stand.beginn) + "–" + uhr(stand.ende) + ", " + std(arbeit());
+    var zeile = tagText(tag) + ", " + zeigUhr(stand.beginn) + "–" + zeigUhr(stand.ende) + ", " + std(arbeit());
     rpc(aendern ? "zeit_aendern" : "zeit_eintragen", angaben).then(function (antwort) {
       if (antwort === "ok") {
         if (aendern) bearbeitenEnde(); else { merk.setzen("estriq_zeit_art", art); $("beschreibung").value = ""; }
         doppeltBestaetigt = "";
         fertig();
-        sag((aendern ? "Geändert: " : "Gespeichert: ") + zeile, "gut");
+        sag((aendern ? L("Geändert: ", "Changed: ") : L("Gespeichert: ", "Saved: ")) + zeile, "gut");
         return lade();
       }
       // Der Eintrag lässt sich nicht mehr ändern: zurück zum normalen Formular
-      if (aendern && (antwort === "bezahlt" || antwort === "zu_spaet" || antwort === "nicht_gefunden")) { bearbeitenEnde(); fertig(); sag(FEHLER[antwort], "schlecht"); return lade(); }
+      if (aendern && (antwort === "bezahlt" || antwort === "zu_spaet" || antwort === "nicht_gefunden")) { bearbeitenEnde(); fertig(); sag(fehlerText(antwort), "schlecht"); return lade(); }
       fertig();
       if (antwort === "gesperrt" || antwort === "unbekannt") { lade(); return; }
-      sag(FEHLER[antwort] || "Das hat nicht geklappt. Bitte versuch es noch einmal.", "schlecht");
-    }).catch(function () { fertig(); sag("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "schlecht"); });
+      sag(fehlerText(antwort) || L("Das hat nicht geklappt. Bitte versuch es noch einmal.", "That didn’t work. Please try again."), "schlecht");
+    }).catch(function () { fertig(); sag(L("Keine Verbindung. Bitte prüf dein Netz und versuch es noch einmal.", "No connection. Please check your network and try again."), "schlecht"); });
   });
 
   modus(stand.modus);
-  if (!token) { sperre("Hier fehlt der Link", "Öffne bitte den Link, den du von deinem Auftraggeber bekommen hast."); return; }
+  if (US) englisch();
+  if (!token) { sperre(L("Hier fehlt der Link", "The link is missing"), L("Öffne bitte den Link, den du von deinem Auftraggeber bekommen hast.", "Please open the link you received.")); return; }
   lade().catch(function (e) {
-    if (e && e.fehlt) sperre("Noch nicht eingerichtet", "Die Zeiterfassung ist noch nicht eingerichtet. Bitte versuch es später noch einmal.");
-    else sperre("Keine Verbindung", "Die Seite konnte nicht geladen werden. Bitte prüf dein Netz und lade neu.");
+    if (e && e.fehlt) sperre(L("Noch nicht eingerichtet", "Not set up yet"), L("Die Zeiterfassung ist noch nicht eingerichtet. Bitte versuch es später noch einmal.", "Time tracking isn’t set up yet. Please try again later."));
+    else sperre(L("Keine Verbindung", "No connection"), L("Die Seite konnte nicht geladen werden. Bitte prüf dein Netz und lade neu.", "The page couldn’t be loaded. Please check your network and reload."));
   });
 })();
 </script>
