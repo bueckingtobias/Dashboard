@@ -675,6 +675,7 @@
         : `<div class="ef-h" style="margin-top:10px">${esc(chef ? "Den Tarif verwaltet " + chef + "." : "Den Tarif verwaltet der Inhaber des Kontos.")}</div>`}
       ${efTitel("Nutzer")}
       <div class="nu-box" id="pNutzer"></div>
+      <div id="pBetreiber"></div>
       ${efTitel("Konto")}
       <button class="add-btn wide" id="pLogout" style="margin-top:4px">Abmelden</button>
       ${efTitel("Gefahrenzone")}
@@ -685,6 +686,14 @@
       <div class="ef-msg" id="pDelMsg"></div>`;
 
     const sheet = openSheet("Mein Profil", currentUser.email || "", body);
+    istBetreiber().then(ja => {
+      const ort = sheet.querySelector("#pBetreiber");
+      if (!ja || !ort || !ort.isConnected) return;
+      ort.innerHTML = `${efTitel("Betreiber")}
+        <button type="button" class="add-btn wide" id="pWarteliste">Warteliste auswerten</button>
+        <div class="ef-h" style="margin-top:8px">Alle Anmeldungen von der deutschen und der US-Seite. Nur du siehst diesen Bereich.</div>`;
+      ort.querySelector("#pWarteliste").onclick = () => openWarteliste();
+    });
 
     // Tarif-Status anzeigen — bildet den echten (Stripe-)Zustand ab
     const a = abo();
@@ -7811,6 +7820,157 @@
       sag("Übernommen: " + eur2(a.umlKosten) + " umlagefähig" + (a.nichtKosten > 0 ? ", " + eur2(a.nichtKosten) + " nicht umlagefähig" : "") + ". Du findest sie in den Nebenkosten " + a.jahr + ".");
       window.refreshView();
     } catch (e) { knopf.disabled = false; sag(window.fehlerText(e), true); }
+  }
+
+  /* ================= WARTELISTE (nur für den Betreiber) ================= */
+  // Wer in der Tabelle betreiber steht (6-warteliste.txt), sieht im Profil „Warteliste": alle Anmeldungen von der
+  // deutschen und der US-Seite, mit Filter, Kontakt-Vermerk, Notiz, Löschen, Adressen kopieren, E-Mail und CSV.
+  // Für alle anderen gibt es nichts davon – die Datenbank gibt die Liste nur dem Betreiber.
+  let betreiberStatus = null;   // null = noch nicht gefragt
+  async function istBetreiber() {
+    if (betreiberStatus !== null) return betreiberStatus;
+    try {
+      const { data, error } = await window.sb.rpc("ist_betreiber");
+      betreiberStatus = !error && data === true;
+    } catch (_) { betreiberStatus = false; }
+    return betreiberStatus;
+  }
+  // Liest aus Quelle und Notiz, was die Seiten mitschicken:
+  // US: quelle „us" oder „us:partner", notiz „via: hero · plan: Premium · units: 2-4"
+  // Deutsch: quelle „landing" (oder Herkunft), notiz „Interesse: Premium" oder „Eintrag über: Held"
+  function wlEintrag(z) {
+    const q = String(z.quelle || ""), n = String(z.notiz || "");
+    const us = /^us(:|$)/.test(q);
+    const plan = (/(?:plan: |Interesse: )([A-Za-zä]+)/.exec(n) || [])[1] || "";
+    const einheiten = (/units: ([0-9+\-]+)/.exec(n) || [])[1] || "";
+    const ueber = (/(?:via: |Eintrag über: )([^·]+)/.exec(n) || [])[1] || "";
+    return { ...z, us, land: us ? "USA" : "Deutschland", partner: us && q.indexOf(":") > 0 ? q.slice(3) : (!us && q && q !== "landing" ? q : ""),
+      plan: plan === "Unentschieden" ? "" : plan, einheiten: einheiten.replace("-", " bis "), ueber: ueber.trim() };
+  }
+  const WL_FEHLT = "Die Auswertung ist noch nicht eingerichtet. Führ dafür 6-warteliste.txt im SQL-Editor aus.";
+  const wlZeit = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) + ", " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); };
+  const csvFeld = (v) => { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+
+  function openWarteliste(stand) {
+    stand = Object.assign({ land: "alle", offen: false }, stand || {});
+    const sheet = openSheet("Warteliste", "Anmeldungen von estriq.com und estriq.com/us", `<div id="wlBody"><div class="note">Wird geladen…</div></div>`);
+    sheet.querySelector(".sheet").classList.add("eq-breit");
+    const body = sheet.querySelector("#wlBody");
+    let alle = [];
+    async function laden() {
+      const { data, error } = await window.sb.rpc("warteliste_liste");
+      if (error) { body.innerHTML = `<div class="eq-leer">${funktionFehlt(error) ? WL_FEHLT : esc(window.fehlerText(error))}</div>`; return false; }
+      // neueste zuerst – auch wenn die Datenbank einmal anders sortiert
+      alle = (data || []).map(wlEintrag).sort((x, y) => String(y.angelegt || "").localeCompare(String(x.angelegt || "")));
+      return true;
+    }
+    function zeichne() {
+      if (!body.isConnected) return;
+      const imLand = alle.filter(z => stand.land === "alle" || (stand.land === "us") === z.us);
+      const liste = imLand.filter(z => !stand.offen || !z.kontaktiert_am);
+      const woche = Date.now() - 7 * 864e5;
+      const zahl = (f) => imLand.filter(f).length;
+      const chip = (wert, text) => `<button type="button" class="eq-wl-chip" data-wl-land="${wert}" aria-pressed="${stand.land === wert}">${text}</button>`;
+      body.innerHTML = `
+        <div class="eq-wl-filter" role="group" aria-label="Seite">
+          ${chip("alle", "Alle (" + alle.length + ")")}${chip("us", "USA (" + alle.filter(z => z.us).length + ")")}${chip("de", "Deutschland (" + alle.filter(z => !z.us).length + ")")}
+        </div>
+        <div class="opt-row">
+          <div class="opt-tx"><div class="opt-n">Nur noch nicht kontaktiert</div></div>
+          <button type="button" class="opt-schalter" id="wlOffen" role="switch" aria-checked="${stand.offen}" aria-label="Nur noch nicht kontaktiert"><span></span></button>
+        </div>
+        <div class="eq-werte">
+          ${wert("Anmeldungen", String(imLand.length), stand.land === "alle" ? "beide Seiten" : stand.land === "us" ? "US-Seite" : "deutsche Seite")}
+          ${wert("Letzte 7 Tage", String(zahl(z => new Date(z.angelegt) >= woche)), "neu dazugekommen")}
+          ${wert("Noch nicht kontaktiert", String(zahl(z => !z.kontaktiert_am)), "warten auf Antwort")}
+          ${wert("Interesse", zahl(z => z.plan === "Premium") + " Premium · " + zahl(z => z.plan === "Basic") + " Basic", zahl(z => !z.plan) + " ohne Angabe")}
+        </div>
+        ${liste.length ? `<div class="eq-zeit-fuss">
+            <button type="button" class="add-btn" id="wlKopieren">Adressen kopieren (${liste.length})</button>
+            <button type="button" class="add-btn" id="wlMail">E-Mail an alle (BCC)</button>
+            <button type="button" class="add-btn" id="wlCsv">Als CSV herunterladen</button>
+            ${liste.some(z => !z.kontaktiert_am) ? `<button type="button" class="add-btn" id="wlAlleKontakt">Alle als kontaktiert markieren</button>` : ""}
+          </div>
+          <div class="ef-msg" id="wlMsg" role="status"></div>
+          <div class="eq-wl-liste">${liste.map(z => `<div class="eq-wl-z">
+            <div class="eq-wl-tx">
+              <div class="eq-wl-mail">${esc(z.email)}</div>
+              <div class="eq-wl-m">${esc([z.land, wlZeit(z.angelegt), z.plan ? "Interesse " + z.plan : "", z.einheiten ? z.einheiten + " Einheiten" : "", z.partner ? "über " + z.partner : "", z.ueber ? "Formular: " + z.ueber : ""].filter(Boolean).join(" · "))}</div>
+              <div class="eq-wl-s${z.kontaktiert_am ? " gut" : ""}">${z.kontaktiert_am ? "Kontaktiert am " + esc(datumKurz(z.kontaktiert_am)) : "Noch nicht kontaktiert"}</div>
+              ${z.kontakt_notiz ? `<div class="eq-wl-n">${esc(z.kontakt_notiz)}</div>` : ""}
+            </div>
+            <div class="eq-wl-k">
+              <a class="add-btn" href="mailto:${encodeURIComponent(z.email)}">E-Mail</a>
+              <button type="button" class="add-btn" data-wl-kontakt="${esc(z.id)}">${z.kontaktiert_am ? "Zurücksetzen" : "Kontaktiert"}</button>
+              <button type="button" class="add-btn" data-wl-mehr="${esc(z.id)}">Notiz</button>
+            </div></div>`).join("")}</div>`
+          : `<div class="eq-leer" style="padding:20px 8px">${imLand.length ? "Alle in dieser Auswahl sind schon kontaktiert." : "Noch keine Anmeldung."}</div>`}`;
+      const sag = (t, schlecht) => { const m = body.querySelector("#wlMsg"); if (m) { m.textContent = t; m.className = "ef-msg" + (schlecht ? " bad" : ""); } };
+      body.querySelectorAll("[data-wl-land]").forEach(b => b.onclick = () => { stand.land = b.dataset.wlLand; zeichne(); });
+      body.querySelector("#wlOffen").onclick = () => { stand.offen = !stand.offen; zeichne(); };
+      const adressen = liste.map(z => z.email);
+      const kop = body.querySelector("#wlKopieren");
+      if (kop) kop.onclick = async () => sag(await kopiere(adressen.join(", ")) ? adressen.length + " Adressen kopiert." : "Kopieren ist auf diesem Gerät nicht möglich.", false);
+      const mail = body.querySelector("#wlMail");
+      if (mail) mail.onclick = async () => {
+        // Viele Adressen passen nicht in einen E-Mail-Link – dann lieber kopieren
+        const ziel = "mailto:?bcc=" + adressen.map(encodeURIComponent).join(",");
+        if (ziel.length > 1800) { sag(await kopiere(adressen.join(", ")) ? "Zu viele Adressen für einen E-Mail-Link. Die Adressen sind kopiert – füg sie in deinem Mail-Programm unter BCC ein." : "Zu viele Adressen für einen E-Mail-Link.", false); return; }
+        location.href = ziel;
+      };
+      const csv = body.querySelector("#wlCsv");
+      if (csv) csv.onclick = () => {
+        const kopf = ["E-Mail", "Seite", "Angemeldet", "Interesse", "Einheiten", "Partner", "Formular", "Kontaktiert", "Notiz"];
+        const zeilen = liste.map(z => [z.email, z.land, wlZeit(z.angelegt), z.plan, z.einheiten, z.partner, z.ueber, z.kontaktiert_am ? datumKurz(z.kontaktiert_am) : "", z.kontakt_notiz || ""]);
+        const text = "﻿" + [kopf].concat(zeilen).map(r => r.map(csvFeld).join(";")).join("\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+        a.download = "estriq-warteliste-" + heuteIso() + ".csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        sag("CSV mit " + liste.length + " Anmeldungen heruntergeladen.", false);
+      };
+      const markiere = async (ids, ja, knopf) => {
+        if (knopf) knopf.disabled = true;
+        const { error } = await window.sb.rpc("warteliste_kontakt", { p_ids: ids, p_ja: ja });
+        if (error) { if (knopf) knopf.disabled = false; sag(window.fehlerText(error), true); return; }
+        if (await laden()) zeichne();
+      };
+      const alleK = body.querySelector("#wlAlleKontakt");
+      if (alleK) alleK.onclick = () => {
+        if (alleK.dataset.sicher !== "1") { alleK.dataset.sicher = "1"; alleK.textContent = "Wirklich alle " + liste.filter(z => !z.kontaktiert_am).length + " markieren?"; return; }
+        markiere(liste.filter(z => !z.kontaktiert_am).map(z => z.id), true, alleK);
+      };
+      body.querySelectorAll("[data-wl-kontakt]").forEach(b => b.onclick = () => {
+        const z = alle.find(x => String(x.id) === b.dataset.wlKontakt);
+        markiere([z.id], !z.kontaktiert_am, b);
+      });
+      body.querySelectorAll("[data-wl-mehr]").forEach(b => b.onclick = () => openWartelisteEintrag(alle.find(x => String(x.id) === b.dataset.wlMehr), stand));
+    }
+    laden().then(ok => { if (ok) zeichne(); });
+    return sheet;
+  }
+
+  // Notiz zu einer Anmeldung; Löschen, wenn jemand um Löschung seiner Daten bittet
+  function openWartelisteEintrag(z, stand) {
+    const sheet = openSheet("Anmeldung", z.email, `
+      <div class="note" style="margin-bottom:14px">${esc([z.land, wlZeit(z.angelegt), z.plan ? "Interesse " + z.plan : "", z.einheiten ? z.einheiten + " Einheiten" : ""].filter(Boolean).join(" · "))}</div>
+      ${efArea("Notiz", "notiz", z.kontakt_notiz || "", { hinweis: "Nur für dich, zum Beispiel was ihr besprochen habt." })}
+      ${efAktionen({ loeschen: "Anmeldung löschen" })}`);
+    const zurueck = () => openWarteliste(stand);
+    efBind(sheet,
+      async (w) => {
+        const { data, error } = await window.sb.rpc("warteliste_notiz", { p_id: z.id, p_notiz: text(w.notiz) });
+        if (error) throw error;
+        if (data === "zu_lang") throw meldung("Die Notiz ist zu lang (höchstens 1.000 Zeichen).");
+      },
+      async () => {
+        const { error } = await window.sb.rpc("warteliste_loeschen", { p_id: z.id });
+        if (error) throw error;
+      },
+      "Anmeldung wirklich löschen?",
+      () => { zurueck(); showToast("Notiz gespeichert."); },
+      () => { zurueck(); showToast("Anmeldung gelöscht."); });
   }
 
   /* ================= PROJEKTE ================= */
