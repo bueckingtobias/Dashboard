@@ -696,6 +696,17 @@
 /* Das Logo ist weiß – im Schema Weiß umkehren, damit es sichtbar bleibt */
 :root:not(.pre-login)[data-theme="hell"] .eq-logo{filter:invert(1)}
 
+/* ---------- D1 (Design, Fable): Zahlen-Skala, Flächen, Bewegung ----------
+   Die Zahl ist das Produkt: eine Skala nur für Zahlen, tabellarische Ziffern überall,
+   Flächen ohne Rand statt Karten, Bewegung mit festen Zeiten an einer Stelle. */
+:root{
+  --eq-z-held:44px;--eq-z-gross:32px;--eq-z-mittel:22px;--eq-z-klein:17px;
+  --eq-r-flaeche:24px;--eq-flaeche-innen:20px;
+  --eq-mittel:240ms;--eq-zaehlen:640ms;--eq-druck:120ms;
+}
+@media(min-width:900px){:root{--eq-flaeche-innen:28px}}
+@media(min-width:1200px){:root{--eq-z-held:60px}}
+
 /* ---------- Grundregeln der Seite (unverändert – sie gelten auch vor dem Login) ---------- */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* UI-Elemente nicht markierbar (native App-Haptik); Fließtext/Eingaben schon */
@@ -2116,6 +2127,190 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 /* USA (Phase 3): Quellen als Link im Fließtext – Farbe des Textes, unterstrichen */
 .eq-quelle{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere}
 
+/* =====================================================================
+   ESTRIQ Dashboard · Design D1 (Fable, 11.10.2026)
+   Bausteine des Fintech-Stils: Zahlenkopf, Fläche, Druck-Rückmeldung,
+   Hochzählen, Gespeichert-Haken, Segment, Eingabe-Schritt.
+   Regeln: #app oder Dashboard-Klasse, Vorsilbe eq-, Breakpoints 600/900/1200/1600.
+   ===================================================================== */
+
+/* ---------- Zahlen: tabellarische Ziffern, echtes Minus ---------- */
+#app .num,#app .kv b,#app .eq-fakt-w,#app .eq-obj-z b,#app .eq-kredit-zahl,#app .eq-werte b,#app .eq-c-b,#app .mk-soll,
+.sheet .kv b,.sheet .num,.sheet .eq-werte b{font-variant-numeric:tabular-nums}
+
+/* ---------- Fläche: ruhige Zusammenfassung ohne Rand ---------- */
+#app .eq-flaeche,.sheet .eq-flaeche{background:var(--bg2);border:0;border-radius:var(--eq-r-flaeche);padding:var(--eq-flaeche-innen);box-shadow:var(--eq-schatten-1)}
+#app .eq-flaeche>.card-t:first-child,#app .eq-flaeche>.eq-frage-z:first-child{margin-top:0}
+
+/* ---------- Zahlenkopf (Hauptkarte wird Fläche) ---------- */
+#app .card.eq-haupt{background:var(--bg2);border:0;border-radius:var(--eq-r-flaeche);box-shadow:var(--eq-schatten-1)}
+#app .eq-haupt-zeile{text-transform:none;letter-spacing:0;font-size:var(--eq-t-1);font-weight:500;color:var(--softer)}
+#app .eq-haupt-zahl{font-family:var(--eq-f-titel);font-weight:700;font-size:clamp(var(--eq-z-held),14cqi,64px);letter-spacing:-.03em;font-variant-numeric:tabular-nums;position:relative}
+#app .eq-haupt-unter{font-size:var(--eq-t-3);color:var(--soft);margin-top:var(--eq-a2)}
+#app .eq-haupt-unter b{color:var(--text);font-weight:600}
+/* Hochzählen: der echte Text bleibt im Baum (für Suche, Vorlesen, Prüfung), sichtbar läuft ::after mit */
+#app .eq-haupt-zahl.eq-laeuft{color:transparent}
+#app .eq-haupt-zahl.eq-laeuft::after{content:attr(data-eq-lauf);position:absolute;left:0;top:0;color:var(--text);white-space:nowrap}
+#app .eq-haupt-zahl.minus.eq-laeuft::after{color:var(--danger)}
+
+/* ---------- Kennzahlen: Zahl größer als Beschriftung, Beschriftung nicht in Versalien ---------- */
+#app .kpi .num{font-family:var(--fdisp);font-weight:600;letter-spacing:-.02em}
+#app .kpi .lab{text-transform:none;letter-spacing:0;font-size:var(--eq-t-1);font-weight:500;color:var(--softer)}
+
+/* ---------- Druck-Rückmeldung auf allem, was man antippt ---------- */
+#app .card.clickable,#app .eq-objekt,#app .kpi.clickable,#app .eq-fakt-knopf,#app .add-btn,#app .eq-btn,#app .rail button,
+.sheet .ef-save,.sheet .eq-btn,.sheet .add-btn,.sheet .frage-opt,.sheet .eq-wahl-k{transition:transform var(--eq-druck) var(--eq-kurve),background var(--eq-kurz) ease,color var(--eq-kurz) ease,border-color var(--eq-kurz) ease}
+#app .card.clickable:active,#app .eq-objekt:active,#app .kpi.clickable:active,#app .eq-fakt-knopf:active,#app .add-btn:active,#app .eq-btn:active,
+.sheet .ef-save:active,.sheet .eq-btn:active,.sheet .add-btn:active,.sheet .frage-opt:active{transform:scale(.985)}
+
+/* ---------- Gespeichert: der Knopf wird zum Haken ---------- */
+.sheet .ef-save.eq-ok{background:var(--ok);color:var(--on-accent);border-color:var(--ok)}
+.sheet .ef-save.eq-ok::before{content:"✓";display:inline-block;margin-right:8px;font-weight:800;animation:eq-haken var(--eq-lang) var(--eq-kurve)}
+@keyframes eq-haken{from{transform:scale(.4);opacity:0}}
+
+/* ---------- Fenster: schließt am Handy nach unten, am Mac leise ---------- */
+.sheet-bd.eq-zu .sheet{transition:transform var(--eq-kurz) var(--eq-kurve),opacity var(--eq-kurz) ease;opacity:0;transform:translateY(12px) scale(.985)}
+
+/* ---------- Segment (Zeitraum, Ansicht) ---------- */
+#app .eq-segment,.sheet .eq-segment{display:inline-flex;background:var(--bg2);border-radius:12px;padding:3px;box-shadow:var(--eq-schatten-1)}
+#app .eq-segment button,.sheet .eq-segment button{min-height:38px;min-width:72px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:var(--soft);font:500 var(--eq-t-2) var(--fbody);cursor:pointer;transition:background var(--eq-kurz) ease,color var(--eq-kurz) ease}
+#app .eq-segment button[aria-pressed="true"],.sheet .eq-segment button[aria-pressed="true"]{background:var(--surface-2);color:var(--text);font-weight:700}
+
+/* ---------- Eingabe-Schritt: eine Frage, ein großes Feld, Ergebnis daneben (D3 nutzt es) ---------- */
+.sheet .eq-eing-frage{font-family:var(--eq-f-titel);font-size:var(--eq-t-6);font-weight:700;line-height:1.2;letter-spacing:-.015em;margin:0}
+.sheet .eq-eing-feld{display:flex;align-items:baseline;gap:10px;margin-top:var(--eq-a5);padding:14px 18px;border-radius:16px;background:var(--bg);border:2px solid transparent;transition:border-color var(--eq-kurz) ease}
+.sheet .eq-eing-feld:focus-within{border-color:var(--mint)}
+.sheet .eq-eing-feld input{flex:1;min-width:0;width:100%;border:0;background:transparent;color:var(--text);font:700 var(--eq-z-gross)/1.1 var(--eq-f-titel);letter-spacing:-.02em;outline:0;font-variant-numeric:tabular-nums;padding:0}
+.sheet .eq-eing-feld span{font:600 var(--eq-t-5) var(--fdisp);color:var(--softer)}
+.sheet .eq-eing-live{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:var(--eq-a4)}
+.sheet .eq-eing-live .eq-eing-live-z{font:600 var(--eq-z-mittel)/1.2 var(--fdisp);font-variant-numeric:tabular-nums}
+.sheet .eq-eing-live .eq-eing-live-z.minus{color:var(--danger)}
+
+/* ---------- Leerzustand: Zeichen, ein Satz, ein Knopf ---------- */
+#app .eq-leer{font-size:var(--eq-t-3)}
+
+/* ---------- Bewegung reduzieren: alles steht sofort, nichts fehlt ---------- */
+@media(prefers-reduced-motion:reduce){
+  #app .eq-haupt-zahl.eq-laeuft{color:inherit}
+  #app .eq-haupt-zahl.eq-laeuft::after{content:none}
+}
+
+/* ---------- Keine Versalien mehr für Beschriftungen (Lesbarkeit, ruhigerer Ton) ---------- */
+#app .eyebrow{text-transform:none;letter-spacing:0;font-weight:600}
+.sheet .ef-sec,.sheet .info-formel span,.sheet .info-merke span,#app .eq-tl-kopf,#app .rc-ziel-l,#app .rc-a-l,.sheet .rc-ziel-l,.sheet .rc-a-l,.submenu .submenu-t{text-transform:none;letter-spacing:0;font-weight:600}
+
+/* ===================== D2–D7 (Fable, 11.10.2026) ===================== */
+/* ---------- D7: eine Rundung für alle Karten, antippbare Karten mit Rand, Zusammenfassungen ohne ---------- */
+#app .card{border-radius:var(--eq-r-flaeche)}
+#app .card.eq-flaeche{border:0}
+#app .eq-wf-t{margin-bottom:12px}
+
+/* ---------- D3: Assistent als Eingabe-Schritt – eine Frage, großes Feld, Live-Ergebnis, Akzent-Knopf ---------- */
+.sheet .wc-steps span{height:4px}
+.sheet .wc-steps span.done{background:var(--mint);opacity:.55}
+.sheet .wc-badge{text-transform:none;letter-spacing:0;font-weight:500;color:var(--softer)}
+.sheet .wc-hero .wc-t{font-family:var(--eq-f-titel);font-size:var(--eq-t-6)!important;font-weight:700;letter-spacing:-.015em;line-height:1.2}
+.sheet .as-feld .as-i{font-family:var(--eq-f-titel);font-weight:700;font-size:26px;letter-spacing:-.02em;min-height:60px;padding:12px 18px;border-radius:16px;background:var(--bg);border:2px solid transparent;font-variant-numeric:tabular-nums}
+.sheet .as-feld .as-i:focus{border-color:var(--mint);outline:0;box-shadow:none}
+.sheet .as-feld select.as-i{font-size:var(--eq-t-4);font-family:var(--fbody);font-weight:600}
+.sheet .eq-as-live{background:var(--bg);border:0;border-radius:16px;padding:14px 16px;font-size:var(--eq-t-3);color:var(--soft)}
+.sheet .eq-as-live b{display:block;font:600 var(--eq-z-mittel)/1.2 var(--fdisp);color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
+.sheet .wc-cta.prem,.sheet .ef-save,.sheet .up-cta.prem{min-height:52px;border-radius:14px;font-weight:700;font-size:var(--eq-t-4)}
+.sheet .wc-cta:not(.prem){background:transparent;border:1px solid var(--stroke-2);color:var(--text)}
+.sheet .wc-skip a{display:inline-flex;align-items:center;min-height:44px;color:var(--soft);font-weight:600;text-decoration:none}
+.sheet .frage-opt{border-radius:16px;padding:14px 18px;min-height:60px;background:var(--bg);border:2px solid transparent;transition:border-color var(--eq-kurz) ease,transform var(--eq-druck) var(--eq-kurve)}
+.sheet .frage-opt.on,.sheet .frage-opt:focus-visible{border-color:var(--mint)}
+
+/* ---------- D4a Wasserfall ---------- */
+#app .eq-wf{display:grid;grid-template-columns:repeat(var(--eq-wf-n,3),1fr);gap:10px;align-items:end;height:170px}
+#app .eq-wf-b{position:relative;display:flex;flex-direction:column;justify-content:flex-end;height:100%;border:0;background:none;padding:0;cursor:pointer;border-radius:10px;font:inherit;color:inherit}
+#app .eq-wf-bar{height:var(--eq-h);border-radius:8px 8px 4px 4px;background:color-mix(in srgb,var(--text) 22%,var(--bg2));transform-origin:bottom;animation:eq-wf-bauen 480ms var(--eq-kurve) both}
+#app .eq-wf-b:nth-child(2) .eq-wf-bar{animation-delay:40ms}#app .eq-wf-b:nth-child(3) .eq-wf-bar{animation-delay:80ms}#app .eq-wf-b:nth-child(4) .eq-wf-bar{animation-delay:120ms}
+#app .eq-wf-b.rein .eq-wf-bar{background:var(--mint)}
+#app .eq-wf-b.bleibt .eq-wf-bar{background:var(--mint-2);box-shadow:inset 0 0 0 1px var(--mint)}
+#app .eq-wf-b.raus .eq-wf-bar{border-bottom:3px solid var(--bg2)}
+#app .eq-wf-w{font:600 var(--eq-t-2) var(--fdisp);font-variant-numeric:tabular-nums;text-align:center;margin-bottom:6px;opacity:0;animation:eq-wf-ein 300ms 420ms var(--eq-kurve) forwards}
+@keyframes eq-wf-ein{to{opacity:1}}
+#app .eq-wf-n{font-size:13px;color:var(--softer);text-align:center;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app .eq-wf-b[aria-pressed="true"] .eq-wf-bar{outline:2px solid var(--text);outline-offset:2px}
+#app .eq-wf-b:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+#app .eq-wf-text{font-size:var(--eq-t-2);color:var(--soft);margin-top:14px;line-height:1.5}
+@keyframes eq-wf-bauen{from{transform:scaleY(0)}}
+
+/* ---------- D4b Vermögensaufbau ---------- */
+#app .eq-vm{width:100%;height:160px;display:block;border-radius:10px;overflow:hidden}
+#app .eq-vm-achse{display:flex;justify-content:space-between;margin-top:6px;font-size:var(--eq-t-1);color:var(--softer);font-variant-numeric:tabular-nums}
+#app .eq-vm-raum{fill:var(--bg)}
+#app .eq-vm-rest{fill:var(--mint);opacity:.22}
+#app .eq-vm-linie{fill:none;stroke:var(--mint);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:2000;stroke-dashoffset:2000;animation:eq-vm-ziehen 900ms var(--eq-kurve) forwards}
+@keyframes eq-vm-ziehen{to{stroke-dashoffset:0}}
+#app .eq-vm-tick{fill:var(--softer);font:500 20px var(--fbody)}
+#app .eq-vm-legende{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-vm-i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--mint)}
+#app .eq-vm-i.getilgt{background:color-mix(in srgb,var(--mint) 25%,var(--bg2));border:1px solid var(--mint)}
+
+/* ---------- D4c Objekte im Vergleich ---------- */
+#app .eq-vg{display:grid;gap:4px}
+#app .eq-vg-z{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"n w" "b b" "k k";gap:2px 12px;align-items:center;width:100%;padding:12px 0;border:0;border-top:1px solid var(--stroke);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:8px}
+#app .eq-vg-z:first-child{border-top:0}
+#app .eq-vg-n{grid-area:n;font-weight:600;font-size:var(--eq-t-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app .eq-vg-w{grid-area:w;font:600 var(--eq-z-klein) var(--fdisp);font-variant-numeric:tabular-nums;color:var(--mint-2)}
+#app .eq-vg-w.minus{color:var(--danger)}
+:root:not(.pre-login)[data-theme="hell"] #app .eq-vg-w{color:var(--mint)}
+#app .eq-vg-balken{grid-area:b;display:block;height:8px;border-radius:4px;background:var(--bg);overflow:hidden;margin-top:4px}
+#app .eq-vg-balken i{display:block;height:100%;border-radius:4px;background:var(--mint);transform-origin:left;animation:eq-vg-bauen 520ms var(--eq-kurve) both}
+#app .eq-vg-balken i.minus{background:var(--danger)}
+@keyframes eq-vg-bauen{from{transform:scaleX(0)}}
+#app .eq-vg-k{grid-area:k;font-size:var(--eq-t-1);color:var(--softer)}
+@media(min-width:900px){#app .eq-vg-z{grid-template-columns:minmax(140px,.9fr) minmax(0,2fr) auto auto;grid-template-areas:"n b w k";gap:14px}#app .eq-vg-balken{margin:0}#app .eq-vg-k{text-align:right;min-width:150px}}
+
+/* ---------- D4d Mieteingänge im Jahr ---------- */
+#app .eq-mr{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#app .eq-mr-zeile{display:grid;grid-template-columns:minmax(52px,1.6fr) repeat(12,minmax(0,1fr));gap:2px;align-items:center;padding:2px 0}
+@media(min-width:600px){#app .eq-mr-zeile{gap:4px;padding:3px 0}}
+#app .eq-mr-kopf span{font-size:13px;color:var(--softer);text-align:center;font-weight:600}
+#app .eq-mr-n{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:6px}
+#app .eq-mr-z{display:grid;place-items:center;height:26px;border-radius:6px;font-size:13px;font-weight:700;background:var(--bg);color:var(--softer)}
+#app .eq-mr-z.ein{background:color-mix(in srgb,var(--ok) 28%,var(--bg2));color:var(--ok)}
+#app .eq-mr-z.offen{background:color-mix(in srgb,var(--warn) 26%,var(--bg2));color:var(--warn)}
+#app .eq-mr-z.leer{color:var(--softer)}
+:root:not(.pre-login)[data-theme="hell"] #app .eq-mr-z.ein{color:var(--on-accent);background:var(--ok)}
+:root:not(.pre-login)[data-theme="hell"] #app .eq-mr-z.offen{color:#3A2600;background:#F6D97A}
+
+/* ---------- D5 Test → Abo ---------- */
+#app .eq-chip{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:0 12px;min-height:30px;border-radius:999px;border:0;background:var(--surface-2);color:var(--text);font:600 var(--eq-t-1) var(--fbody);cursor:pointer;vertical-align:middle}
+#app .eq-chip i{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.sheet .tarif-card{background:var(--bg);border:1px solid var(--stroke);border-radius:20px}
+.sheet .tarif-card.premium{border:2px solid var(--mint)}
+.sheet .tarif-flag{display:none}
+.sheet .tarif-p{font-family:var(--eq-f-titel);font-weight:700;font-size:30px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sheet .tarif-btn{min-height:48px;border-radius:14px;font-weight:700}
+.sheet .eq-drei-flaeche{margin-bottom:16px}
+.sheet .eq-drei{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sheet .eq-drei-z{font:700 var(--eq-z-gross)/1.1 var(--eq-f-titel);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sheet .eq-drei-l{font-size:var(--eq-t-1);color:var(--softer);margin-top:4px}
+
+/* ---------- D6 Projekt: Gesamtskala unter der Hauptzahl, Übernahme als Hauptaktion ---------- */
+#app .eq-skala-haupt{margin-top:14px;max-width:420px}
+#app .eq-skala-haupt .eq-skala-b{height:20px}
+#app .eq-skala-haupt .eq-skala-b::before{top:5px;height:10px}
+#app .eq-skala-haupt .eq-skala-b i{transition:left 700ms var(--eq-kurve)}
+#app .eq-skala-ende{display:flex;justify-content:space-between;font-size:13px;color:var(--softer);margin-top:6px}
+#app .eq-btn.eq-akzent{background:var(--mint);color:var(--on-accent);border-color:var(--mint);font-weight:700;min-height:52px;padding:0 22px;border-radius:14px}
+
+@media(prefers-reduced-motion:reduce){#app .eq-wf-bar,#app .eq-vg-balken i,#app .eq-vm-linie{animation:none!important;stroke-dashoffset:0}#app .eq-wf-w{opacity:1;animation:none!important}}
+#app .eq-wf-b.bleibt.minus .eq-wf-bar{background:var(--danger);box-shadow:none}
+#app .eq-wf-w.minus{color:var(--danger)}
+#app .eq-mr-legende{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-mr-legende span{display:inline-flex;align-items:center;gap:6px}
+#app .eq-mr-legende .eq-mr-z{width:24px;height:22px;font-style:normal}
+/* Schema Weiß: „Bleibt" deutlich heller als „Miete rein" */
+:root:not(.pre-login)[data-theme="hell"] #app .eq-wf-b.bleibt .eq-wf-bar{background:color-mix(in srgb,var(--mint) 38%,var(--bg2));box-shadow:inset 0 0 0 1.5px var(--mint)}
+/* Assistent: Platzhalter klar leiser als echte Eingaben, keine Browser-Pfeile über der Einheit */
+.sheet .as-feld .as-i::placeholder{font-family:var(--fbody);font-weight:500;font-size:var(--eq-t-4);letter-spacing:0;color:var(--softer);opacity:1}
+.sheet .as-feld input.as-i[type="number"]{-moz-appearance:textfield;appearance:textfield}
+.sheet .as-feld input.as-i::-webkit-inner-spin-button,.sheet .as-feld input.as-i::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -2473,11 +2668,11 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
       <a href="#monat">Produkt</a>
       <a href="#funktionen">Funktionen</a>
       <a href="#preise">Preise</a>
-      <a href="#gruender">Gründer</a>
+      <a href="#gruender">Wer dahinter steckt</a>
     </nav>
     <div class="nav-cta">
       <nav class="eq-sprachwahl" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-sprache-wahl="de" aria-current="page" aria-label="Deutsch">DE</a><a href="./us/" lang="en" hreflang="en-US" data-sprache-wahl="en" aria-label="English (US)">EN</a></nav>
-      <button class="btn btn-g btn-sm" type="button" data-login="anmelden">Beta-Login</button>
+      <button class="btn btn-g btn-sm" type="button" data-login="anmelden">Anmelden</button>
       <button class="btn btn-p btn-sm" type="button" data-warte>Platz sichern</button>
     </div>
   </div>
@@ -2844,19 +3039,19 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
       <div class="gr-card rv">
         <div class="gr-photo" id="grPhoto">
           <span class="mono">TB</span>
-          <img src="tobias.jpg" alt="Tobias Bücking, Gründer von ESTRIQ" id="grImg">
+          <img src="tobias.jpg" alt="Tobias Bücking, der Mensch hinter ESTRIQ" id="grImg">
           <span class="tag">München</span>
         </div>
         <div class="gr-name">Tobias Bücking</div>
-        <div class="gr-role">Gründer von ESTRIQ · Geschäftsführer Bücking Immobilien GmbH &amp; Co. KG</div>
+        <div class="gr-role">Der Mensch hinter ESTRIQ · Geschäftsführer Bücking Immobilien GmbH &amp; Co. KG</div>
         <div class="gr-facts">
           <div class="gr-fact"><b>10</b><small>Einheiten im eigenen Bestand</small></div>
           <div class="gr-fact"><b>Täglich</b><small>selbst im Einsatz</small></div>
-          <div class="gr-fact"><b>Beta</b><small>direkter Draht zum Gründer</small></div>
+          <div class="gr-fact"><b>Beta</b><small>direkter Draht zu Tobias</small></div>
         </div>
       </div>
       <div class="gr-tx rv d1">
-        <div class="leb">Der Gründer</div>
+        <div class="leb">Wer dahinter steckt</div>
         <h2 class="h2" style="margin-bottom:26px">Gebaut von einem Vermieter. Nicht von einer Agentur.</h2>
         <blockquote>„Ich vermiete selbst, 10 Einheiten. Und jeden Monat hatte ich dieselbe Frage: <em>Was bleibt wirklich übrig?</em>
           Excel wusste es nicht. Die Hausverwaltungssoftware war für 300 Einheiten gemacht, nicht für 10.
@@ -2892,7 +3087,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
           <li>Finanzierungen mit Tilgungsplan</li>
           <li>Kennzahlen, Kalender und Lernecke</li>
         </ul>
-        <button class="btn btn-g btn-block" type="button" data-warte="Basic">Für Basic vormerken</button>
+        <button class="btn btn-g btn-block" type="button" data-warte="Basic">Platz sichern</button>
         <div class="plan-note">30 Tage kostenlos testen</div>
       </article>
       <article class="plan top rv d1">
@@ -2907,7 +3102,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
           <li>Nebenkostenabrechnung je Einheit</li>
           <li>Handwerker und Gewerke: Zahlung gegen Fortschritt</li>
         </ul>
-        <button class="btn btn-p btn-block" type="button" data-warte="Premium">Für Premium vormerken</button>
+        <button class="btn btn-p btn-block" type="button" data-warte="Premium">Platz sichern</button>
         <div class="plan-note">30 Tage kostenlos testen</div>
       </article>
     </div>
@@ -2972,7 +3167,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
         <input type="email" name="email" placeholder="deine@e-mail.de" autocomplete="email" inputmode="email" aria-label="E-Mail-Adresse">
       </div>
-      <button class="btn btn-p btn-lg" type="submit">Platz auf der Warteliste sichern
+      <button class="btn btn-p btn-lg" type="submit">Platz sichern
         <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </button>
       <div class="wl-msg" aria-live="polite" style="text-align:center"></div>
@@ -2996,7 +3191,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
     </div>
     <div class="foot-links">
       <a href="#" id="lpImpressum" data-impressum>Impressum &amp; Datenschutz</a>
-      <button type="button" data-login="anmelden">Beta-Login</button>
+      <button type="button" data-login="anmelden">Anmelden</button>
     </div>
   </div>
 </footer>
@@ -3211,10 +3406,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=71"></script>
-<script src="./data-save.js?v=71"></script>
-<script src="./finance-engine.js?v=71"></script>
-<script src="./app.js?v=71"></script>
+<script src="./data-loader.js?v=74"></script>
+<script src="./data-save.js?v=74"></script>
+<script src="./finance-engine.js?v=74"></script>
+<script src="./app.js?v=74"></script>
 
 <script>
 /* =====================================================================
