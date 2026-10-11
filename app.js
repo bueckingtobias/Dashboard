@@ -397,6 +397,7 @@
         <div class="up-t">${esc(info.t)}</div>
         <div class="up-d">${esc(info.d)}</div>
       </div>
+      ${grund === "gesperrt" ? eqAufgebaut() : ""}
       <div class="up-plan">
         <div class="up-plan-h">
           <div><div class="up-plan-n">${esc(prem.name)}</div>
@@ -3203,7 +3204,8 @@
     else if (id === "tools") renderTools(host);
     else if (String(id).indexOf("projekt:") === 0) renderProjekt(host, String(id).slice(8));
     else renderStream(host, id);
-    if (wechsel) $(".scroll").scrollTop = 0;
+    if (wechsel) { $(".scroll").scrollTop = 0; eqAnsichtBewegen(host); }   // FABLE-D1
+    try { eqTestChip(); } catch (_) {}   // FABLE-D5
   }
 
   /* ---------- shared bits ---------- */
@@ -5990,6 +5992,8 @@
         return;
       }
       clearTimeout(uhr);
+      msg.textContent = "";
+      await eqGespeichert(btn);   // FABLE-D1
       closeSheet();
       try { await window.nachSpeichern(); }
       catch (_) { showToast(NEULADEN_HINWEIS); return; }
@@ -6373,6 +6377,7 @@
         <div class="eq-haupt-zahl${o.minus ? " minus" : ""}">${esc(o.zahl)}</div>
         <div class="eq-haupt-unter">${esc(o.unter || "")}</div>
         ${(o.zweite || []).map(z => `<div class="eq-haupt-zweite">${esc(z)}</div>`).join("")}
+        ${o.skala != null ? `<div class="eq-skala eq-skala-haupt" role="img" aria-label="Gesamteinstufung: ${esc(o.marke ? o.marke.wort : "")}. Links kritisch, rechts gut."><span class="eq-skala-b"><i style="left:calc((100% - 18px) * ${Math.max(0, Math.min(1, o.skala)).toFixed(3)})"></i></span></div><div class="eq-skala-ende" style="max-width:420px"><span>kritisch</span><span>gut</span></div>` : ""}
         ${o.anteil != null ? `<div class="eq-fort" role="img" aria-label="${esc(o.anteilText || o.anteil + " Prozent des möglichen Ertrags")}"><i style="width:${Math.max(0, Math.min(100, o.anteil))}%"></i></div>` : ""}
       </div>
       ${fakten ? `<div class="eq-fakten">${fakten}</div>` : ""}
@@ -6484,6 +6489,7 @@
     const ist = stand.ist, pot = stand.pot, netto = ist - tilg;
 
     // 1 Hauptaussage
+    { const vg = eqVergleichKarte(streams); if (vg) setTimeout(() => { const h = host.querySelector(".eq-haupt"); if (h && h.isConnected) h.insertAdjacentElement("afterend", vg); }, 0); }   // FABLE-D4
     host.appendChild(hauptKarte({
       zeile: "Einnahmen pro Monat", info: "einnahmen",
       zahl: eur(ist),
@@ -6595,7 +6601,8 @@
 
     const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside };
 
-    host.appendChild(begruessungsKarte());
+    // FABLE-D3: Die Zahl steht oben, die Begrüßung folgt – außer ohne Objekt
+    if (!streams.length) host.appendChild(begruessungsKarte());
 
     // Noch kein Objekt: ein Satz, eine Aktion – Suche, Kalender und Wetter bleiben erreichbar
     if (!streams.length) {
@@ -6621,9 +6628,16 @@
       fakten,
       knopf: { id: "cfHerleitung", text: "So kommt die Zahl zustande", tun: () => openPortfolioSheet("netto", ctx) }
     }));
+    // FABLE-D4: Wohin die Miete geht (Miete rein, Kreditraten raus, bleibt) – dieselben Zahlen wie oben
+    host.appendChild(eqWasserfall([
+      { l: "Miete rein", v: t.ist, art: "rein", text: unitsLet + " von " + unitsTotal + " Einheiten vermietet" },
+      { l: "Kreditraten", v: debtMonth, art: "raus", text: "davon " + eur(fin.tilgung) + " Tilgung – die bauen Vermögen" },
+      { l: "Bleibt", v: nettoMonth, art: "bleibt", text: CF_HINWEIS }
+    ], "Wohin die Miete geht"));
 
     // 2 Was sonst Aufmerksamkeit braucht
     const hinweise = hinweisKarte(streams); if (hinweise) host.appendChild(hinweise);
+    host.appendChild(begruessungsKarte());   // FABLE-D3 (Opus: nach den Hinweisen)
 
     // 3 Kennzahlen: erst das Geld, dann die Kredite
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
@@ -6647,6 +6661,7 @@
       tilgung: () => openPortfolioSheet("schuld", ctx),
       schuld: () => openPortfolioSheet("schuld", ctx)
     }));
+    { const vm = fin.n ? eqVermoegen((D.streams || []).reduce((a, s) => a.concat(FE.creditsOf(s)), [])) : null; if (vm) host.appendChild(vm); }   // FABLE-D4
 
     // 4 Die Objekte – dieselbe Karte wie unter „Objekte"
     host.appendChild(abschnittKopf("Objekte", "Antippen öffnet das Objekt", { id: "alleObjekte", text: "Alle ansehen", tun: () => geheZu("vermietung") }));
@@ -7397,11 +7412,12 @@
     finanzierung: finanzierungBereich,
     handwerker: (s) => gewerkeKarte(s),
     zeiten: (s) => zeitenKarte(s),
+    mietraster: (s) => eqMietrasterKarte(s),   // FABLE-D4
     nebenkosten: (s) => nebenkostenKarte(s)
   };
   // Feste Reihenfolge der Objektseite. Der Baustein „mieten" (Karte Offene Mieten) steht hier nicht:
   // Auf der Objektseite bestätigt man den Eingang direkt in der Einheitenliste.
-  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "nebenkosten"];
+  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "mietraster", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "nebenkosten"];
 
   // Setzt eine Seite aus Bausteinen zusammen
   function objektSeite(host, s, reihenfolge) {
@@ -8833,6 +8849,212 @@
   const US_THEMEN = { kauf: ["us-kennzahlen", "us-1prozent", "us-brrrr-wissen", "us-afa"], finanzierung: ["us-piti"], betrieb: ["us-kaution", "us-fmr"], vermoegen: [] };
   const US_FOLGE = { kauf: ["rendite", "cashflow", "us-caprate", "us-coc", "us-brrrr"], finanzierung: ["us-hypothek", "kredit", "us-refinanz", "budget", "angebote"] };
 
+  /* ================= DESIGN D1 (Fable, 11.10.2026): BEWEGUNG AN EINER STELLE ================= */
+  // Hochzählen der Hauptzahl beim Wechsel der Ansicht, Haken im Speichern-Knopf. Alles respektiert
+  // „Bewegung reduzieren“ am Gerät. Der echte Text einer Zahl bleibt dabei immer im Baum stehen.
+  const EQ_BEWEGT = () => !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // Zahl aus dem angezeigten Text lesen: „2.418,30 €“, „$2,418.30“, „−1.234 €“, „12,5 %“
+  function eqZahlLesen(text) {
+    const m = /^(\s*)([−-]?)(\s*)([$€]?)(\s*)([\d.,]+)(\s*)([€$%]?)(.*)$/.exec(text || "");
+    if (!m || !/\d/.test(m[6])) return null;
+    const roh = m[6];
+    const dez = /[.,](\d{1,2})$/.exec(roh);
+    const ganz = dez ? roh.slice(0, roh.length - dez[0].length) : roh;
+    const wert = Number(ganz.replace(/[.,]/g, "")) + (dez ? Number(dez[1]) / Math.pow(10, dez[1].length) : 0);
+    if (!isFinite(wert)) return null;
+    return { wert: m[2] ? -wert : wert, nk: dez ? dez[1].length : 0, vor: m[1] + m[3] + m[4] + m[5], nach: m[7] + m[8] + m[9], minusAls: m[2] || "−" };
+  }
+  // Zählt eine Zahl hoch: der Text bleibt, sichtbar läuft data-eq-lauf (CSS ::after) mit
+  function eqZaehlen(el, dauer) {
+    if (!el || !EQ_BEWEGT()) return;
+    const z = eqZahlLesen(el.textContent);
+    if (!z || z.wert === 0) return;
+    const loc = typeof LOC === "string" ? LOC : "de-DE";
+    const fmt = (v) => (v < 0 ? z.minusAls : "") + z.vor + Math.abs(v).toLocaleString(loc, { minimumFractionDigits: z.nk, maximumFractionDigits: z.nk }) + z.nach;
+    const t0 = performance.now(), ms = dauer || 640;
+    el.classList.add("eq-laeuft");
+    const schritt = (t) => {
+      if (!el.isConnected) return;
+      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      el.setAttribute("data-eq-lauf", fmt(z.wert * e));
+      if (p < 1) requestAnimationFrame(schritt);
+      else { el.classList.remove("eq-laeuft"); el.removeAttribute("data-eq-lauf"); }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(schritt));
+  }
+  // Nach dem Zeichnen einer neuen Ansicht: die Hauptzahl zählt hoch
+  function eqAnsichtBewegen(host) {
+    const zahl = host.querySelector(".eq-haupt-zahl");
+    if (zahl) eqZaehlen(zahl);
+  }
+  // Speichern gelungen: Haken im Knopf, kurz sichtbar, dann geht es weiter
+  function eqGespeichert(btn) {
+    return new Promise((fertig) => {
+      if (!btn || !EQ_BEWEGT()) return fertig();
+      const alt = btn.textContent;
+      btn.classList.add("eq-ok"); btn.textContent = "Gespeichert";
+      try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {}
+      setTimeout(() => { btn.classList.remove("eq-ok"); btn.textContent = alt; fertig(); }, 380);
+    });
+  }
+  /* ================= DESIGN D2–D7 (Fable, 11.10.2026): GRAFIKEN, FUNNEL-BAUSTEINE ================= */
+  // Alle Grafiken sind SVG von Hand, mit Text-Alternative, ohne Farbe als einzigen Träger. Keine neue Rechnung:
+  // jede Zahl kommt aus FE.totals, FE.streamMonthly, FE.creditPlan oder den schon gezeichneten Werten.
+  const eqSvgEsc = (s) => esc(String(s));
+
+  // ---------- D4a Wasserfall: Miete rein → Raten/Kosten raus → bleibt ----------
+  // stufen: [{ l, v, art: "rein"|"raus"|"bleibt" }]. Werte in € im Monat.
+  function eqWasserfall(stufen, titel, hinweis) {
+    const max = Math.max(1, ...stufen.map(s => Math.abs(s.v)));
+    const bars = stufen.map((s, i) => {
+      const h = Math.max(4, Math.round(Math.abs(s.v) / max * 100));
+      return `<div class="eq-wf-b ${s.art}${s.art === "bleibt" && s.v < 0 ? " minus" : ""}" tabindex="0" role="button" data-i="${i}" aria-label="${eqSvgEsc(s.l)}: ${eqSvgEsc(eur(s.v))}">
+        <div class="eq-wf-w${s.art === "bleibt" && s.v < 0 ? " minus" : ""}">${s.art === "raus" ? "−" + esc(eur(Math.abs(s.v))) : esc(eur(s.v))}</div>
+        <div class="eq-wf-bar" style="--eq-h:${h}%"></div>
+        <div class="eq-wf-n">${esc(s.l)}</div></div>`;
+    }).join("");
+    const rein = stufen.find(s => s.art === "rein"), bleibt = stufen.find(s => s.art === "bleibt");
+    const anteil = rein && rein.v > 0 && bleibt ? Math.round(bleibt.v / rein.v * 100) : null;
+    const satz = anteil != null ? "Von " + eur(rein.v) + " bleiben " + eur(bleibt.v) + (bleibt.v < 0 ? " – du legst drauf." : ", das sind " + anteil + " %.") : (hinweis || "");
+    const karte = el(`<div class="card eq-flaeche eq-wf-karte">
+      <div class="card-t eq-wf-t">${esc(titel || "Wohin die Miete geht")}</div>
+      <div class="eq-wf" role="img" aria-label="${eqSvgEsc(stufen.map(s => s.l + " " + eur(s.v)).join(", "))}">${bars}</div>
+      <div class="eq-wf-text" aria-live="polite">${esc(satz)}</div></div>`);
+    const text = karte.querySelector(".eq-wf-text");
+    karte.querySelectorAll(".eq-wf-b").forEach(b => {
+      const s = stufen[Number(b.dataset.i)];
+      const zeig = () => { karte.querySelectorAll(".eq-wf-b").forEach(x => x.setAttribute("aria-pressed", String(x === b))); text.textContent = s.l + ": " + eur(s.v) + (rein && rein.v > 0 && s !== rein ? " · " + Math.round(Math.abs(s.v) / rein.v * 100) + " % der Miete" : "") + (s.text ? " · " + s.text : ""); };
+      b.onclick = zeig; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); zeig(); } };
+    });
+    return karte;
+  }
+
+  // ---------- D4b Vermögensaufbau: Restschuld sinkt, getilgt wächst – Jahr für Jahr ----------
+  function eqVermoegen(kredite, titel) {
+    const plaene = kredite.map(k => ({ k, p: FE.creditPlan(k) })).filter(x => x.p && x.p.rows && x.p.rows.length);
+    if (!plaene.length) return null;
+    const summe = plaene.reduce((a, x) => a + (Number(x.k.summe) || 0), 0);
+    // Startpunkt ist der Stand heute (wie die Kennzahl „Restschuld heute“), danach jeweils das Jahresende
+    const heute = new Date().getFullYear();
+    const restHeute = plaene.reduce((a, x) => a + (Number(x.p.restAktuell) || 0), 0);
+    const getilgtHeute = plaene.reduce((a, x) => a + (Number(x.p.getilgtBisher) || 0), 0);
+    const jahre = [{ j: heute, rest: restHeute, heute: true }];
+    for (let j = heute; j <= heute + 40; j++) {
+      let rest = 0;
+      plaene.forEach(({ k, p }) => {
+        const zeile = p.rows.filter(r => r.monat.slice(0, 4) === String(j)).pop();
+        if (zeile) rest += zeile.rest;
+        else if (p.rows[0].monat.slice(0, 4) > String(j)) rest += Number(k.summe) || 0;   // beginnt erst später
+      });
+      if (j > heute || rest < restHeute) jahre.push({ j, rest });
+      if (rest <= 0) break;
+    }
+    if (jahre.length < 2) return null;
+    const W = 600, H = 160, L = 0, R = 0, T = 6, B = 0;
+    const x = (i) => L + i / (jahre.length - 1) * (W - L - R);
+    const y = (v) => T + (1 - v / summe) * (H - T - B);
+    const linie = jahre.map((z, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(z.rest).toFixed(1)).join(" ");
+    const flaeche = linie + " L" + x(jahre.length - 1).toFixed(1) + " " + y(0) + " L" + x(0) + " " + y(0) + " Z";
+    const mitte = Math.floor((jahre.length - 1) / 2);
+    const ticks = `<div class="eq-vm-achse"><span>heute</span>${jahre.length > 2 ? `<span>${jahre[mitte].j}</span>` : ""}<span>${jahre[jahre.length - 1].j}</span></div>`;
+    const ende = jahre[jahre.length - 1], getilgt = getilgtHeute;
+    const karte = el(`<div class="card eq-flaeche eq-vm-karte">
+      <div class="card-t eq-wf-t">${esc(titel || "Vermögensaufbau")}</div>
+      <div class="card-s" style="margin-bottom:12px">Restschuld sinkt, getilgt wächst – Jahr für Jahr, wenn alles nach Plan läuft</div>
+      <svg class="eq-vm" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${eqSvgEsc("Restschuld heute " + eur(jahre[0].rest) + ", im Jahr " + ende.j + " " + eur(ende.rest))}">
+        <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" class="eq-vm-raum"/>
+        <path d="${flaeche}" class="eq-vm-rest"/>
+        <path d="${linie}" class="eq-vm-linie" vector-effect="non-scaling-stroke"/>
+      </svg>${ticks}
+      <div class="eq-vm-legende"><span><i class="eq-vm-i rest"></i>Restschuld ${esc(eur(jahre[0].rest))} heute</span><span><i class="eq-vm-i getilgt"></i>getilgt ${esc(eur(getilgt))} von ${esc(eur(summe))}</span></div></div>`);
+    return karte;
+  }
+
+  // ---------- D4c Objekte vergleichen: Netto-Cashflow, Rendite, Leerstand nebeneinander ----------
+  function eqVergleichKarte(streams) {
+    if (streams.length < 2) return null;
+    const zeilen = streams.map(s => { const m = FE.streamMonthly(s), k = FE.immoKPIs(s); return { s, netto: m.netto, rendite: k.bruttoRendite, frei: (s.einheiten || []).filter(u => u.status !== "vermietet").length, n: (s.einheiten || []).length }; });
+    const max = Math.max(1, ...zeilen.map(z => Math.abs(z.netto)));
+    const karte = el(`<div class="card eq-flaeche eq-vg-karte">
+      <div class="card-t eq-wf-t">Objekte im Vergleich</div>
+      <div class="card-s" style="margin-bottom:12px">Netto-Cashflow im Monat · Bruttomietrendite · freie Einheiten</div>
+      <div class="eq-vg">${zeilen.map(z => `<button type="button" class="eq-vg-z" data-sid="${esc(z.s.id)}">
+        <span class="eq-vg-n">${esc(z.s.name)}</span>
+        <span class="eq-vg-balken"><i class="${z.netto < 0 ? "minus" : ""}" style="width:${Math.round(Math.abs(z.netto) / max * 100)}%"></i></span>
+        <span class="eq-vg-w${z.netto < 0 ? " minus" : ""}">${esc(eur(z.netto))}</span>
+        <span class="eq-vg-k">${z.rendite != null ? esc(prozent(z.rendite, 2)) : "—"} · ${z.frei ? z.frei + " frei" : "voll vermietet"}</span></button>`).join("")}</div></div>`);
+    karte.querySelectorAll("[data-sid]").forEach(b => b.onclick = () => geheZu(b.dataset.sid));
+    return karte;
+  }
+
+  // ---------- D4d Mieteingänge im Jahr: Raster Einheit × Monat (lädt die Zahlungen des Jahres nach) ----------
+  function eqMietrasterKarte(s) {
+    const einheiten = (s.einheiten || []).filter(u => u._id);
+    if (!einheiten.length) return null;
+    let jahr = new Date().getFullYear();
+    const karte = el(`<div class="card eq-flaeche eq-mr-karte">
+      <div class="card-h"><div><div class="card-t">Mieteingänge <span id="mrJahr">${jahr}</span></div><div class="card-s">Je Einheit und Monat</div></div>
+        <div class="nk-jahr"><button type="button" class="cal-btn" id="mrPrev" aria-label="Vorjahr">‹</button><button type="button" class="cal-btn" id="mrNext" aria-label="Folgejahr">›</button></div></div>
+      <div class="card-b"><div class="eq-mr" id="mrRaster"><div class="eq-leer">Lädt…</div></div></div></div>`);
+    const raster = karte.querySelector("#mrRaster");
+    const zeichne = async () => {
+      karte.querySelector("#mrJahr").textContent = jahr;
+      let daten = [];
+      try { const r = await window.sb.from("mietzahlungen").select("*").in("einheit_id", einheiten.map(u => u._id)).eq("jahr", jahr); daten = (r && r.data) || []; } catch (_) {}
+      if (!raster.isConnected) return;
+      // Laufender Monat ohne Eintrag = offen (wie in der Einheitenliste); frühere Monate ohne Eintrag = nicht erfasst
+      const jetzt = new Date(), aktuell = jetzt.getFullYear() === jahr ? jetzt.getMonth() + 1 : (jahr < jetzt.getFullYear() ? 13 : 0);
+      const abMonat = (u) => { const e = u.einzug ? new Date(u.einzug + "T12:00:00") : null; return !e || isNaN(e) ? 1 : e.getFullYear() < jahr ? 1 : e.getFullYear() > jahr ? 13 : e.getMonth() + 1; };
+      const M = Array.from({ length: 12 }, (_, i) => i + 1);
+      const kopf = `<div class="eq-mr-zeile eq-mr-kopf"><span></span>${M.map(m => `<span>${new Date(jahr, m - 1, 1).toLocaleDateString(LOC, { month: "narrow" })}</span>`).join("")}</div>`;
+      let ein = 0, offen = 0;
+      const zeilen = einheiten.map(u => `<div class="eq-mr-zeile"><span class="eq-mr-n">${esc(u.wohnung || "Einheit")}</span>${M.map(m => {
+        const z = daten.find(d => d.einheit_id === u._id && Number(d.monat) === m);
+        const st = z ? (z.status === "eingegangen" ? "ein" : "offen")
+          : u.status !== "vermietet" || m < abMonat(u) || m > aktuell ? "nichts"
+          : m === aktuell ? "offen" : "leer";
+        if (st === "ein") ein++; if (st === "offen") offen++;
+        return `<span class="eq-mr-z ${st}" title="${esc((u.wohnung || "") + " · " + new Date(jahr, m - 1, 1).toLocaleDateString(LOC, { month: "long" }))}">${st === "ein" ? "✓" : st === "offen" ? "○" : st === "leer" ? "–" : ""}</span>`;
+      }).join("")}</div>`).join("");
+      raster.innerHTML = kopf + zeilen + `<div class="eq-mr-legende"><span><i class="eq-mr-z ein">✓</i>eingegangen</span><span><i class="eq-mr-z offen">○</i>offen</span><span><i class="eq-mr-z leer">–</i>nicht erfasst</span></div>
+        <div class="note" style="margin-top:10px">${ein} eingegangen, ${offen} offen. Bestätigt wird am Zahltag unter „Mieteingang“.</div>`;
+    };
+    karte.querySelector("#mrPrev").onclick = () => { jahr--; zeichne(); };
+    karte.querySelector("#mrNext").onclick = () => { jahr++; zeichne(); };
+    zeichne();
+    return karte;
+  }
+
+  // ---------- D5 Test → Abo: ruhiger Chip im Kopf ab 7 Tagen vor Ende, „Was du aufgebaut hast“ ----------
+  function eqTestChip() {
+    const alt = document.getElementById("eqTestChip"); if (alt) alt.remove();
+    const ft = typeof freierTest === "function" ? freierTest() : null;
+    if (!ft || !ft.laeuft || !abo().tarif_bis) return;
+    const tage = Math.max(0, Math.ceil((new Date(abo().tarif_bis) - new Date()) / 86400000));
+    if (tage > 7) return;
+    const chip = el(`<button type="button" class="eq-chip" id="eqTestChip"><i></i>${tage === 0 ? "Test endet heute" : tage === 1 ? "Noch 1 Tag Test" : "Noch " + tage + " Tage Test"}</button>`);
+    chip.onclick = () => openTarifSheet();
+    $("#pageSub").appendChild(chip);
+  }
+  function eqAufgebaut() {
+    const streams = (D.streams || []), einheiten = streams.reduce((a, s) => a + (s.einheiten || []).length, 0);
+    const kredite = streams.reduce((a, s) => a + FE.creditsOf(s).length, 0);
+    if (!streams.length) return "";
+    return `<div class="eq-flaeche eq-drei-flaeche"><div class="card-t eq-wf-t">Das hast du aufgebaut</div><div class="eq-drei">
+      <div><div class="eq-drei-z">${streams.length}</div><div class="eq-drei-l">${streams.length === 1 ? "Objekt" : "Objekte"}</div></div>
+      <div><div class="eq-drei-z">${einheiten}</div><div class="eq-drei-l">${einheiten === 1 ? "Einheit" : "Einheiten"}</div></div>
+      <div><div class="eq-drei-z">${kredite}</div><div class="eq-drei-l">${kredite === 1 ? "Kredit" : "Kredite"}</div></div></div>
+      <div class="note" style="margin-top:12px">Alles bleibt gespeichert und lesbar.</div></div>`;
+  }
+
+  // ---------- D6 Projekt: Gesamtskala unter der Hauptzahl ----------
+  function eqProjektSkala(p, z) {
+    try {
+      const punkte = projektBewertung(p, z).map(bewertungStelle).filter(x => x != null);
+      if (!punkte.length) return null;
+      return punkte.reduce((a, b) => a + b, 0) / punkte.length;
+    } catch (_) { return null; }
+  }
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
   // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
@@ -9116,7 +9338,7 @@
       <div class="eq-pkopf-r">
         ${verworfen
           ? `<button type="button" class="eq-btn" id="pWieder">Wieder aufnehmen</button>`
-          : `<button type="button" class="eq-btn" id="pUebernehmen">In den Bestand übernehmen</button>`}
+          : `<button type="button" class="eq-btn eq-akzent" id="pUebernehmen">In den Bestand übernehmen</button>`}
         <button type="button" class="add-btn" id="pMenu" aria-haspopup="menu">Mehr</button>
       </div></div>`);
     kopf.querySelector("#pZurueck").onclick = () => geheZu("tools");
@@ -9172,6 +9394,7 @@
     return hauptKarte({
       zeile: "Cashflow nach Plan", info: "cashflowplan",
       marke: u.offen ? null : { wort: u.wort, stufe: u.stufe },
+      skala: u.offen ? null : eqProjektSkala(p, z),   // FABLE-D6
       zahl: u.offen ? "—" : eur2(z.cashflow), minus: !u.offen && z.cashflow < 0,
       unter: u.satz, zweite: u.zweite,
       fakten: [
