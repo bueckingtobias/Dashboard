@@ -441,7 +441,9 @@
         </div>`;
     };
     const ft = freierTest();
+    const anA = angebotJetzt();
     const body = `
+      ${anA ? `<button type="button" class="eq-angebot-verweis" id="zumAngebot">${anA.prozent} % Beta-Angebot läuft noch ${esc(angebotRest(anA.bis).kurz)} – ansehen</button>` : ""}
       ${ft && ft.laeuft ? `<div class="note" style="margin-bottom:14px">Dein kostenloser Test läuft bis zum ${esc(ft.datum)} – so lange ist alles frei. Du musst jetzt noch nichts wählen. Wählst du schon jetzt, gilt der gewählte Tarif sofort.</div>` : ""}
       <div class="tarif-grid">
         ${karte("basic")}
@@ -468,6 +470,7 @@
 
     sheet.querySelectorAll(".tarif-btn").forEach(b => b.onclick = () => starteCheckout(b.dataset.plan, sheet));
     sheet.querySelector("#rabattBtn").onclick = () => loeseRabattEin(sheet);
+    { const za = sheet.querySelector("#zumAngebot"); if (za) za.onclick = () => { closeSheet(); setTimeout(openAngebotSheet, 260); }; }
   }
 
   // Öffnet das Stripe-Kundenportal (Abo ansehen, Zahlungsmittel, kündigen)
@@ -492,7 +495,7 @@
   }
 
   // Leitet zur von Stripe gehosteten Bezahlseite (30 Tage Test, Karte vorab)
-  async function starteCheckout(plan, sheet) {
+  async function starteCheckout(plan, sheet, opt) {
     if (!istInhaber()) { showToast(nurInhaberSatz()); return; }
     const msg = sheet.querySelector("#rabattMsg");
     msg.textContent = "Bezahlseite wird geöffnet…"; msg.className = "ef-msg";
@@ -504,6 +507,7 @@
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
         body: JSON.stringify({
           plan,
+          angebot: !!(opt && opt.angebot),
           erfolg_url: location.origin + location.pathname + "?bezahlt=1",
           abbruch_url: location.origin + location.pathname + "?abbruch=1"
         })
@@ -1556,6 +1560,11 @@
           return;
         }
       }
+      if (angebotJetzt() && istInhaber() && merkLesen("estriq_angebot_gezeigt") !== new Date().toDateString()) {
+        merkSetzen("estriq_angebot_gezeigt", new Date().toDateString());
+        setTimeout(() => openAngebotSheet(), 600);
+        return;
+      }
       const ft = freierTest();
       if (ft && !ft.laeuft && istInhaber() && !testEndeGezeigt) {
         testEndeGezeigt = true;
@@ -2385,6 +2394,14 @@
 
   // Tag, an dem die Miete in diesem Monat fällig ist. Ein Zahltag 29 bis 31 fällt in kürzeren Monaten
   // auf den letzten Tag – sonst würde die Miete dort nie fällig.
+  function einzugSpaeter(u, d) {
+    if (!u || !u.einzug) return false;
+    d = d || new Date();
+    const e = new Date(String(u.einzug).slice(0, 10) + "T12:00:00");
+    if (isNaN(e)) return false;
+    return e.getFullYear() * 12 + e.getMonth() > d.getFullYear() * 12 + d.getMonth();
+  }
+  const einzugText = (u) => { const e = new Date(String(u.einzug).slice(0, 10) + "T12:00:00"); return e.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit", year: "numeric" }); };
   function zahltagIm(u, d) {
     d = d || new Date();
     const letzter = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
@@ -2437,6 +2454,7 @@
     (D.streams || []).filter(s => s.kind === "miete").forEach(s => {
       (s.einheiten || []).forEach(u => {
         if (u.status !== "vermietet") return;          // nur vermietete Einheiten
+        if (einzugSpaeter(u, jetzt)) return;           // Mieter zieht erst später ein
         if (tagHeute < zahltagIm(u, jetzt)) return;    // noch nicht fällig
         if (erledigt.has(u._id)) return;               // schon eingegangen
         const i = FE.unitIncome(u);
@@ -2458,6 +2476,7 @@
   function mietStand(u) {
     if (u.status !== "vermietet") return "frei";
     if (zahlungVon(u)) return "bestaetigt";
+    if (einzugSpaeter(u)) return "einzug";             // vor dem Einzugsmonat wird nichts abgefragt
     if (!(FE.unitIncome(u).gesamt > 0)) return "keine";
     return new Date().getDate() >= zahltagIm(u) ? "offen" : "spaeter";
   }
@@ -3205,7 +3224,7 @@
     else if (String(id).indexOf("projekt:") === 0) renderProjekt(host, String(id).slice(8));
     else renderStream(host, id);
     if (wechsel) { $(".scroll").scrollTop = 0; eqAnsichtBewegen(host); }   // FABLE-D1
-    try { eqTestChip(); } catch (_) {}   // FABLE-D5
+    try { if (!angebotChip()) eqTestChip(); } catch (_) {}   // FABLE-D5 · Angebot zuerst
   }
 
   /* ---------- shared bits ---------- */
@@ -7073,6 +7092,7 @@
         : stand === "bestaetigt" ? `<span class="eq-marke gut">eingegangen</span>`
         : stand === "offen" ? `<span class="eq-nur-schmal eq-warnt">Miete ${esc(monat)} offen</span>${mietKnopf(u, `data-miete="${i}"`)}`
         : stand === "keine" ? `<span class="eq-leise">keine Miete hinterlegt</span>`
+        : stand === "einzug" ? `<span class="eq-leise">Einzug am ${esc(einzugText(u))}</span>`
         : `<span class="eq-leise">fällig am ${zahltagIm(u)}.</span>`;
       const klassen = "eq-tab-z" + (frei ? " eq-frei" : "") + (stand === "offen" || frisch ? " eq-faellig" : "");
       return `<div class="${klassen}" data-i="${i}" role="row" tabindex="0" title="Antippen öffnet die Einheit">
@@ -9055,6 +9075,74 @@
       return punkte.reduce((a, b) => a + b, 0) / punkte.length;
     } catch (_) { return null; }
   }
+  /* ================= ANGEBOT ZUM ZUGANGSCODE (BETA2026, 14.10.2026) ================= */
+  // Die Datenbank (mein_angebot, 10-beta-angebot.txt) liefert Zeitfenster und Rabatt; die Edge Function
+  // checkout-starten prüft beides noch einmal, bevor der Gutschein auf die Bezahlseite kommt.
+  // Der Countdown ist echt: Er endet genau, wenn das Angebot endet – danach verschwindet es.
+  function angebotJetzt() {
+    const a = D && D.angebot;
+    if (!a || !a.prozent || hatAbo()) return null;
+    const von = new Date(a.von), bis = new Date(a.bis), jetzt = new Date();
+    if (isNaN(bis) || jetzt < von || jetzt >= bis) return null;
+    return { prozent: Number(a.prozent), monate: Number(a.monate) || 0, bis };
+  }
+  const angebotPreis = (plan, prozent) => { const z = eqZahlLesen(TARIFE[plan].preis); return z ? eur2(z.wert * (1 - prozent / 100)) : TARIFE[plan].preis; };
+  function angebotRest(bis) {
+    const ms = Math.max(0, bis - new Date());
+    const t = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24, m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60;
+    return { ms, t, h, m, s, kurz: t > 0 ? t + " T " + h + " Std" : h > 0 ? h + " Std " + m + " Min" : m + " Min " + s + " Sek" };
+  }
+  const angebotChipText = (an) => an.prozent + " % Angebot · noch " + angebotRest(an.bis).kurz;
+  // Hinweis oben auf jeder Seite, solange das Angebot läuft (ersetzt den Test-Hinweis)
+  function angebotChip() {
+    const an = angebotJetzt();
+    const alt = document.getElementById("eqAngebotChip"); if (alt) alt.remove();
+    if (!an) return false;
+    const t = document.getElementById("eqTestChip"); if (t) t.remove();
+    const chip = el(`<button type="button" class="eq-chip eq-chip-angebot" id="eqAngebotChip"><i></i><span>${esc(angebotChipText(an))}</span></button>`);
+    chip.onclick = () => openAngebotSheet();
+    $("#pageSub").appendChild(chip);
+    return true;
+  }
+  function openAngebotSheet() {
+    const an = angebotJetzt();
+    if (!an) { openTarifSheet(); return; }
+    const ft = freierTest();
+    const karte = (plan) => {
+      const tf = TARIFE[plan], prem = plan === "premium";
+      return `<div class="tarif-card${prem ? " premium" : ""}">
+        <div class="tarif-n">${esc(tf.name)}</div>
+        <div class="tarif-p">${esc(angebotPreis(plan, an.prozent))}<span>/Monat</span></div>
+        <div class="tarif-k"><s>${esc(tf.preis)}</s> · ${an.monate ? "in den ersten " + an.monate + " Monaten, danach " + esc(tf.preis) : "dauerhaft"}</div>
+        ${istInhaber() ? `<button class="tarif-btn${prem ? " prem" : ""}" data-plan="${plan}">${esc(tf.name)} mit ${an.prozent} % sichern</button>` : ""}
+      </div>`;
+    };
+    const r = angebotRest(an.bis);
+    const body = `
+      <div class="eq-angebot">
+        <div class="eq-angebot-t">${an.prozent} % auf ${an.monate ? "die ersten " + an.monate + " Monate" : "dein Abo"}</div>
+        <div class="eq-angebot-d">Danke, dass du ESTRIQ in der Beta testest. Wenn du jetzt einen Tarif wählst, bekommst du ${an.prozent} % Rabatt${an.monate ? " auf die ersten " + an.monate + " Monate" : ""}.</div>
+        <div class="eq-countdown" role="timer" aria-live="off" aria-label="Das Angebot endet am ${esc(an.bis.toLocaleString(LOC, { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))}">
+          <div><b data-cd="t">${r.t}</b><span>Tage</span></div><div><b data-cd="h">${String(r.h).padStart(2, "0")}</b><span>Std</span></div>
+          <div><b data-cd="m">${String(r.m).padStart(2, "0")}</b><span>Min</span></div><div><b data-cd="s">${String(r.s).padStart(2, "0")}</b><span>Sek</span></div>
+        </div>
+        <div class="eq-angebot-ende">Endet am ${esc(an.bis.toLocaleString(LOC, { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))}</div>
+      </div>
+      <div class="tarif-grid">${karte("basic")}${karte("premium")}</div>
+      <div class="ef-msg" id="rabattMsg"></div>
+      <div class="up-note" style="margin-top:14px">${ft && ft.laeuft ? "Bezahlt wird erst nach deinem kostenlosen Monat, ab dem " + esc(ft.datum) + ". " : ""}Monatlich kündbar. Ohne Angebot gilt nach dem Test der normale Preis.</div>
+      ${istInhaber() ? "" : `<div class="note" style="margin-top:12px">${esc(nurInhaberSatz())}</div>`}`;
+    const sheet = openSheet("Dein Beta-Angebot", "Nur für kurze Zeit", body);
+    sheet.querySelectorAll(".tarif-btn").forEach(b => b.onclick = () => starteCheckout(b.dataset.plan, sheet, { angebot: true }));
+    const uhr = setInterval(() => {
+      if (!sheet.isConnected) { clearInterval(uhr); return; }
+      const x = angebotRest(an.bis);
+      if (x.ms <= 0) { clearInterval(uhr); closeSheet(); D.angebot = null; angebotChip(); showToast("Das Angebot ist abgelaufen."); return; }
+      const setz = (k, v) => { const n = sheet.querySelector('[data-cd="' + k + '"]'); if (n) n.textContent = v; };
+      setz("t", x.t); setz("h", String(x.h).padStart(2, "0")); setz("m", String(x.m).padStart(2, "0")); setz("s", String(x.s).padStart(2, "0"));
+      const c = document.querySelector("#eqAngebotChip span"); if (c) c.textContent = angebotChipText(an);
+    }, 1000);
+  }
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
   // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
@@ -10638,6 +10726,10 @@
           <div class="eq-zustand-t">Miete für ${esc(monat)} ist offen</div>
           <div class="eq-zustand-d">Fällig seit dem ${tag}. · ${eur(inc.gesamt)}</div></div>
         <button type="button" class="eq-btn" data-miete="1">Eingegangen</button></div>`;
+    } else if (stand === "einzug") {
+      zustand = `<div class="eq-zustand"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">Einzug am ${esc(einzugText(u))}</div>
+          <div class="eq-zustand-d">Ab dann fragt ESTRIQ jeden Monat nach der Miete · ${eur(inc.gesamt)}</div></div></div>`;
     } else if (stand === "keine") {
       zustand = `<div class="eq-zustand"><div class="eq-zustand-tx">
           <div class="eq-zustand-t">Für diese Einheit ist keine Miete hinterlegt</div>
@@ -11375,7 +11467,7 @@
   // (Funktion beta_code_gueltig aus 4-beta-code.txt). Gibt es die Funktion dort noch nicht, gilt der Fingerabdruck
   // unten – der Code selbst steht nicht im Programm, nur sein SHA-256.
   // Ohne die SQL-Datei ist das ein Türschild, kein Schloss: Erst der Auslöser in der Datenbank lehnt Konten ohne Code ab.
-  const BETA_FINGER = ["4aa05c62bc51969c5466a0bd884105fa76e806b034362effd5439368446aacba"];
+  const BETA_FINGER = ["4aa05c62bc51969c5466a0bd884105fa76e806b034362effd5439368446aacba", "fdd482f3cdcb4367ac67132a9e90d2379b3418f5aed19d0ba9d11ac76c82e410"];
   let betaCode = "";   // angenommener Code; reist bei der Registrierung in den Zusatzdaten mit
   // Schreibweise egal: „abcd 1234", „Abcd-1234" und „ABCD1234" sind derselbe Code
   const codeForm = (v) => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
