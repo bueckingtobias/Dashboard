@@ -2311,6 +2311,20 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sheet .as-feld input.as-i[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .sheet .as-feld input.as-i::-webkit-inner-spin-button,.sheet .as-feld input.as-i::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 
+/* ---------- Angebot zum Zugangscode (14.10.2026) ---------- */
+#app .eq-chip-angebot{background:color-mix(in srgb,var(--mint) 22%,var(--bg2));color:var(--text)}
+#app .eq-chip-angebot i{background:var(--mint)}
+.sheet .eq-angebot{text-align:center;padding:4px 0 18px}
+.sheet .eq-angebot-t{font:700 var(--eq-z-mittel)/1.2 var(--eq-f-titel);letter-spacing:-.015em}
+.sheet .eq-angebot-d{font-size:var(--eq-t-3);color:var(--soft);margin:8px auto 0;max-width:46ch;line-height:1.5}
+.sheet .eq-countdown{display:flex;justify-content:center;gap:8px;margin-top:18px}
+.sheet .eq-countdown>div{min-width:64px;padding:10px 6px;border-radius:14px;background:var(--bg)}
+.sheet .eq-countdown b{display:block;font:700 28px/1.1 var(--eq-f-titel);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.sheet .eq-countdown span{font-size:var(--eq-t-1);color:var(--softer)}
+.sheet .eq-angebot-ende{font-size:var(--eq-t-1);color:var(--softer);margin-top:10px}
+.sheet .tarif-k s{color:var(--softer)}
+.sheet .eq-angebot-verweis{display:block;width:100%;min-height:48px;margin-bottom:14px;padding:10px 14px;border-radius:14px;border:2px solid var(--mint);background:color-mix(in srgb,var(--mint) 14%,var(--bg2));color:var(--text);font:600 var(--eq-t-3) var(--fbody);cursor:pointer;text-align:left}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -3406,10 +3420,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=74"></script>
-<script src="./data-save.js?v=74"></script>
-<script src="./finance-engine.js?v=74"></script>
-<script src="./app.js?v=74"></script>
+<script src="./data-loader.js?v=76"></script>
+<script src="./data-save.js?v=76"></script>
+<script src="./finance-engine.js?v=76"></script>
+<script src="./app.js?v=76"></script>
 
 <script>
 /* =====================================================================
