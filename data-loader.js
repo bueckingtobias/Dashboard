@@ -174,6 +174,12 @@ async function ladeDaten() {
     const { data: aboData } = await window.sb.rpc('mein_abo');
     if (aboData) abo = aboData;
   } catch (_) {}
+  // Angebot zum Zugangscode (10-beta-angebot.txt). Fehlt die Funktion, gibt es einfach kein Angebot.
+  let angebot = null;
+  try {
+    const { data: angData, error: angErr } = await window.sb.rpc('mein_angebot');
+    if (!angErr && angData) angebot = angData;
+  } catch (_) {}
   // Tarifgrenzen zählen nur, was die App auch führt: die geladenen Mietobjekte.
   abo.objekte = objekte.length;
   abo.einheiten = objekte.reduce((a, o) => a + (o.einheiten || []).length, 0);
@@ -207,6 +213,7 @@ async function ladeDaten() {
     begruessungen: LOKAL.begruessungen,
     wetter: LOKAL.wetter,
     abo: abo,
+    angebot: angebot,
     zahlungen: zahlungen,
     gewerke: gewerke,
     rechnungen: rechnungen,
