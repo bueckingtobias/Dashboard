@@ -459,7 +459,7 @@
       </div>
       <div class="up-note" style="margin-top:14px">${esc(testmonatSatz("jederzeit kündbar"))}</div>
       ${a.hat_stripe ? `<div class="abo-verwalten"><a href="#" id="portalLink">Abo verwalten oder kündigen</a></div>` : ""}`;
-    const stand = aktuell ? TARIFE[aktuell].name
+    const stand = aktuell ? TARIFE[aktuell].name + (a.abo_endet_am ? " · gekündigt zum " + datumKurz(a.abo_endet_am) : "")
       : freierTest() && freierTest().laeuft ? "Kostenloser Test bis " + freierTest().datum
       : a.tarif === "gesperrt" ? "Pausiert"
       : a.roh_tarif === "onboarding" ? "Kein Abo" : "Test";
@@ -701,8 +701,10 @@
       const ort = sheet.querySelector("#pBetreiber");
       if (!ja || !ort || !ort.isConnected) return;
       ort.innerHTML = `${efTitel("Betreiber")}
-        <button type="button" class="add-btn wide" id="pWarteliste">Warteliste auswerten</button>
-        <div class="ef-h" style="margin-top:8px">Alle Anmeldungen von der deutschen und der US-Seite. Nur du siehst diesen Bereich.</div>`;
+        <button type="button" class="add-btn wide" id="pKunden">Kunden auswerten</button>
+        <button type="button" class="add-btn wide" id="pWarteliste" style="margin-top:10px">Warteliste auswerten</button>
+        <div class="ef-h" style="margin-top:8px">Alle Konten mit Test, Tarif und Kündigung sowie alle Anmeldungen von der deutschen und der US-Seite. Nur du siehst diesen Bereich.</div>`;
+      ort.querySelector("#pKunden").onclick = () => openKunden();
       ort.querySelector("#pWarteliste").onclick = () => openWarteliste();
     });
 
@@ -727,6 +729,8 @@
       statusZeile = "Wähle einen Tarif, um alle Funktionen zu behalten";
     } else if (a.tarif === "gesperrt") {
       statusZeile = "Bearbeiten pausiert — Daten bleiben lesbar";
+    } else if (a.abo_endet_am && gebuchterTarif()) {
+      statusZeile = "Gekündigt · läuft bis " + datumKurz(a.abo_endet_am);
     } else if (imTest && a.tarif_bis) {
       const tage = Math.max(0, Math.ceil((new Date(a.tarif_bis) - new Date()) / 86400000));
       statusZeile = `Testphase · noch ${tage} Tag${tage === 1 ? "" : "e"}, danach kostenpflichtig`;
@@ -2648,6 +2652,7 @@
   function pruefeMieteingaenge() {
     // "Später erinnern" gilt bis zum nächsten Login
     if (sessionStorage.getItem("estriq_miete_spaeter") === "1") return false;
+    if (pruefeMonatscheck()) return true;
     const offen = offeneMieten();
     if (!offen.length) return false;
     openMietCheckSheet(offen);
@@ -7475,22 +7480,59 @@
   // Tätigkeiten mit der Vorgabe, ob sie auf die Mieter umgelegt werden können: true = ja, false = nein,
   // null = wird je Einsatz entschieden. Die Vorgabe folgt der Betriebskostenverordnung (Gartenpflege, Reinigung,
   // Winterdienst ja; Reparaturen und Neuanlagen nein) und lässt sich an jedem Einsatz ändern.
+  // Das vierte Feld ist die Gruppe in der Auswahl (GaLaBau-Bereiche). Schlüssel nie ändern: alte Einsätze tragen sie.
   // Dieselbe Liste steht in zeit.html (dort ohne die Vorgabe). Bei einer Änderung beide Stellen anpassen.
   const ZEIT_TAETIGKEITEN = [
-    ["rasen", "Rasen mähen", true],
-    ["hecke", "Hecken und Sträucher schneiden", true],
-    ["beete", "Beete pflegen, Unkraut entfernen", true],
-    ["laub", "Laub beseitigen", true],
-    ["baum", "Bäume schneiden und pflegen", true],
-    ["giessen", "Pflanzen bewässern", true],
-    ["wege", "Wege, Hof und Einfahrt reinigen", true],
-    ["winter", "Winterdienst: räumen und streuen", true],
-    ["treppenhaus", "Treppenhaus und Gemeinschaftsräume reinigen", true],
-    ["muell", "Mülltonnen und Müllplatz", true],
-    ["neuanlage", "Garten neu anlegen oder umgestalten", false],
-    ["reparatur", "Reparatur und Instandhaltung", false],
-    ["sonstiges", "Sonstiges", null]
+    ["rasen", "Rasen mähen", true, "Rasen und Wiese"],
+    ["rasenpflege", "Rasen vertikutieren, düngen, nachsäen", true, "Rasen und Wiese"],
+    ["rasenkante", "Rasenkanten stechen", true, "Rasen und Wiese"],
+    ["wiese", "Wiese und Böschung mähen", true, "Rasen und Wiese"],
+    ["rasenneu", "Rasen neu anlegen, Rollrasen verlegen", false, "Rasen und Wiese"],
+    ["hecke", "Hecken und Sträucher schneiden", true, "Hecken, Gehölze und Bäume"],
+    ["baum", "Bäume schneiden und pflegen", true, "Hecken, Gehölze und Bäume"],
+    ["faellung", "Baum fällen, Wurzel fräsen", null, "Hecken, Gehölze und Bäume"],
+    ["gehoelzpflanzung", "Bäume, Sträucher und Hecken pflanzen", null, "Hecken, Gehölze und Bäume"],
+    ["beete", "Beete pflegen, Unkraut entfernen", true, "Beete und Pflanzen"],
+    ["mulch", "Mulchen, Rindenmulch auffüllen", true, "Beete und Pflanzen"],
+    ["stauden", "Stauden und Blumen pflanzen", null, "Beete und Pflanzen"],
+    ["giessen", "Pflanzen bewässern", true, "Beete und Pflanzen"],
+    ["bewaesserung", "Bewässerungsanlage einrichten und warten", null, "Beete und Pflanzen"],
+    ["laub", "Laub beseitigen", true, "Beete und Pflanzen"],
+    ["gruenschnitt", "Grünschnitt abfahren und entsorgen", true, "Beete und Pflanzen"],
+    ["wege", "Wege, Hof und Einfahrt reinigen", true, "Wege, Pflaster und Plätze"],
+    ["fugen", "Pflasterfugen reinigen, Unkraut entfernen", true, "Wege, Pflaster und Plätze"],
+    ["pflaster", "Pflasterarbeiten: verlegen und reparieren", false, "Wege, Pflaster und Plätze"],
+    ["terrasse", "Terrasse und Plattenbelag bauen", false, "Wege, Pflaster und Plätze"],
+    ["randsteine", "Randsteine, Kanten und Einfassungen setzen", false, "Wege, Pflaster und Plätze"],
+    ["kies", "Kies, Schotter und Splitt einbauen", false, "Wege, Pflaster und Plätze"],
+    ["entwaesserung", "Entwässerung, Rinnen und Sickerschacht", false, "Wege, Pflaster und Plätze"],
+    ["erdarbeiten", "Erdarbeiten, Aushub und Planieren", false, "Erdbau, Mauern und Zäune"],
+    ["mauer", "Mauern, Palisaden und Stufen", false, "Erdbau, Mauern und Zäune"],
+    ["zaun", "Zaun, Tor und Sichtschutz", false, "Erdbau, Mauern und Zäune"],
+    ["holzpflege", "Holz pflegen: Terrasse, Zaun, Möbel", false, "Erdbau, Mauern und Zäune"],
+    ["spielplatz", "Spielplatz pflegen, Sand erneuern", true, "Ausstattung und Wasser"],
+    ["teich", "Teich und Wasserflächen pflegen", null, "Ausstattung und Wasser"],
+    ["gruendach", "Dachbegrünung pflegen", null, "Ausstattung und Wasser"],
+    ["winter", "Winterdienst: räumen und streuen", true, "Reinigung und Winterdienst"],
+    ["treppenhaus", "Treppenhaus und Gemeinschaftsräume reinigen", true, "Reinigung und Winterdienst"],
+    ["muell", "Mülltonnen und Müllplatz", true, "Reinigung und Winterdienst"],
+    ["dachrinne", "Dachrinne reinigen", null, "Reinigung und Winterdienst"],
+    ["neuanlage", "Garten neu anlegen oder umgestalten", false, "Sonstiges"],
+    ["reparatur", "Reparatur und Instandhaltung", false, "Sonstiges"],
+    ["material", "Material besorgen, Fahrten", null, "Sonstiges"],
+    ["sonstiges", "Sonstiges", null, "Sonstiges"]
   ];
+  // Auswahl „Tätigkeit" mit Gruppen (wie efSel, nur mit <optgroup>)
+  function zeitArtSel(wert) {
+    const gruppen = [];
+    ZEIT_TAETIGKEITEN.forEach(x => { let g = gruppen.find(y => y.n === x[3]); if (!g) gruppen.push(g = { n: x[3], l: [] }); g.l.push(x); });
+    return `<div class="ef-row">
+      <label class="ef-l" for="ef-taetigkeit">Tätigkeit</label>
+      <select class="ef-i" id="ef-taetigkeit" data-f="taetigkeit">
+        ${gruppen.map(g => `<optgroup label="${esc(g.n)}">${g.l.map(x => `<option value="${esc(x[0])}"${x[0] === wert ? " selected" : ""}>${esc(x[1])}</option>`).join("")}</optgroup>`).join("")}
+      </select>
+    </div>`;
+  }
   const zeitArt = (k) => ZEIT_TAETIGKEITEN.find(x => x[0] === k) || [k, k || "Sonstiges", null];
   // Umlagefähig? Die Entscheidung am Einsatz geht vor, sonst gilt die Vorgabe der Tätigkeit. null = noch offen.
   const zeitUmlage = (e) => istUS() ? false : e.umlagefaehig === true || e.umlagefaehig === false ? e.umlagefaehig : zeitArt(e.taetigkeit)[2];
@@ -7717,7 +7759,7 @@
       ${links.length ? efSel("Person", "konto", gewaehlt, links.map(l => ({ v: String(l.id), t: l.name + (l.aktiv ? "" : " (Link gesperrt)") })).concat([{ v: "", t: "Andere Person" }]),
         { hinweis: "Der Einsatz zählt zum Zeitkonto dieser Person und steht auch auf ihrer Seite." }) : ""}
       <div id="zePerson"${links.length && gewaehlt ? " hidden" : ""}>${ef(links.length ? "Name" : "Person", "person", e && !gewaehlt ? e.person : "", "text", { platzhalter: "z. B. Heinz Meyer" })}</div>
-      ${efSel("Tätigkeit", "taetigkeit", e ? zeitArt(e.taetigkeit)[0] : "rasen", ZEIT_TAETIGKEITEN.map(x => ({ v: x[0], t: x[1] })))}
+      ${zeitArtSel(e ? zeitArt(e.taetigkeit)[0] : "rasen")}
       ${efArea("Beschreibung", "beschreibung", e ? (e.beschreibung || "") : "", { hinweis: "Was genau gemacht wurde. Bei „Sonstiges“ entscheidest du danach, ob es umlagefähig ist." })}
       ${efTitel("Zeit")}
       ${ef("Beginn", "beginn", e ? uhr(e.beginn) : "08:00", "time", { pflicht: true })}
@@ -8343,7 +8385,7 @@
   }
   window.eqT = (s) => T(s);
 
-  const UEB_ATTR = ["placeholder", "aria-label", "title", "alt"];
+  const UEB_ATTR = ["placeholder", "aria-label", "title", "alt", "label"];   // label: Gruppen in Auswahlfeldern (optgroup)
   const UEB_STOP = "script,style,textarea,#landing,#login,.eq-roh";
   const UEB_STAND = new WeakMap();   // Textknoten → zuletzt geschriebener Text
   function textUebersetzen(n) {
@@ -9143,6 +9185,526 @@
       const c = document.querySelector("#eqAngebotChip span"); if (c) c.textContent = angebotChipText(an);
     }, 1000);
   }
+  /* ================= KUNDEN (Betreiber) ================= */
+  // Alle Konten mit Testphase, Code, Tarif und Kündigung – nur für Betreiber (kunden_liste, 11-kunden.txt)
+  const KD_FEHLT = "Die Kundenübersicht ist noch nicht eingerichtet. Führ dafür 11-kunden.txt im SQL-Editor aus.";
+  const kdTage = (iso) => Math.ceil((new Date(iso) - Date.now()) / 864e5);
+  function kdStand(k) {
+    const plan = k.tarif === "premium" ? "Premium" : k.tarif === "basic" ? "Basic" : "";
+    if (k.stripe_status === "demo_code") return { art: "sonst", text: "Freigeschaltet mit Demo-Code" };
+    if (k.gebucht && k.tarif === "gesperrt") return { art: "sonst", text: k.abo_endet_am ? "Abo beendet am " + datumKurz(k.abo_endet_am) : "Pausiert – keine gültige Zahlung" };
+    if (k.gebucht && k.abo_endet_am) return { art: "gekuendigt", text: (plan ? plan + " · " : "") + "Gekündigt · läuft bis " + datumKurz(k.abo_endet_am) };
+    if (k.gebucht && k.stripe_status === "payment_failed") return { art: "gebucht", text: (plan ? plan + " · " : "") + "Zahlung fehlgeschlagen – Stripe versucht es erneut" };
+    if (k.gebucht && plan) return { art: "gebucht", gut: true, text: plan + " gebucht · " + (k.stripe_status === "trialing"
+      ? (k.tarif_bis ? "erste Zahlung am " + datumKurz(k.tarif_bis) : "noch im Gratismonat")
+      : (k.tarif_bis ? "verlängert sich am " + datumKurz(k.tarif_bis) : "aktiv")) };
+    if (k.tarif === "test" && k.tarif_bis) {
+      const t = kdTage(k.tarif_bis);
+      return t > 0 ? { art: "test", text: "Kostenloser Test bis " + datumKurz(k.tarif_bis) + " · noch " + t + (t === 1 ? " Tag" : " Tage"), bald: t <= 7 }
+        : { art: "test_aus", text: "Test am " + datumKurz(k.tarif_bis) + " abgelaufen · nicht gebucht" };
+    }
+    if (k.tarif === "onboarding") return { art: "sonst", text: "Registriert · Test nicht gestartet" };
+    if (k.tarif === "gesperrt") return { art: "sonst", text: "Pausiert" };
+    return { art: "sonst", text: plan || String(k.tarif || "–") };
+  }
+  const kdZuletzt = (iso) => {
+    if (!iso) return "noch nie angemeldet";
+    const t = Math.floor((Date.now() - new Date(iso)) / 864e5);
+    return t <= 0 ? "heute aktiv" : t === 1 ? "gestern aktiv" : "zuletzt aktiv vor " + t + " Tagen";
+  };
+
+  function openKunden(stand) {
+    stand = Object.assign({ art: "alle" }, stand || {});
+    const sheet = openSheet("Kunden", "Alle Konten mit Test, Tarif und Kündigung", `<div id="kdBody"><div class="note">Wird geladen…</div></div>`);
+    sheet.querySelector(".sheet").classList.add("eq-breit");
+    const body = sheet.querySelector("#kdBody");
+    let alle = [];
+    async function laden() {
+      const { data, error } = await window.sb.rpc("kunden_liste");
+      if (error) { body.innerHTML = `<div class="eq-leer">${funktionFehlt(error) ? KD_FEHLT : esc(window.fehlerText(error))}</div>`; return false; }
+      alle = (data || []).map(k => ({ ...k, st: kdStand(k) }))
+        .sort((x, y) => String(y.seit || "").localeCompare(String(x.seit || "")));
+      return true;
+    }
+    function zeichne() {
+      if (!body.isConnected) return;
+      const zahl = (f) => alle.filter(f).length;
+      const passt = (k) => stand.art === "alle" || (stand.art === "test" ? (k.st.art === "test" || k.st.art === "test_aus") : k.st.art === stand.art);
+      const liste = alle.filter(passt);
+      const chip = (wert, text, n) => `<button type="button" class="eq-wl-chip" data-kd-art="${wert}" aria-pressed="${stand.art === wert}">${esc(text)} (${n})</button>`;
+      const woche = Date.now() - 7 * 864e5;
+      body.innerHTML = `
+        <div class="eq-wl-filter" role="group" aria-label="Auswahl">
+          ${chip("alle", "Alle", alle.length)}${chip("test", "Test", zahl(k => k.st.art === "test" || k.st.art === "test_aus"))}${chip("gebucht", "Gebucht", zahl(k => k.st.art === "gebucht"))}${chip("gekuendigt", "Gekündigt", zahl(k => k.st.art === "gekuendigt"))}${chip("sonst", "Sonstige", zahl(k => k.st.art === "sonst"))}
+        </div>
+        <div class="eq-werte">
+          ${wert("Im Test", String(zahl(k => k.st.art === "test")), zahl(k => k.st.bald) + " enden in 7 Tagen")}
+          ${wert("Gebucht", String(zahl(k => k.st.art === "gebucht")), zahl(k => k.st.art === "gebucht" && k.stripe_status === "trialing") + " davon noch im Gratismonat")}
+          ${wert("Gekündigt", String(zahl(k => k.st.art === "gekuendigt")), "laufen noch bis Laufzeitende")}
+          ${wert("Neu", String(zahl(k => new Date(k.seit) >= woche)), "Konten der letzten 7 Tage")}
+        </div>
+        ${liste.length ? `<div class="eq-zeit-fuss">
+            <button type="button" class="add-btn" id="kdKopieren">Adressen kopieren (${liste.filter(k => k.email).length})</button>
+            <button type="button" class="add-btn" id="kdCsv">Als CSV herunterladen</button>
+          </div>
+          <div class="ef-msg" id="kdMsg" role="status"></div>
+          <div class="eq-wl-liste">${liste.map(k => `<div class="eq-wl-z">
+            <div class="eq-wl-tx">
+              <div class="eq-wl-mail">${esc(k.konto || "Ohne Namen")}</div>
+              <div class="eq-wl-m">${esc([k.email || "keine E-Mail", k.region === "us" ? "USA" : "", "seit " + datumKurz(k.seit), k.code ? "Code " + k.code : ""].filter(Boolean).join(" · "))}</div>
+              <div class="eq-wl-s${k.st.gut ? " gut" : ""}">${esc(k.st.text)}</div>
+              <div class="eq-wl-m">${esc([k.objekte + (Number(k.objekte) === 1 ? " Objekt" : " Objekte"), k.einheiten + (Number(k.einheiten) === 1 ? " Einheit" : " Einheiten"), Number(k.nutzer) > 1 ? k.nutzer + " Nutzer" : "", kdZuletzt(k.letzte_anmeldung)].filter(Boolean).join(" · "))}</div>
+            </div>
+            ${k.email ? `<div class="eq-wl-k"><a class="add-btn" href="mailto:${encodeURIComponent(k.email)}">E-Mail</a></div>` : ""}
+          </div>`).join("")}</div>`
+          : `<div class="eq-leer" style="padding:20px 8px">${alle.length ? "In dieser Auswahl ist gerade kein Konto." : "Noch kein Konto."}</div>`}`;
+      const sag = (t) => { const m = body.querySelector("#kdMsg"); if (m) { m.textContent = t; m.className = "ef-msg"; } };
+      body.querySelectorAll("[data-kd-art]").forEach(b => b.onclick = () => { stand.art = b.dataset.kdArt; zeichne(); });
+      const adressen = liste.map(k => k.email).filter(Boolean);
+      const kop = body.querySelector("#kdKopieren");
+      if (kop) kop.onclick = async () => sag(await kopiere(adressen.join(", ")) ? adressen.length + " Adressen kopiert." : "Kopieren ist auf diesem Gerät nicht möglich.");
+      const csv = body.querySelector("#kdCsv");
+      if (csv) csv.onclick = () => {
+        const kopf = ["Konto", "E-Mail", "Land", "Seit", "Code", "Stand", "Tarif", "Bis", "Gekündigt zum", "Objekte", "Einheiten", "Nutzer", "Letzte Anmeldung"];
+        const zeilen = liste.map(k => [k.konto, k.email, k.region === "us" ? "USA" : "Deutschland", datumKurz(k.seit), k.code || "", k.st.text, k.tarif, k.tarif_bis ? datumKurz(k.tarif_bis) : "", k.abo_endet_am ? datumKurz(k.abo_endet_am) : "", k.objekte, k.einheiten, k.nutzer, k.letzte_anmeldung ? datumKurz(k.letzte_anmeldung) : ""]);
+        const text = "﻿" + [kopf].concat(zeilen).map(r => r.map(csvFeld).join(";")).join("\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+        a.download = "estriq-kunden-" + heuteIso() + ".csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        sag("CSV mit " + liste.length + " Konten heruntergeladen.");
+      };
+    }
+    laden().then(ok => { if (ok) zeichne(); });
+    return sheet;
+  }
+
+  /* ================= KREDITZAHLUNGEN & MONATSCHECK ================= */
+  // Geleistete Raten und Sonderzahlungen (Tabelle kreditzahlungen aus 12-kreditzahlungen.txt).
+  // FinanceEngine bleibt unberührt: Zins und Tilgung eines Monats ergeben sich aus FE.creditPlan, eine Sonderzahlung
+  // wird als Kontostand der Bank (restStand) am Kredit gespeichert – genau so, wie die Engine ihn schon kennt.
+  const kzAn = () => Array.isArray(D.kreditzahlungen);
+  const kzVon = (kr) => kzAn() ? D.kreditzahlungen.filter(z => z.kredit_id === kr._id) : [];
+  const kzRate = (kr, jahr, monat) => kzVon(kr).find(z => z.art === "rate" && Number(z.jahr) === jahr && Number(z.monat) === monat) || null;
+  const kzR2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const kzKey = (j, m) => j + "-" + String(m).padStart(2, "0");
+  // Tag im Monat, an dem die Bank die Rate abbucht: wie in der Engine der Tag des ersten Rate-Datums
+  const kreditZahltag = (kr) => Number(String(kr.start || "").slice(8, 10)) || 1;
+  function kreditFaelligAm(kr, j, m) { return new Date(j, m - 1, Math.min(kreditZahltag(kr), new Date(j, m, 0).getDate())); }
+  // Alle Kredite der Mietobjekte und Projekte – zum Wiederfinden nach dem Neuladen
+  const kreditNachId = (id) => { for (const s of (D.streams || []).concat(projekte())) { const k = FE.creditsOf(s).find(c => c._id === id); if (k) return { s, kr: k }; } return null; };
+
+  // Monate werden hier immer nach Ortszeit gezählt (Monat des ersten Rate-Datums = Zeile 0 im Plan). Die Beschriftung
+  // der Planzeilen in der Engine hängt von der Zeitzone ab und wird deshalb nicht verwendet – nur Reihenfolge und Werte.
+  const kzMonNr = (j, m) => j * 12 + (m - 1);
+  const kzStartNr = (kr) => kzMonNr(Number(String(kr.start).slice(0, 4)), Number(String(kr.start).slice(5, 7)));
+  const kzKeyNr = (nr) => kzKey(Math.floor(nr / 12), nr % 12 + 1);
+
+  // Die Rate dieses Monats: Restschuld davor, Zins, Tilgung, Restschuld danach.
+  // Ohne Kontostand ist das die passende Zeile des Tilgungsplans. Mit Kontostand rechnet die Engine von dort weiter;
+  // ob die Rate dieses Monats darin schon steckt, zeigt der Vergleich mit restAktuell.
+  function kreditMonat(kr) {
+    if (!kr || !kr.start) return null;
+    const p = FE.creditPlan(kr);
+    if (!p) return null;
+    const jetzt = new Date(), jahr = jetzt.getFullYear(), monat = jetzt.getMonth() + 1;
+    const faelligAm = kreditFaelligAm(kr, jahr, monat);
+    const basis = { jahr, monat, key: kzKey(jahr, monat), faelligAm, faellig: faelligAm <= jetzt };
+    const idx = kzMonNr(jahr, monat) - kzStartNr(kr);
+    if (idx < 0) return { ...basis, beginnt: true };
+    const rate = Number(kr.abtragMonat) || 0, i = (Number(kr.zinsPa) || 0) / 100 / 12;
+    const st = kr.sondertilgung || null;
+    const stM = st && Array.isArray(st.monate) && st.monate.includes(monat) ? Number(st.betrag) || 0 : 0;
+    const werte = (restVor, gezaehlt) => {
+      if (!(restVor > 0.005)) return { ...basis, fertig: true };
+      const zins = restVor * i, tilgung = Math.max(0, Math.min(rate - zins, restVor));
+      const sonderPlan = stM ? Math.min(stM, Math.max(0, restVor - tilgung)) : 0;
+      return { ...basis, rate, i, gezaehlt, zins: kzR2(zins), tilgung: kzR2(tilgung), betrag: kzR2(zins + tilgung), sonderPlan: kzR2(sonderPlan),
+        restVor: kzR2(restVor), restNach: kzR2(Math.max(0, restVor - tilgung - sonderPlan)) };
+    };
+    if (!(kr.restStand && kr.restStand.betrag != null)) {
+      const row = p.rows[idx];
+      if (!row) return { ...basis, fertig: true };
+      const restVor = idx ? p.rows[idx - 1].rest : Number(kr.summe) || 0;
+      if (!(restVor > 0.005)) return { ...basis, fertig: true };
+      return { ...basis, rate, i, gezaehlt: Math.abs(p.restAktuell - row.rest) < 0.01, zins: row.zins, tilgung: row.tilgung, betrag: kzR2(row.zins + row.tilgung),
+        sonderPlan: row.sonder, restVor: kzR2(restVor), restNach: row.rest };
+    }
+    // Mit Kontostand: Der Stand gilt einschließlich der Rate seines Monats. Wie viele Raten danach hat die Engine abgezogen?
+    const ad = String(kr.restStand.datum || "");
+    if (ad.length < 7) return werte(p.restAktuell, false);   // Kontostand ohne Datum: die Engine zieht nie etwas ab
+    const nach = ad.length >= 7 ? kzMonNr(jahr, monat) - kzMonNr(Number(ad.slice(0, 4)), Number(ad.slice(5, 7))) : 0;
+    if (nach <= 0) return werte((p.restAktuell + rate + stM) / (1 + i), true);
+    let r = Number(kr.restStand.betrag), best = 0, abst = Math.abs(r - p.restAktuell);
+    for (let k = 1; k <= nach + 1 && r > 0.005; k++) { r -= Math.max(0, Math.min(rate - r * i, r)); const d = Math.abs(r - p.restAktuell); if (d < abst) { abst = d; best = k; } }
+    return best >= nach ? werte((p.restAktuell + rate + stM) / (1 + i), true) : werte(p.restAktuell, false);
+  }
+  // Restschuld heute – dieselbe Zahl wie im Kredit-Fenster
+  const kreditRestHeute = (kr) => (FE.creditPlan(kr) || {}).restAktuell || 0;
+
+  // Fällige, noch nicht gebuchte Raten der Mietobjekte (Projekte und Kredite ohne Beginn zählen nicht)
+  function offeneRaten() {
+    if (!kzAn()) return [];
+    const r = [];
+    (D.streams || []).filter(s => s.kind === "miete").forEach(s => FE.creditsOf(s).forEach(kr => {
+      const km = kreditMonat(kr);
+      if (!km || km.beginnt || km.fertig || !km.faellig || !(km.betrag > 0)) return;
+      if (kzRate(kr, km.jahr, km.monat)) return;
+      r.push({ objekt: s, kredit: kr, km });
+    }));
+    return r;
+  }
+
+  async function kreditRateSpeichern(kr, km, gebucht) {
+    let uhr;
+    const frist = new Promise((_, nein) => { uhr = setTimeout(() => { const e = new Error("Zeit abgelaufen"); e.eqFrist = true; nein(e); }, MIETE_FRIST); });
+    const lauf = (async () => {
+      const { data, error } = await window.sb.rpc("kreditrate_setzen", { p_kredit: kr._id, p_jahr: km.jahr, p_monat: km.monat, p_gebucht: !!gebucht,
+        p_betrag: gebucht ? km.betrag : null, p_zins: gebucht ? km.zins : null, p_tilgung: gebucht ? km.tilgung : null, p_rest: gebucht ? km.restNach : null });
+      if (error) throw error;
+      if (data === "gesperrt") { const e = new Error("gesperrt"); e.eqText = "Mit dem aktuellen Tarif kannst du gerade nichts ändern."; throw e; }
+      if (data && data !== "ok") { const e = new Error(String(data)); e.eqText = "Diese Rate ließ sich nicht speichern."; throw e; }
+    })();
+    try { await Promise.race([lauf, frist]); } finally { clearTimeout(uhr); }
+  }
+  const kzFehler = (e) => (e && e.eqText) || mieteFehlerText(e);
+
+  // Zeile einer Kreditrate: Name, Fälligkeit, Zins und Tilgung als Balken, Betrag, Knopf
+  function rateZeile(o, erledigt) {
+    const km = o.km, z = km.betrag ? km.zins / km.betrag * 100 : 0;
+    return `<div class="mk-row eq-mc-rate${erledigt ? " erledigt" : ""}" data-kredit="${esc(o.kredit._id)}" tabindex="-1">
+      <div class="mk-tx">
+        <div class="mk-n">${esc(o.kredit.name || "Kredit")}</div>
+        <div class="mk-m">fällig am ${km.faelligAm.getDate()}. · Zins ${eur2(km.zins)} · Tilgung ${eur2(km.tilgung)}</div>
+        <div class="rc-vh eq-mc-vh" role="img" aria-label="${Math.round(z)} Prozent Zins, ${Math.round(100 - z)} Prozent Tilgung"><i class="z" style="width:${z.toFixed(1)}%"></i><i class="t" style="width:${(100 - z).toFixed(1)}%"></i></div>
+      </div>
+      <div class="mk-soll">${eur2(km.betrag)}</div>
+      ${erledigt ? `<div class="mk-da"><span class="eq-marke gut">gebucht</span></div>`
+        : `<button type="button" class="mk-ok" data-kredit="${esc(o.kredit._id)}">Gebucht</button>`}
+    </div>`;
+  }
+
+  // Was der Monat bei einem Objekt bringt: Mieten, Raten, Cashflow – und wie viel Schuld die Raten tilgen
+  function objektBilanz(s) {
+    const m = FE.streamMonthly(s);
+    let tilgung = 0;
+    FE.creditsOf(s).forEach(kr => { const km = kreditMonat(kr); if (km && !km.beginnt && !km.fertig) tilgung += km.tilgung + km.sonderPlan; });
+    const fs = finanzStand(FE.creditsOf(s));
+    return { ein: m.gesamt, raten: m.kreditAbtrag, netto: m.netto, tilgung: kzR2(tilgung), anteil: fs.anteil, rest: fs.rest, puffer: !!m.puffer || !!s.nkAlsPuffer };
+  }
+  function bilanzHtml(s, b) {
+    const max = Math.max(b.ein, b.raten, Math.abs(b.netto), 1);
+    const balken = (titel, betrag, klasse, text) => `<div class="eq-mc-b">
+        <span class="eq-mc-bl">${esc(titel)}</span>
+        <span class="eq-mc-bs"><i class="${klasse}" style="width:${Math.max(2, Math.abs(betrag) / max * 100).toFixed(1)}%"></i></span>
+        <b class="eq-mc-bw">${text}</b></div>`;
+    return `<div class="eq-mc-bilanz">
+      <div class="eq-mc-bt">Was ${esc(nameOhneBruch(s.name))} im Monat bringt</div>
+      ${balken(b.puffer ? "Mieten ohne Nebenkosten" : "Mieten", b.ein, "ein", "+" + eur(b.ein))}
+      ${b.raten ? balken("Kreditraten", b.raten, "aus", "−" + eur(b.raten)) : ""}
+      ${balken("Cashflow", b.netto, b.netto >= 0 ? "gut" : "minus", (b.netto >= 0 ? "+" : "−") + eur(Math.abs(b.netto)))}
+      ${b.tilgung > 0 ? `<div class="eq-mc-plus">
+        <div class="eq-mc-pz">+${eur(b.tilgung)}</div>
+        <div class="eq-mc-pt">Vermögen aufgebaut: So viel Schuld tilgen die Raten diesen Monat. Dieser Teil von ${esc(nameOhneBruch(s.name))} gehört jetzt dir.</div>
+        <div class="eq-mc-fort" role="img" aria-label="${Math.round(b.anteil)} Prozent der Kredite abbezahlt"><i style="width:${Math.max(1, b.anteil).toFixed(1)}%"></i></div>
+        <div class="eq-mc-ft">${prozent(b.anteil, 1)} der Kredite abbezahlt · noch ${eur(b.rest)} offen</div>
+      </div>` : ""}
+    </div>`;
+  }
+
+  // Monatscheck beim Login: je Objekt eine Seite – „Sind die Mieten da?" und „Sind die Kreditraten gebucht?" –,
+  // dazu die Bilanz des Objekts. Am Ende eine Zusammenfassung.
+  function monatscheckGruppen() {
+    const mieten = offeneMieten(), raten = offeneRaten();
+    return (D.streams || []).filter(s => s.kind === "miete").map(s => ({
+      id: s._id,
+      mieten: mieten.filter(o => o.objekt._id === s._id).map(o => ({ einheit: o.einheit._id, soll: o.soll })),
+      raten: raten.filter(o => o.objekt._id === s._id).map(o => o.kredit._id)
+    })).filter(g => g.mieten.length || g.raten.length);
+  }
+  function pruefeMonatscheck() {
+    if (sessionStorage.getItem("estriq_miete_spaeter") === "1") return false;
+    if (!offeneRaten().length) return false;
+    openMonatscheck();
+    return true;
+  }
+
+  function openMonatscheck(opt) {
+    opt = opt || {};
+    const gruppen = opt.gruppen || monatscheckGruppen();
+    if (!gruppen.length) { showToast("Für diesen Monat ist alles bestätigt."); return; }
+    const erledigt = opt.erledigt || { mieten: new Set(), raten: new Set() };
+    const schritt = Math.min(opt.schritt || 0, gruppen.length);
+    const monatName = new Date().toLocaleDateString(LOC, { month: "long", year: "numeric" });
+    const punkte = `<div class="wc-steps">${gruppen.concat([0]).map((_, i) => `<span class="${i < schritt ? "done" : i === schritt ? "on" : ""}"></span>`).join("")}</div>`;
+    const weiter = (n) => { closeSheet(); setTimeout(() => openMonatscheck({ gruppen, erledigt, schritt: n }), 220); };
+
+    if (schritt >= gruppen.length) {
+      // Zusammenfassung über alle Mietobjekte
+      const objekte = (D.streams || []).filter(s => s.kind === "miete");
+      let netto = 0, tilgung = 0;
+      objekte.forEach(s => { const b = objektBilanz(s); netto += b.netto; tilgung += b.tilgung; });
+      const alle = objekte.flatMap(s => FE.creditsOf(s)), fs = finanzStand(alle);
+      const restM = offeneMieten().length, restR = offeneRaten().length;
+      const fertig = !restM && !restR;
+      const body = `
+        <div class="wc-hero" style="padding-bottom:10px">
+          ${punkte}
+          <div class="wc-badge">${esc(monatName)}</div>
+          <div class="wc-t">${fertig ? esc(monatsName()) + " ist abgehakt" : "Monatscheck beendet"}</div>
+          <div class="wc-d">${fertig ? "Alle fälligen Mieten und Raten sind bestätigt." : "Noch offen: " + [restM ? mehrzahl(restM, "Miete", "Mieten") : "", restR ? mehrzahl(restR, "Kreditrate", "Kreditraten") : ""].filter(Boolean).join(" und ") + ". ESTRIQ fragt beim nächsten Login wieder nach."}</div>
+        </div>
+        ${tilgung > 0 ? `<div class="eq-mc-plus gross">
+          <div class="eq-mc-pz">+${eur(tilgung)}</div>
+          <div class="eq-mc-pt">Vermögen aufgebaut in diesem Monat – allein durch die Tilgung deiner Kredite.</div>
+          <div class="eq-mc-fort" role="img" aria-label="${Math.round(fs.anteil)} Prozent aller Kredite abbezahlt"><i style="width:${Math.max(1, fs.anteil).toFixed(1)}%"></i></div>
+          <div class="eq-mc-ft">${prozent(fs.anteil, 1)} aller Kredite abbezahlt · noch ${eur(fs.rest)} offen</div>
+        </div>` : ""}
+        <div class="eq-werte" style="margin-top:14px">
+          ${wert("Cashflow im Monat", (netto >= 0 ? "+" : "−") + eur(Math.abs(netto)), "Mieten minus Kreditraten, alle Objekte")}
+          ${wert("Tilgung im Monat", eur(tilgung), "Schuld, die diesen Monat kleiner wird")}
+        </div>
+        <div class="ef-actions eq-fest mk-actions"><div class="ef-knoepfe"><button type="button" class="eq-btn" id="mcFertig">Fertig</button></div></div>`;
+      const sh = openSheet("Monatscheck", "", body);
+      sh.querySelector("#mcFertig").onclick = () => closeSheet();
+      return sh;
+    }
+
+    const g = gruppen[schritt];
+    const s = (D.streams || []).find(x => x._id === g.id);
+    if (!s) { weiter(schritt + 1); return; }
+    const mietO = g.mieten.map(m => { const u = (s.einheiten || []).find(x => x._id === m.einheit); return u ? { objekt: s, einheit: u, soll: m.soll, erledigt: erledigt.mieten.has(u._id) } : null; }).filter(Boolean);
+    const ratenO = g.raten.map(id => { const kr = FE.creditsOf(s).find(c => c._id === id); const km = kr && kreditMonat(kr); return kr && km && km.betrag ? { objekt: s, kredit: kr, km, erledigt: erledigt.raten.has(id) } : null; }).filter(Boolean);
+    const name = nameOhneBruch(s.name);
+    const body = `
+      <div class="wc-hero" style="padding-bottom:10px">
+        ${punkte}
+        <div class="wc-badge">${esc(monatName)} · Objekt ${schritt + 1} von ${gruppen.length}</div>
+        <div class="wc-t">${esc(name)}</div>
+      </div>
+      ${mietO.length ? `<div class="eq-mc-block">
+        <div class="eq-mc-frage">${svg(s.icon || "home")}<span>Sind die Mieten da?</span></div>
+        ${mietO.map(o => mietZeile(o, false)).join("")}
+      </div>` : ""}
+      ${ratenO.length ? `<div class="eq-mc-block">
+        <div class="eq-mc-frage">${svg("bank")}<span>Sind die Kreditraten gebucht?</span></div>
+        ${ratenO.map(o => rateZeile(o, o.erledigt)).join("")}
+        <button type="button" class="add-btn eq-mc-sonder" id="mcSonder">+ Sonderzahlung erfassen</button>
+      </div>` : ""}
+      ${bilanzHtml(s, objektBilanz(s))}
+      <div class="ef-actions eq-fest mk-actions">
+        <div class="ef-msg" id="mcMsg" role="status"></div>
+        <div class="ef-knoepfe">
+          <button type="button" class="eq-btn" id="mcAlle">Alles bestätigen</button>
+          <button type="button" class="eq-btn zweit" id="mcWeiter">${schritt + 1 < gruppen.length ? "Weiter" : "Zur Übersicht"}</button>
+        </div>
+      </div>`;
+    const sheet = openSheet("Monatscheck", "", body);
+    const msg = sheet.querySelector("#mcMsg"), alle = sheet.querySelector("#mcAlle");
+    const sag = (t) => { msg.textContent = t; msg.className = "ef-msg" + (t ? " bad" : ""); };
+    const offenRows = () => [...sheet.querySelectorAll(".mk-row:not(.erledigt) .mk-ok")];
+    const stand = () => { if (!offenRows().length) { alle.textContent = schritt + 1 < gruppen.length ? "Weiter" : "Zur Übersicht"; alle.dataset.weiter = "1"; } };
+    const markiere = (b, text) => { const z = b.closest(".mk-row"); z.classList.add("erledigt"); b.textContent = text; b.disabled = true; };
+    async function eins(b) {
+      if (b.dataset.einheit) {
+        await mieteSpeichern(b.dataset.einheit, true, Number(b.dataset.betrag));
+        erledigt.mieten.add(b.dataset.einheit); frischEingegangen.add(b.dataset.einheit); markiere(b, "eingegangen");
+      } else {
+        const o = ratenO.find(x => x.kredit._id === b.dataset.kredit);
+        await kreditRateSpeichern(o.kredit, o.km, true);
+        erledigt.raten.add(o.kredit._id); markiere(b, "gebucht");
+      }
+    }
+    const neuLaden = async () => { try { await window.nachSpeichern(); return true; } catch (_) { sag(NEULADEN_HINWEIS); return false; } };
+    offenRows().forEach(b => b.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      const vorher = b.textContent; b.disabled = true; b.textContent = "Speichere…"; sag("");
+      try { await eins(b); } catch (e) { b.disabled = false; b.textContent = vorher; sag(kzFehler(e)); return; }
+      await neuLaden(); stand();
+    });
+    alle.onclick = async () => {
+      if (alle.dataset.weiter === "1") { weiter(schritt + 1); return; }
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      alle.disabled = true; alle.textContent = "Speichere…"; sag("");
+      let fehler = null;
+      for (const b of offenRows()) { b.disabled = true; try { await eins(b); } catch (e) { fehler = e; b.disabled = false; } }
+      await neuLaden();
+      alle.disabled = false;
+      if (fehler) { alle.textContent = "Erneut versuchen"; sag(kzFehler(fehler)); return; }
+      weiter(schritt + 1);
+    };
+    sheet.querySelector("#mcWeiter").onclick = () => weiter(schritt + 1);
+    const so = sheet.querySelector("#mcSonder");
+    if (so) so.onclick = () => {
+      const zurueck = () => openMonatscheck({ gruppen, erledigt, schritt });
+      if (ratenO.length === 1) { closeSheet(); setTimeout(() => openSonderzahlung(ratenO[0].kredit, zurueck), 220); return; }
+      closeSheet(); setTimeout(() => openKreditWahl(ratenO.map(o => o.kredit), zurueck), 220);
+    };
+    stand();
+    return sheet;
+  }
+
+  // Welcher Kredit? (bei mehreren Krediten an einem Objekt)
+  function openKreditWahl(kredite, zurueck) {
+    const sh = openSheet("Sonderzahlung", "Für welchen Kredit?", `<div class="frage-opts">${kredite.map(kr =>
+      `<button type="button" class="frage-opt" data-kredit="${esc(kr._id)}">${esc(kr.name || "Kredit")}<small>Restschuld ${eur(kreditRestHeute(kr))}</small></button>`).join("")}</div>`);
+    sh.querySelectorAll("[data-kredit]").forEach(b => b.onclick = () => {
+      const kr = kredite.find(k => k._id === b.dataset.kredit);
+      closeSheet(); setTimeout(() => openSonderzahlung(kr, zurueck), 220);
+    });
+  }
+
+  // Sonderzahlung festhalten. Die neue Restschuld wird als Kontostand am Kredit gespeichert, Stichtag heute.
+  // Ein Kontostand gilt in der Engine einschließlich der Rate seines Monats – darum zählt hier die Restschuld nach der
+  // Rate dieses Monats, auch wenn sie erst später abgebucht wird.
+  function openSonderzahlung(kr, zurueck) {
+    const km = kreditMonat(kr);
+    const laeuft = !!(km && !km.beginnt && !km.fertig);
+    const basis = laeuft ? km.restNach : kreditRestHeute(kr);
+    const i = (Number(kr.zinsPa) || 0) / 100 / 12, rate = Number(kr.abtragMonat) || 0;
+    const heute = heuteIso();
+    // Stand laut Bank (heute): Ist die Rate dieses Monats noch nicht abgebucht, wird sie abgezogen
+    const ausBank = (x) => laeuft && !km.faellig ? Math.max(0, x - Math.max(0, Math.min(rate - x * i, x))) : x;
+    const raten = (r) => { let n = 0; while (r > 0.005 && n < 600 && rate > r * i) { r -= Math.min(rate - r * i, r); n++; } return n < 600 && (r <= 0.005) ? n : null; };
+    const body = `
+      <div class="eq-zustand"><div class="eq-zustand-tx"><div class="eq-zustand-t">Restschuld${laeuft ? " nach der Rate im " + esc(monatLang(km.key).split(" ")[0]) : ""}: ${eur2(basis)}</div>
+        <div class="eq-zustand-d">Eine Sonderzahlung tilgt komplett – ohne Zinsanteil. ESTRIQ rechnet danach mit der neuen Restschuld weiter.</div></div></div>
+      ${ef("Betrag", "betrag", "", "number", { pflicht: true, einheit: "€", min: 0 })}
+      ${ef("Bezahlt am", "datum", heute, "date")}
+      ${ef("Restschuld heute laut Bank", "rest", "", "number", { einheit: "€", min: 0, hinweis: "Optional, nach der Sonderzahlung. Ohne Angabe rechnet ESTRIQ: Restschuld minus Sonderzahlung." })}
+      ${ef("Notiz", "notiz", "", "text", { platzhalter: "z. B. Bonus, Steuererstattung" })}
+      <div class="eq-mc-vorschau" id="szVorschau" role="status"></div>
+      ${efAktionen({ speichern: "Sonderzahlung speichern" })}`;
+    const sheet = openSheet("Sonderzahlung", (kr.name || "Kredit"), body);
+    const feld = (n) => sheet.querySelector(`[data-f="${n}"]`);
+    const neuRest = () => { const b = zahl(feld("betrag").value), r = zahl(feld("rest").value); return r != null ? kzR2(ausBank(r)) : (b != null ? kzR2(basis - b) : null); };
+    const vorschau = () => {
+      const ziel = sheet.querySelector("#szVorschau"), x = neuRest(), b = zahl(feld("betrag").value);
+      if (!(b > 0) || x == null) { ziel.innerHTML = ""; return; }
+      if (x < 0) { ziel.innerHTML = `<span class="eq-marke achtung">höher als die Restschuld</span>`; return; }
+      const n1 = raten(x), n0 = raten(basis), weg = n0 != null && n1 != null ? n0 - n1 : 0;
+      ziel.innerHTML = `Neue Restschuld <b>${eur2(x)}</b>${weg > 0 ? esc(" · etwa " + mehrzahl(weg, "Rate", "Raten") + " weniger") : ""}`;
+    };
+    ["betrag", "rest"].forEach(n => feld(n).addEventListener("input", vorschau));
+    efBind(sheet, async (w) => {
+      const betrag = zahl(w.betrag), x = neuRest();
+      if (!(betrag > 0)) throw Object.assign(new Error("betrag"), { eqText: "Bitte gib den Betrag der Sonderzahlung ein." });
+      if (x == null || x < 0) throw Object.assign(new Error("rest"), { eqText: "Die Sonderzahlung ist höher als die Restschuld. Prüf Betrag und Restschuld." });
+      const { data, error } = await window.sb.rpc("kredit_sonderzahlung", { p_kredit: kr._id, p_datum: text(w.datum) || heute, p_betrag: betrag,
+        p_rest_heute: x, p_anker_betrag: x, p_anker_datum: heute, p_notiz: text(w.notiz) });
+      if (error) throw error;
+      if (data === "gesperrt") throw Object.assign(new Error("gesperrt"), { eqText: "Mit dem aktuellen Tarif kannst du gerade nichts ändern." });
+      if (data && data !== "ok") throw Object.assign(new Error(String(data)), { eqText: "Die Sonderzahlung ließ sich nicht speichern. Prüf Betrag und Datum." });
+    }, null, null, () => {
+      showToast("Gespeichert: Sonderzahlung über " + eur(zahl(feld("betrag").value)) + ".");
+      if (zurueck) setTimeout(zurueck, 260);
+    });
+  }
+
+  // Alle Zahlungen eines Kredits seit der ersten Rate: gebuchte Raten mit ihren Werten, sonst die Zeile des Plans
+  // (als „laut Plan" gekennzeichnet), dazu Sonderzahlungen.
+  function kzVerlauf(kr) {
+    const p = FE.creditPlan(kr);
+    if (!p || !kr.start) return [];
+    const recs = kzVon(kr), km = kreditMonat(kr);
+    const jetzt = new Date(), heuteNr = kzMonNr(jetzt.getFullYear(), jetzt.getMonth() + 1), start = kzStartNr(kr);
+    const zeilen = [];
+    p.rows.forEach((row, idx) => {
+      const nr = start + idx;
+      if (nr > heuteNr) return;
+      const key = kzKeyNr(nr), j = Math.floor(nr / 12), m = nr % 12 + 1;
+      const rec = recs.find(z => z.art === "rate" && Number(z.jahr) === j && Number(z.monat) === m);
+      if (nr === heuteNr && !rec && !(km && km.faellig)) return;   // diese Rate ist noch nicht fällig
+      if (rec) zeilen.push({ key, art: "rate", betrag: Number(rec.betrag), zins: Number(rec.zins) || 0, tilgung: Number(rec.tilgung) || 0, rest: rec.rest_danach != null ? Number(rec.rest_danach) : null, ok: true, datum: rec.datum });
+      else zeilen.push({ key, art: "rate", betrag: kzR2(row.zins + row.tilgung), zins: row.zins, tilgung: row.tilgung, rest: null, ok: false });
+      if (row.sonder > 0 && !recs.some(z => z.art === "sonder" && Number(z.jahr) === j && Number(z.monat) === m))
+        zeilen.push({ key, art: "sonderplan", betrag: row.sonder, zins: 0, tilgung: row.sonder, ok: false });
+    });
+    recs.filter(z => z.art === "sonder").forEach(z => zeilen.push({ key: kzKey(Number(z.jahr), Number(z.monat)), art: "sonder", id: z.id, betrag: Number(z.betrag), zins: 0, tilgung: Number(z.betrag), rest: z.rest_danach != null ? Number(z.rest_danach) : null, ok: true, datum: z.datum, notiz: z.notiz }));
+    return zeilen.sort((a, b) => a.key === b.key ? (a.art === "rate" ? 1 : -1) : (a.key < b.key ? 1 : -1));
+  }
+  const kzZeileHtml = (z) => `<div class="eq-kz-z${z.ok ? " ok" : ""}">
+      <div class="eq-kz-tx"><b>${esc(monatLang(z.key))}${z.art === "sonder" ? " · Sonderzahlung" : z.art === "sonderplan" ? " · Sondertilgung" : ""}</b>
+        <span>${z.art === "sonder" ? esc(["am " + dateDE(z.datum), z.notiz || ""].filter(Boolean).join(" · ")) : z.ok ? "gebucht am " + esc(dateDE(z.datum)) : "laut Plan · nicht bestätigt"}</span></div>
+      <div class="eq-kz-w"><b>${eur2(z.betrag)}</b><span>${z.art === "rate" ? "Zins " + eur2(z.zins) + " · Tilgung " + eur2(z.tilgung) : "Tilgung " + eur2(z.tilgung)}${z.rest != null ? " · Rest " + eur(z.rest) : ""}</span></div>
+      ${z.art === "sonder" ? `<button type="button" class="add-btn eq-kz-weg" data-kz-weg="${esc(z.id)}">Entfernen</button>` : ""}
+      </div>`;
+
+  // Abschnitt im Kredit-Fenster: Rate dieses Monats, Sonderzahlung, alle geleisteten Zahlungen
+  function kreditZahlungenHtml(kr, kstream) {
+    if (!kzAn() || !kr.start || (kstream && kstream.istProjekt)) return "";
+    const km = kreditMonat(kr);
+    let monat = "";
+    if (km && !km.beginnt && !km.fertig && km.betrag > 0) {
+      const rec = kzRate(kr, km.jahr, km.monat);
+      const z = km.betrag ? km.zins / km.betrag * 100 : 0;
+      monat = `<div class="card-t eq-zwischen">Rate im ${esc(monatLang(km.key))}</div>
+        <div class="mk-row eq-mc-rate${rec ? " erledigt" : ""}">
+          <div class="mk-tx">
+            <div class="mk-n">${rec ? "Gebucht am " + esc(dateDE(rec.datum)) : km.faellig ? "Fällig seit dem " + km.faelligAm.getDate() + "." : "Fällig am " + km.faelligAm.getDate() + "."}</div>
+            <div class="mk-m">Zins ${eur2(rec ? rec.zins : km.zins)} · Tilgung ${eur2(rec ? rec.tilgung : km.tilgung)}</div>
+            <div class="rc-vh eq-mc-vh" role="img" aria-label="${Math.round(z)} Prozent Zins, ${Math.round(100 - z)} Prozent Tilgung"><i class="z" style="width:${z.toFixed(1)}%"></i><i class="t" style="width:${(100 - z).toFixed(1)}%"></i></div>
+          </div>
+          <div class="mk-soll">${eur2(rec ? rec.betrag : km.betrag)}</div>
+          <button type="button" class="mk-ok" id="kzMonat" data-gebucht="${rec ? "1" : "0"}">${rec ? "Zurücknehmen" : "Gebucht"}</button>
+        </div>`;
+    }
+    const v = kzVerlauf(kr);
+    const summe = v.reduce((a, z) => a + z.betrag, 0), zins = v.reduce((a, z) => a + z.zins, 0), tilg = v.reduce((a, z) => a + z.tilgung, 0);
+    const raten = v.filter(z => z.art === "rate"), bestaetigt = raten.filter(z => z.ok).length;
+    const zp = summe ? zins / summe * 100 : 0;
+    return `${monat}
+      <button type="button" class="add-btn wide" id="kzSonder" style="margin-top:12px">+ Sonderzahlung erfassen</button>
+      <div class="card-t eq-zwischen">Geleistete Zahlungen</div>
+      ${v.length ? `<div class="eq-werte" style="margin-bottom:12px">
+          ${wert("Gezahlt bisher", eur(summe), mehrzahl(raten.length, "Rate", "Raten") + (v.length > raten.length ? " und Sonderzahlungen" : ""))}
+          ${wert("Davon Zinsen", eur(zins), prozent(zp, 0) + " der Zahlungen")}
+          ${wert("Davon Tilgung", eur(tilg), "Vermögen, das du aufgebaut hast")}
+        </div>
+        <div class="rc-vh" role="img" aria-label="${Math.round(zp)} Prozent Zins, ${Math.round(100 - zp)} Prozent Tilgung"><i class="z" style="width:${zp.toFixed(1)}%"></i><i class="t" style="width:${(100 - zp).toFixed(1)}%"></i></div>
+        <div class="eq-rate-teile" style="margin-top:8px"><div><b class="z"></b><span>Zins</span><strong>${eur(zins)}</strong></div><div><b class="t"></b><span>Tilgung</span><strong>${eur(tilg)}</strong></div></div>
+        <div class="note" style="margin:8px 0 12px">${bestaetigt === raten.length ? "Alle Raten sind bestätigt." : mehrzahl(bestaetigt, "Rate ist", "Raten sind") + " bestätigt. Die übrigen stehen so da, wie der Tilgungsplan sie rechnet."}</div>
+        <div class="eq-kz-liste">${v.slice(0, 6).map(kzZeileHtml).join("")}</div>
+        ${v.length > 6 ? `<button type="button" class="add-btn wide" id="kzAlle" style="margin-top:10px">Alle ${v.length} Zahlungen zeigen</button>` : ""}`
+        : `<div class="note">Die erste Rate ist noch nicht fällig.</div>`}`;
+  }
+  function kreditZahlungenVerdrahten(sh, kr) {
+    const neu = () => { const t = kreditNachId(kr._id); if (t && sh.isConnected) { closeSheet(); setTimeout(() => openCreditSheet(t.kr), 200); } };
+    const mb = sh.querySelector("#kzMonat");
+    if (mb) mb.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      const km = kreditMonat(kr), vorher = mb.textContent;
+      mb.disabled = true; mb.textContent = "Speichere…";
+      try { await kreditRateSpeichern(kr, km, mb.dataset.gebucht !== "1"); }
+      catch (e) { mb.disabled = false; mb.textContent = vorher; showToast(kzFehler(e)); return; }
+      try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      showToast(mb.dataset.gebucht !== "1" ? "Gespeichert: Rate ist gebucht." : "Gespeichert: Rate ist wieder offen.");
+      neu();
+    };
+    const so = sh.querySelector("#kzSonder");
+    if (so) so.onclick = () => { closeSheet(); setTimeout(() => openSonderzahlung(kr, () => { const t = kreditNachId(kr._id); if (t) openCreditSheet(t.kr); }), 220); };
+    const al = sh.querySelector("#kzAlle");
+    if (al) al.onclick = () => {
+      sh.querySelector(".eq-kz-liste").innerHTML = kzVerlauf(kr).map(kzZeileHtml).join("");
+      al.remove();
+      kzWegVerdrahten(sh, kr, neu);
+    };
+    kzWegVerdrahten(sh, kr, neu);
+  }
+  function kzWegVerdrahten(sh, kr, neu) {
+    sh.querySelectorAll("[data-kz-weg]").forEach(b => b.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      if (b.dataset.sicher !== "1") { b.dataset.sicher = "1"; b.textContent = "Wirklich entfernen?"; return; }
+      b.disabled = true;
+      const { data, error } = await window.sb.rpc("kredit_sonderzahlung_loeschen", { p_id: b.dataset.kzWeg });
+      if (error || (data && data !== "ok")) { b.disabled = false; showToast(error ? window.fehlerText(error) : "Die Sonderzahlung ließ sich nicht entfernen."); return; }
+      try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      showToast("Sonderzahlung entfernt.");
+      neu();
+    });
+  }
+
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
   // Leitfrage: Trägt sich dieses Objekt, und wie viel Eigenkapital brauche ich?
@@ -10840,6 +11402,7 @@
     const body = `
       ${zustand}
       ${rate}
+      ${kreditZahlungenHtml(kr, kstream)}
       <div class="eq-werte" style="margin-bottom:22px">
         ${wert(kstream && kstream.istProjekt && !kr.start ? "Darlehenssumme" : "Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
         ${wert("Getilgt bisher", eur(k.getilgt), prozent(k.anteil, 0) + " von " + eur(k.summe))}
@@ -10865,6 +11428,7 @@
       <button type="button" class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet(kr.name || "Kredit", kstream ? kstream.name : "", body);
     sh.querySelector("#efEdit").onclick = () => openCreditEdit(kstream, kr, false);
+    kreditZahlungenVerdrahten(sh, kr);
   }
 
   function openCashflowSheet(s) {
