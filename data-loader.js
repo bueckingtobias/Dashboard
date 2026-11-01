@@ -61,6 +61,8 @@ function zuStream(o) {
   if (o.nk_als_puffer) s.nkAlsPuffer  = true;
   if (o.nk_positionen) s.nkPositionen = o.nk_positionen;
   if (o.us_daten)      s.usDaten      = o.us_daten;   // nur Konten in den USA (Spalte aus 9-usa.txt)
+  if (o.module)        s.module       = o.module;        // sichtbare Module je Objekt (13-mieterstrom.txt)
+  if (o.mieterstrom)   s.mieterstrom  = o.mieterstrom;   // Mieterstrom: Tarife, Anlage, Zählerstände
 
   if (o.art === "miete") {
     s.einheiten = (o.einheiten || [])
