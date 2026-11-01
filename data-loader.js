@@ -184,6 +184,14 @@ async function ladeDaten() {
   abo.objekte = objekte.length;
   abo.einheiten = objekte.reduce((a, o) => a + (o.einheiten || []).length, 0);
 
+  // Geleistete Kreditzahlungen (12-kreditzahlungen.txt). Fehlt die Tabelle, bleibt der Wert null –
+  // dann fragt die App keine Raten ab und zeigt nur den Tilgungsplan.
+  let kreditzahlungen = null;
+  try {
+    const { data: kzD, error: kzE } = await window.sb.from('kreditzahlungen').select('*').order('jahr').order('monat');
+    if (!kzE) kreditzahlungen = kzD || [];
+  } catch (_) {}
+
   // Gewerke und Rechnungen (Kostenkontrolle je Objekt)
   let gewerke = [], rechnungen = [];
   try {
@@ -215,6 +223,7 @@ async function ladeDaten() {
     abo: abo,
     angebot: angebot,
     zahlungen: zahlungen,
+    kreditzahlungen: kreditzahlungen,
     gewerke: gewerke,
     rechnungen: rechnungen,
     streams: objekte.map(zuStream),
