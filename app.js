@@ -3305,7 +3305,8 @@
       umlagefaehig.forEach(p => {
         const b = Number(p.betrag) || 0;
         let x = 0;
-        if (p.schluessel === "einheiten") x = b / anzahl;
+        if (p.schluessel === "direkt" && p.anteile) { const sum = Object.values(p.anteile).reduce((a, v) => a + (Number(v) || 0), 0); x = sum ? b * (Number(p.anteile[u._id]) || 0) / sum : 0; }
+        else if (p.schluessel === "einheiten") x = b / anzahl;
         else if (p.schluessel === "personen") x = personenGes ? b * personen / personenGes : 0;
         else if (p.schluessel === "verbrauch") x = flaecheGes ? b * flaeche / flaecheGes : 0; // ersatzweise nach Fläche
         else x = flaecheGes ? b * flaeche / flaecheGes : 0;
@@ -3361,7 +3362,7 @@
 
   // Ergebnis einer Einheit in Worten: „Nachzahlung 131 €" / „Guthaben 155 €" – nie nur Vorzeichen und Farbe
   const nkErgebnis = (saldo) => Math.abs(saldo) < 0.005 ? "ausgeglichen" : (saldo >= 0 ? "Guthaben " : "Nachzahlung ") + eur(Math.abs(saldo));
-  const NK_SCH_TEXT = { flaeche: "nach Wohnfläche", einheiten: "gleich je Einheit", personen: "nach Personen", verbrauch: "nach Verbrauch" };
+  const NK_SCH_TEXT = { flaeche: "nach Wohnfläche", einheiten: "gleich je Einheit", personen: "nach Personen", verbrauch: "nach Verbrauch", direkt: "nach Wärmemengenzähler und Fläche" };
   const nkSchText = (k) => NK_SCH_TEXT[k] || NK_SCH_TEXT.flaeche;
 
   // Was die Abrechnung für die Mieter bedeutet: wer nachzahlt, wer Geld zurückbekommt. Zählt nur vermietete Einheiten.
@@ -3465,7 +3466,7 @@
       const einheiten = s.einheiten || [];
       const uml = posten.filter(p => p.umlagefaehig !== false);
       const jeSch = {}; uml.forEach(p => { const key = NK_SCH_TEXT[p.schluessel] ? p.schluessel : "flaeche"; jeSch[key] = (jeSch[key] || 0) + (Number(p.betrag) || 0); });
-      const basis = { flaeche: qm(r.flaecheGes) + " gesamt", einheiten: mehrzahl(einheiten.length, "Einheit", "Einheiten"), personen: mehrzahl(r.personenGes, "Person", "Personen") + " gesamt", verbrauch: "hier ersatzweise nach Wohnfläche" };
+      const basis = { flaeche: qm(r.flaecheGes) + " gesamt", einheiten: mehrzahl(einheiten.length, "Einheit", "Einheiten"), personen: mehrzahl(r.personenGes, "Person", "Personen") + " gesamt", verbrauch: "hier ersatzweise nach Wohnfläche", direkt: "Anteile aus dem Mieterstrom" };
       const ohneFlaeche = einheiten.filter(u => !(Number(u.flaeche) > 0));
       const ohnePersonen = einheiten.filter(u => !(Number(u.personen) > 0));
       const warn = [];
@@ -3588,7 +3589,8 @@
         { pflicht: true, minus: true, einheit: "€", hinweis: "Gesamtbetrag für " + jahr + " laut Bescheid oder Rechnung" })}
       ${efSel("Verteilung", "schluessel", p ? p.schluessel : "flaeche",
         [{ v: "flaeche", t: "nach Wohnfläche (üblich)" }, { v: "einheiten", t: "gleich je Einheit" },
-         { v: "personen", t: "nach Personen im Haushalt" }, { v: "verbrauch", t: "nach Verbrauch (hier ersatzweise nach Wohnfläche)" }],
+         { v: "personen", t: "nach Personen im Haushalt" }, { v: "verbrauch", t: "nach Verbrauch (hier ersatzweise nach Wohnfläche)" }]
+         .concat(p && p.schluessel === "direkt" ? [{ v: "direkt", t: "nach Wärmemengenzähler und Fläche (aus dem Mieterstrom)" }] : []),
         { hinweis: "Wonach die Kosten auf die Einheiten aufgeteilt werden" })}
       ${efSel("Umlagefähig?", "umlagefaehig", p && p.umlagefaehig === false ? "0" : "1",
         [{ v: "1", t: "ja – wird auf die Mieter verteilt" }, { v: "0", t: "nein – trägst du selbst" }],
@@ -10171,6 +10173,16 @@
   const msZahl = (v) => v === "" || v == null || isNaN(Number(v)) ? null : Number(v);
   const msOn = (s) => !!(s && s.mieterstrom && modulAn(s, "mieterstrom"));
   const msTeilnehmer = (s, ms) => (s.einheiten || []).filter(u => (ms.einheiten && ms.einheiten.length ? ms.einheiten.includes(u._id) : u.status === "vermietet"));
+  // Allgemeinstromstellen: eigene Zähler im Haus, die keiner Wohnung gehören
+  const MS_STELLEN = [["waermepumpe", "Wärmepumpe"], ["flur", "Flure und Treppenhaus"], ["aussen", "Außenbeleuchtung"], ["aufzug", "Aufzug"],
+    ["keller", "Keller und Waschküche"], ["technik", "Haustechnik (Lüftung, Pumpen)"], ["laden", "Ladesäule / Wallbox"], ["sonstiges", "Sonstiges"]];
+  const msStellen = (ms) => Array.isArray(ms && ms.stellen) ? ms.stellen.filter(x => x && x.id) : [];
+  const msStelleArt = (k) => (MS_STELLEN.find(x => x[0] === k) || MS_STELLEN[MS_STELLEN.length - 1])[1];
+  // Umlage über die Nebenkosten: Preis je Stelle, sonst Vertragspreis des Objekts, sonst Mischpreis (echte Kosten)
+  const msUmlegen = (x) => x.umlage !== undefined ? !!x.umlage : x.art !== "laden";
+  const msPreisVon = (ms, x, misch) => msZahl(x.preis_ct) != null ? msZahl(x.preis_ct) : msZahl(ms.umlage_ct) != null ? msZahl(ms.umlage_ct) : misch;
+  const msVerbrauchsanteil = (ms) => Math.min(70, Math.max(50, msZahl(ms.heiz_verbrauch_pct) || 70)) / 100;   // HeizkostenV § 7: 50–70 %
+  const msHatWp = (ms) => msStellen(ms).some(x => x.art === "waermepumpe");
   const msTage = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / 864e5));
 
   // Zeiträume aus den Ablesungen (nach Datum sortiert): Differenz je Zähler
@@ -10181,7 +10193,11 @@
       const a = A[i - 1], b = A[i], d = (k) => msZahl(b[k]) != null && msZahl(a[k]) != null ? msZahl(b[k]) - msZahl(a[k]) : null;
       const w = {};
       msTeilnehmer(s, ms).forEach(u => { const x = msZahl((b.w || {})[u._id]), y = msZahl((a.w || {})[u._id]); if (x != null && y != null) w[u._id] = Math.max(0, x - y); });
-      out.push({ von: a.datum, bis: b.datum, tage: msTage(a.datum, b.datum), E: Math.max(0, d("pv") || 0), N: Math.max(0, d("bezug") || 0), F: Math.max(0, d("einspeisung") || 0), W: w, ist: true, idBis: b.id });
+      const hz = {};
+      (s.einheiten || []).forEach(u => { const p = msZahl((b.h || {})[u._id]), q = msZahl((a.h || {})[u._id]); if (p != null && q != null) hz[u._id] = Math.max(0, p - q); });
+      const st = {};
+      msStellen(ms).forEach(x => { const p = msZahl((b.s || {})[x.id]), q = msZahl((a.s || {})[x.id]); if (p != null && q != null) st[x.id] = Math.max(0, p - q); });
+      out.push({ von: a.datum, bis: b.datum, tage: msTage(a.datum, b.datum), E: Math.max(0, d("pv") || 0), N: Math.max(0, d("bezug") || 0), F: Math.max(0, d("einspeisung") || 0), W: w, A: st, H: hz, ist: true, idBis: b.id });
     }
     return out;
   }
@@ -10190,10 +10206,12 @@
     const ms = s.mieterstrom || {}, p = ms.plan || {};
     const E = msZahl(p.pv_kwh_jahr) || 0, V = msZahl(p.verbrauch_kwh_jahr) || 0, q = Math.min(100, Math.max(0, msZahl(p.solaranteil_pct) || 0)) / 100;
     if (!(V > 0)) return null;
-    const S = Math.min(E, V * q), N = V - S, F = Math.max(0, E - S);
+    const A = {}; msStellen(ms).forEach(x => { const v = msZahl(x.plan_kwh_jahr); if (v > 0) A[x.id] = v; });
+    const VA = V + Object.values(A).reduce((a, v) => a + v, 0);
+    const S = Math.min(E, VA * q), N = VA - S, F = Math.max(0, E - S);
     const tn = msTeilnehmer(s, ms), fl = tn.reduce((a, u) => a + (Number(u.flaeche) || 0), 0) || tn.length || 1;
     const W = {}; tn.forEach(u => { W[u._id] = V * ((Number(u.flaeche) || (fl === tn.length ? 1 : 0)) / fl); });
-    return { von: null, bis: null, tage: 365, E, N, F, W, ist: false };
+    return { von: null, bis: null, tage: 365, E, N, F, W, A, ist: false };
   }
 
   // Auswertung eines Zeitraums
@@ -10205,7 +10223,10 @@
     const S = Math.max(0, z.E - z.F);                         // selbst verbrauchter Solarstrom
     const quelle = S + z.N;                                    // was ins Haus geflossen ist
     const q = quelle > 0 ? S / quelle : 0;                     // Solaranteil am Verbrauch
-    const haus = Math.max(0, quelle - Wsum);                   // Allgemeinstrom, Verluste, Differenz
+    const A = z.A || {};
+    const stellenL = msStellen(ms).filter(x => A[x.id] != null).map(x => ({ x, kwh: A[x.id] }));
+    const allg = stellenL.reduce((a, y) => a + y.kwh, 0);       // gemessener Allgemeinstrom
+    const haus = Math.max(0, quelle - Wsum - allg);            // nicht gemessen: Verluste, Differenz
     const preis = msZahl(t.preis_ct) || 0, grund = msZahl(t.grund_eur_monat) || 0;
     const ekPreis = msZahl(ek.preis_ct) || 0, ekGrund = msZahl(ek.grund_eur_monat) || 0;
     const erloes = Wsum * preis / 100 + grund * monate * tn.length;
@@ -10214,7 +10235,11 @@
     const zukauf = z.N * ekPreis / 100 + ekGrund * monate;
     const betrieb = ((msZahl(pv.betrieb_eur_jahr) || 0) + (msZahl(pv.mess_eur_jahr) || 0)) * monate / 12;
     const afa = (msZahl(pv.investition) || 0) / (msZahl(pv.nutzungsdauer) || MS_AFA_JAHRE) * monate / 12;
-    const ergebnis = erloes + zuschlag + einspeisung - zukauf - betrieb;
+    const misch0 = (() => { const gestX = z.E > 0 ? (((msZahl(pv.investition) || 0) / (msZahl(pv.nutzungsdauer) || MS_AFA_JAHRE) * monate / 12) + betrieb) / z.E * 100 : null;
+      return quelle > 0 && gestX != null ? (z.N * ekPreis + S * gestX) / quelle : (quelle > 0 ? ekPreis : null); })();
+    const umlageL = stellenL.filter(y => msUmlegen(y.x)).map(y => ({ ...y, preis: msPreisVon(ms, y.x, misch0) }));
+    const umlage = umlageL.reduce((a, y) => a + (y.preis != null ? y.kwh * y.preis / 100 : 0), 0);
+    const ergebnis = erloes + zuschlag + einspeisung + umlage - zukauf - betrieb;
     const jahr = ergebnis / monate * 12;
     const gest = z.E > 0 ? (afa + betrieb) / z.E * 100 : null;  // Gestehungskosten Solarstrom ct/kWh
     const misch = quelle > 0 && gest != null ? (z.N * ekPreis + S * gest) / quelle : (quelle > 0 ? ekPreis : null);
@@ -10226,7 +10251,9 @@
       monat: ergebnis / monate, jahr, nachAfa: ergebnis - afa, gest, misch, verkauf, marge: Wsum > 0 ? ergebnis / Wsum * 100 : null,
       eigen: z.E > 0 ? S / z.E : null, rendite: (msZahl(pv.investition) || 0) > 0 ? jahr / msZahl(pv.investition) * 100 : null,
       amort: jahr > 0 && (msZahl(pv.investition) || 0) > 0 ? msZahl(pv.investition) / jahr : null,
-      gv, preis, unterGv: gv ? preis <= gv * 0.9 + 1e-9 : null, wohnungen };
+      gv, preis, unterGv: gv ? preis <= gv * 0.9 + 1e-9 : null, wohnungen,
+      allg, umlage, stellen: stellenL.map(y => { const uml = msUmlegen(y.x), pr = uml ? msPreisVon(ms, y.x, misch) : null;
+        return { ...y, solar: y.kwh * q, netz: y.kwh * (1 - q), kosten: misch != null ? y.kwh * misch / 100 : null, umlegen: uml, preis: pr, umlageEur: pr != null ? y.kwh * pr / 100 : null }; }) };
   }
   // Aktueller Stand: letzter Ist-Zeitraum, sonst Plan
   function msAktuell(s, idx) {
@@ -10246,7 +10273,8 @@
   // Stromfluss: links Solar und Netz, Mitte Zentrale, rechts die Wohnungen (und Einspeisung, Allgemeinstrom)
   function msFlussHtml(s, r) {
     const ziele = r.wohnungen.filter(w => w.w > 0.05).map(w => ({ id: w.u._id, l: w.u.wohnung || "Einheit", v: w.w, solar: w.solar, netz: w.netz, t: Math.round(r.q * 100) + " % Solar" }));
-    if (r.haus > Math.max(1, (r.S + r.N) * 0.01)) ziele.push({ id: "haus", l: "Allgemeinstrom", v: r.haus, solar: r.haus * r.q, netz: r.haus * (1 - r.q), t: "Treppenhaus, Technik, Verluste" });
+    r.stellen.filter(y => y.kwh > 0.05).forEach(y => ziele.push({ id: "st_" + y.x.id, l: y.x.name || msStelleArt(y.x.art), v: y.kwh, solar: y.solar, netz: y.netz, allg: true }));
+    if (r.haus > Math.max(1, (r.S + r.N) * 0.01)) ziele.push({ id: "haus", l: r.stellen.length ? "Nicht gemessen" : "Allgemeinstrom", v: r.haus, solar: r.haus * r.q, netz: r.haus * (1 - r.q), allg: true });
     const quelle = r.S + r.N;
     if (!(quelle > 0) && !(r.F > 0)) return `<div class="note">Noch kein Stromfluss – erfasse Zählerstände oder Planwerte.</div>`;
     // Maßstab: alle Ströme zusammen ~220 px hoch; jeder Knoten bekommt mindestens Platz für seine Beschriftung
@@ -10287,7 +10315,7 @@
         <rect class="eq-fl-k solar" x="${xL}" y="${yE}" width="${nodeW}" height="${hE}" rx="3"/>
         <rect class="eq-fl-k netz" x="${xL}" y="${yN}" width="${nodeW}" height="${hN}" rx="3"/>
         <rect class="eq-fl-k mitte" x="${xM}" y="${yM}" width="${nodeW}" height="${hM}" rx="3"/>
-        ${rechts.map(z => `<rect class="eq-fl-k ${z.id === "ein" ? "solar" : "ziel"}" x="${xR}" y="${z.y}" width="${nodeW}" height="${z.h}" rx="3"/>`).join("")}
+        ${rechts.map(z => `<rect class="eq-fl-k ${z.id === "ein" ? "solar" : z.allg ? "allg" : "ziel"}" x="${xR}" y="${z.y}" width="${nodeW}" height="${z.h}" rx="3"/>`).join("")}
       </svg>
       <div class="eq-fl-links">${label(0, yE, hE, "Solar", zahlKwh(r.E), "solar")}${label(0, yN, hN, "Netz", zahlKwh(r.N), "netz")}</div>
       <div class="eq-fl-mitte" style="top:${pct(yM + hM / 2, H)}"><b>Zentrale</b><span>${zahlKwh(quelle)}</span><span>${Math.round(r.q * 100)} % Solar</span></div>
@@ -10329,6 +10357,7 @@
       karte.querySelector("#msSub").textContent = r.z.ist ? "Ist · " + datumKurz(r.z.von) + " bis " + datumKurz(r.z.bis) + " · " + mehrzahl(r.z.tage, "Tag", "Tage") : "Plan · ein Jahr (noch keine zwei Ablesungen)";
       const pos = [
         { l: "Stromverkauf an Mieter", v: r.erloes }, r.zuschlag > 0 ? { l: "Mieterstromzuschlag", v: r.zuschlag } : null, r.einspeisung > 0 ? { l: "Einspeisevergütung", v: r.einspeisung } : null,
+        r.umlage > 0 ? { l: "Umlage Allgemeinstrom (Nebenkosten)", v: r.umlage } : null,
         { l: "Zukauf aus dem Netz", v: -r.zukauf }, r.betrieb > 0 ? { l: "Betrieb, Messung, Abrechnung", v: -r.betrieb } : null
       ].filter(Boolean);
       const maxP = Math.max(1, ...pos.map(p => Math.abs(p.v)));
@@ -10357,7 +10386,16 @@
         <div class="eq-ms-wg">${r.wohnungen.map(w => `<div data-ms-wg="${esc(w.u._id)}"><div><b>${esc(w.u.wohnung || "Einheit")}</b><span>${esc(w.u.mieter || "")}</span></div>
           <div class="eq-ms-wb" role="img" aria-label="${esc(zahlKwh(w.solar) + " Solar, " + zahlKwh(w.netz) + " Netz")}"><i class="solar" style="flex-basis:${(w.w ? w.solar / w.w * 100 : 0).toFixed(1)}%"></i><i class="netz" style="flex-basis:${(w.w ? w.netz / w.w * 100 : 0).toFixed(1)}%"></i></div>
           <div class="eq-ms-ww"><b>${zahlKwh(w.w)}</b><span>${eur(w.monat)} im Monat${w.ersparnis != null ? " · spart " + eur(w.ersparnis / r.monate) : ""}</span></div></div>`).join("")}</div>
+        ${r.stellen.length || r.haus > 1 ? `<div class="card-t eq-zwischen">Allgemeinstrom</div>
+        <div class="eq-ms-wg eq-ms-allg">${r.stellen.map(y => `<div data-ms-wg="st_${esc(y.x.id)}"><div><b>${esc(y.x.name || msStelleArt(y.x.art))}</b><span>${esc(msStelleArt(y.x.art))}</span></div>
+          <div class="eq-ms-wb" role="img" aria-label="${esc(zahlKwh(y.solar) + " Solar, " + zahlKwh(y.netz) + " Netz")}"><i class="solar" style="flex-basis:${(y.kwh ? y.solar / y.kwh * 100 : 0).toFixed(1)}%"></i><i class="netz" style="flex-basis:${(y.kwh ? y.netz / y.kwh * 100 : 0).toFixed(1)}%"></i></div>
+          <div class="eq-ms-ww"><b>${zahlKwh(y.kwh)}</b><span>${y.umlegen ? (y.preis != null ? "Umlage " + ct(y.preis) + " = " + eur(y.umlageEur / r.monate) + " im Monat" : "Umlage: Preis fehlt") : "nicht umgelegt"}${y.kosten != null ? " · kostet " + eur(y.kosten / r.monate) : ""}</span></div></div>`).join("")}
+          ${r.haus > 1 ? `<div data-ms-wg="haus"><div><b>${r.stellen.length ? "Nicht gemessen" : "Allgemeinstrom gesamt"}</b><span>${r.stellen.length ? "Differenz: Verluste oder Stellen ohne eigenen Zähler" : "Haus minus Wohnungen – leg Stellen mit eigenem Zähler an"}</span></div><div></div>
+          <div class="eq-ms-ww"><b>${zahlKwh(r.haus)}</b><span>${r.misch != null ? eur(r.haus * r.misch / 100 / r.monate) + " im Monat" : ""}</span></div></div>` : ""}</div>
+        <div class="note" style="margin-top:8px">„Kostet" = kWh × Mischpreis Beschaffung (${ct(r.misch)}), steckt schon im Zukauf. Die Umlage kommt über die Nebenkosten zurück und zählt oben als Erlös.</div>
+        ${r.stellen.some(y => y.umlegen) && r.z.ist ? `<button type="button" class="eq-btn zweit" id="msNk" style="margin-top:10px;width:100%">In die Nebenkostenabrechnung übernehmen</button>` : ""}` : ""}
         ${(ms.ablesungen || []).length ? `<div class="card-t eq-zwischen">Ablesungen</div><div class="eq-ms-ab">${(ms.ablesungen || []).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(a => `<button type="button" class="eq-ms-abz" data-ms-ab="${esc(a.id)}"><b>${esc(datumKurz(a.datum))}</b><span>Solar ${zahlKwh(a.pv)} · Netz ${zahlKwh(a.bezug)} · Einspeisung ${zahlKwh(a.einspeisung)}</span></button>`).join("")}</div>` : ""}`;
+      const nk = v.querySelector("#msNk"); if (nk) nk.onclick = () => openMsNebenkosten(s);
       v.querySelectorAll("[data-ms-ab]").forEach(b => b.onclick = () => openAblesung(s, (ms.ablesungen || []).find(a => a.id === b.dataset.msAb)));
       v.querySelectorAll(".eq-fl-lab[data-fl]").forEach(b => b.onclick = () => {
         const z = v.querySelector(`[data-ms-wg="${CSS.escape(b.dataset.fl)}"]`); if (z) { z.scrollIntoView({ block: "center", behavior: "smooth" }); z.classList.add("blink"); setTimeout(() => z.classList.remove("blink"), 1200); }
@@ -10397,25 +10435,51 @@
       ${ef("Mieterstromzuschlag", "zuschlag", ms.zuschlag_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01", hinweis: "Förderung je an Mieter gelieferter Solar-kWh, falls du sie erhältst (Bundesnetzagentur)" })}
       ${efTitel("Teilnehmende Wohnungen")}
       <div class="eq-ms-tn">${(s.einheiten || []).map(u => `<label class="eq-ms-tnz"><input type="checkbox" value="${esc(u._id)}"${tn.includes(u._id) ? " checked" : ""}><span>${esc(u.wohnung || "Einheit")}<small>${esc(u.mieter || (u.status === "vermietet" ? "vermietet" : "frei"))}</small></span></label>`).join("")}</div>
+      ${efTitel("Allgemeinstrom mit eigenem Zähler")}
+      <div class="note" style="margin-bottom:8px">Zum Beispiel Wärmepumpe, Flure, Außenlicht. Jede Stelle bekommt bei den Zählerständen ein eigenes Feld.</div>
+      ${ef("Umlagepreis Allgemeinstrom", "umlage_ct", ms.umlage_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01", hinweis: "Preis laut Mietvertrag, mit dem du Allgemeinstrom über die Nebenkosten abrechnest. Leer = deine echten Kosten (Mischpreis). Je Stelle änderbar." })}
+      ${ef("Heizkosten nach Verbrauch", "heiz_pct", ms.heiz_verbrauch_pct ?? 70, "number", { einheit: "%", min: 50, max: 70, hinweis: "Wärmepumpe: Anteil nach Wärmemengenzähler, der Rest nach Wohnfläche (Heizkostenverordnung: 50–70 %)." })}
+      <div class="eq-ms-st" id="msStellen">${msStellen(ms).map(x => msStelleZeile(x)).join("")}</div>
+      <button type="button" class="add-btn" id="msStelleNeu" style="margin:4px 0 10px">+ Allgemeinstromstelle</button>
       ${efTitel("Planwerte (solange keine zwei Ablesungen da sind)")}
       ${ef("Solarertrag", "plan_pv", p.pv_kwh_jahr ?? "", "number", { einheit: "kWh/Jahr", min: 0 })}
       ${ef("Verbrauch der Mieter", "plan_v", p.verbrauch_kwh_jahr ?? "", "number", { einheit: "kWh/Jahr", min: 0, hinweis: "alle teilnehmenden Wohnungen zusammen" })}
       ${ef("Solaranteil am Verbrauch", "plan_q", p.solaranteil_pct ?? "", "number", { einheit: "%", min: 0, max: 100, hinweis: "Deine Annahme: Wie viel des Verbrauchs deckt das Dach? Mit echten Zählerständen rechnet ESTRIQ das selbst." })}
       ${efAktionen({ loeschen: s.mieterstrom ? "Mieterstrom-Daten löschen" : null })}`;
     const sheet = openSheet("Mieterstrom", nameOhneBruch(s.name), body);
+    const stListe = sheet.querySelector("#msStellen");
+    const stVerdrahten = () => stListe.querySelectorAll("[data-st-weg]").forEach(b => b.onclick = () => b.closest(".eq-ms-stz").remove());
+    sheet.querySelector("#msStelleNeu").onclick = () => { stListe.insertAdjacentHTML("beforeend", msStelleZeile({ id: "s" + Date.now().toString(36), art: "flur", name: "" })); stVerdrahten(); const f = stListe.lastElementChild.querySelector("input"); if (f) f.focus(); };
+    stVerdrahten();
     efBind(sheet, async (w) => {
       const ids = [...sheet.querySelectorAll(".eq-ms-tn input:checked")].map(i => i.value);
+      const stellen = [...stListe.querySelectorAll(".eq-ms-stz")].map(z => {
+        const art = z.querySelector("select").value, name = (z.querySelector("[data-st-name]").value || "").trim();
+        return { id: z.dataset.st, art, name: name || msStelleArt(art), plan_kwh_jahr: zahl(z.querySelector("[data-st-plan]").value),
+          preis_ct: zahl(z.querySelector("[data-st-preis]").value), umlage: z.querySelector("[data-st-uml]").checked };
+      });
       const neu = { ...(s.mieterstrom || {}), v: 1,
         tarif: { preis_ct: zahl(w.preis_ct), grund_eur_monat: zahl(w.grund) }, grundversorgung_ct: zahl(w.gv),
         einkauf: { preis_ct: zahl(w.ek_ct), grund_eur_monat: zahl(w.ek_grund) },
         pv: { kwp: zahl(w.kwp), investition: zahl(w.inv), nutzungsdauer: zahl(w.nd) || MS_AFA_JAHRE, betrieb_eur_jahr: zahl(w.betrieb), mess_eur_jahr: zahl(w.mess) },
         einspeise_ct: zahl(w.einsp), zuschlag_ct: zahl(w.zuschlag), einheiten: ids,
-        plan: { pv_kwh_jahr: zahl(w.plan_pv), verbrauch_kwh_jahr: zahl(w.plan_v), solaranteil_pct: zahl(w.plan_q) },
+        plan: { pv_kwh_jahr: zahl(w.plan_pv), verbrauch_kwh_jahr: zahl(w.plan_v), solaranteil_pct: zahl(w.plan_q) }, stellen,
+        umlage_ct: zahl(w.umlage_ct), heiz_verbrauch_pct: zahl(w.heiz_pct) != null ? Math.min(70, Math.max(50, zahl(w.heiz_pct))) : 70,
         ablesungen: (s.mieterstrom && s.mieterstrom.ablesungen) || [] };
       await msSpeichern(s, neu);
     }, s.mieterstrom ? async () => { await msSpeichern(s, null); } : null, "Alle Mieterstrom-Daten löschen?");
   }
 
+  function msStelleZeile(x) {
+    return `<div class="eq-ms-stz" data-st="${esc(x.id)}">
+      <input class="ef-i" data-st-name placeholder="Bezeichnung, z. B. Flur Haus A" value="${esc(x.name || "")}" aria-label="Bezeichnung">
+      <select class="ef-i" aria-label="Art">${MS_STELLEN.map(a => `<option value="${a[0]}"${a[0] === x.art ? " selected" : ""}>${esc(a[1])}</option>`).join("")}</select>
+      <input class="ef-i" data-st-plan type="number" min="0" inputmode="decimal" placeholder="Plan kWh/Jahr" value="${esc(x.plan_kwh_jahr ?? "")}" aria-label="Plan kWh im Jahr">
+      <input class="ef-i" data-st-preis type="number" min="0" step="0.01" inputmode="decimal" placeholder="Preis ct" value="${esc(x.preis_ct ?? "")}" aria-label="Umlagepreis ct je kWh">
+      <label class="eq-ms-stu"><input type="checkbox" data-st-uml${msUmlegen(x) ? " checked" : ""}><span>umlegen</span></label>
+      <button type="button" class="add-btn" data-st-weg aria-label="Stelle entfernen">Entfernen</button>
+    </div>`;
+  }
   // Zählerstände eines Tages: Solar, Netzbezug, Einspeisung, je Wohnung
   function openAblesung(s, alt) {
     const ms = s.mieterstrom || {};
@@ -10433,6 +10497,10 @@
       ${efTitel("Wohnungen")}
       ${tn.map(u => ef(u.wohnung || "Einheit", "w_" + u._id, alt && alt.w ? (alt.w[u._id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
         hinweis: vorher && vorher.w && vorher.w[u._id] != null ? "Letzter Stand: " + Number(vorher.w[u._id]).toLocaleString(LOC) + " kWh" : (u.mieter || "Zählerstand in kWh") })).join("")}
+      ${msStellen(ms).length ? efTitel("Allgemeinstrom") + msStellen(ms).map(x => ef(x.name || msStelleArt(x.art), "s_" + x.id, alt && alt.s ? (alt.s[x.id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: vorher && vorher.s && vorher.s[x.id] != null ? "Letzter Stand: " + Number(vorher.s[x.id]).toLocaleString(LOC) + " kWh" : msStelleArt(x.art) })).join("") : ""}
+      ${msHatWp(ms) ? efTitel("Wärmemengenzähler") + (s.einheiten || []).map(u => ef(u.wohnung || "Einheit", "h_" + u._id, alt && alt.h ? (alt.h[u._id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: vorher && vorher.h && vorher.h[u._id] != null ? "Letzter Stand: " + Number(vorher.h[u._id]).toLocaleString(LOC) + " kWh Wärme" : "Wärme in kWh" })).join("") : ""}
       <div class="note" style="margin-top:8px">${A.length || alt ? "Aus zwei Ablesungen rechnet ESTRIQ den Zeitraum dazwischen." : "Die erste Ablesung ist der Startstand. Ab der zweiten siehst du echte Werte."}</div>
       ${efAktionen({ loeschen: alt ? "Ablesung löschen" : null })}`;
     const sheet = openSheet(alt ? "Ablesung bearbeiten" : "Zählerstände erfassen", nameOhneBruch(s.name), body);
@@ -10442,6 +10510,8 @@
       if (A.some(a => a.datum === datum && (!alt || a.id !== alt.id))) throw Object.assign(new Error("doppelt"), { eqText: "Für diesen Tag gibt es schon eine Ablesung." });
       const neu = { id: alt ? alt.id : "a" + Date.now().toString(36), datum, pv: zahl(w.pv), bezug: zahl(w.bezug), einspeisung: zahl(w.einspeisung), w: {} };
       tn.forEach(u => { const x = zahl(w["w_" + u._id]); if (x != null) neu.w[u._id] = x; });
+      neu.s = {}; msStellen(ms).forEach(x => { const v = zahl(w["s_" + x.id]); if (v != null) neu.s[x.id] = v; });
+      if (msHatWp(ms)) { neu.h = {}; (s.einheiten || []).forEach(u => { const v = zahl(w["h_" + u._id]); if (v != null) neu.h[u._id] = v; }); }
       // Zählerstände steigen: mit Nachbar-Ablesungen vergleichen
       const rest = A.filter(a => !alt || a.id !== alt.id), davor = rest.filter(a => a.datum < datum).pop(), danach = rest.find(a => a.datum > datum);
       const kleiner = (a, b, k) => a && b && a[k] != null && b[k] != null && Number(b[k]) < Number(a[k]);
@@ -10450,6 +10520,90 @@
       const liste = rest.concat([neu]).sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
       await msSpeichern(s, { ...ms, ablesungen: liste });
     }, alt ? async () => { await msSpeichern(s, { ...ms, ablesungen: A.filter(a => a.id !== alt.id) }); } : null, "Ablesung wirklich löschen?");
+  }
+
+  // Allgemeinstrom eines Kalenderjahres für die Nebenkosten: Zeiträume anteilig nach Tagen
+  function msJahr(s, jahr) {
+    const ms = s.mieterstrom || {}, Z = msZeitraeume(s);
+    const utc = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return Date.UTC(y, m - 1, d); };   // ohne Sommerzeit-Versatz
+    const von = Date.UTC(jahr, 0, 1), bis = Date.UTC(jahr + 1, 0, 1);
+    const st = {}, hz = {}; let tage = 0, erste = null, letzte = null;
+    Z.forEach(z => {
+      const a = utc(z.von), b = utc(z.bis);
+      const ueber = Math.max(0, Math.round((Math.min(b, bis) - Math.max(a, von)) / 864e5));
+      if (!(ueber > 0)) return;
+      const f = ueber / Math.max(1, Math.round((b - a) / 864e5)), r = msRechnen(s, z);
+      tage += ueber; const v0 = Math.max(a, von), b0 = Math.min(b, bis);
+      erste = erste != null && erste < v0 ? erste : v0; letzte = letzte != null && letzte > b0 ? letzte : b0;
+      msStellen(ms).forEach(x => { const k = (z.A || {})[x.id]; if (k == null) return; const pr = msPreisVon(ms, x, r.misch);
+        const e = st[x.id] = st[x.id] || { x, kwh: 0, eur: 0, preisFehlt: false }; e.kwh += k * f; if (pr == null) e.preisFehlt = true; else e.eur += k * f * pr / 100; });
+      Object.keys(z.H || {}).forEach(id => { hz[id] = (hz[id] || 0) + z.H[id] * f; });
+    });
+    const lok = (ms0) => { const d = new Date(ms0); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+    return { jahr, tage: Math.round(tage), erste: erste != null ? lok(erste) : null, letzte: letzte != null ? lok(letzte) : null, stellen: Object.values(st).filter(e => msUmlegen(e.x) && e.kwh > 0), waerme: hz };
+  }
+  const msNkArt = (x) => (x.art === "waermepumpe" ? "Heizung und Warmwasser: " : x.art === "aufzug" ? "Aufzug: " : "Allgemeinstrom: ") + (x.name || msStelleArt(x.art));
+  // Anteile der Heizkosten je Wohnung: Verbrauchsanteil nach Wärmemenge, Rest nach Fläche (nur Wohnungen mit Zähler)
+  function msHeizAnteile(s, betrag, waerme) {
+    const ms = s.mieterstrom || {}, va = msVerbrauchsanteil(ms);
+    const mit = (s.einheiten || []).filter(u => waerme[u._id] != null);
+    const H = mit.reduce((a, u) => a + waerme[u._id], 0), F = mit.reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
+    if (!mit.length || !(H > 0) || !(F > 0)) return null;
+    const out = {};
+    mit.forEach(u => { out[u._id] = Math.round((betrag * va * waerme[u._id] / H + betrag * (1 - va) * (Number(u.flaeche) || 0) / F) * 100) / 100; });
+    return out;
+  }
+  function openMsNebenkosten(s, jahrWahl) {
+    if (!pruefeModul("nebenkosten")) return;
+    const ms = s.mieterstrom || {}, Z = msZeitraeume(s);
+    const jahre = [...new Set(Z.flatMap(z => { const a = Number(z.von.slice(0, 4)), b = Number(z.bis.slice(0, 4)); const l = []; for (let j = a; j <= b; j++) l.push(j); return l; }))].sort();
+    if (!jahre.length) { showToast("Es gibt noch keinen Zeitraum aus zwei Ablesungen."); return; }
+    const jahr = jahrWahl && jahre.includes(jahrWahl) ? jahrWahl : jahre[jahre.length - 1];
+    const J = msJahr(s, jahr), voll = Math.round((Date.UTC(jahr + 1, 0, 1) - Date.UTC(jahr, 0, 1)) / 864e5);
+    const zeilen = J.stellen.map(e => {
+      const wp = e.x.art === "waermepumpe", betrag = Math.round(e.eur * 100) / 100;
+      const anteile = wp ? msHeizAnteile(s, betrag, J.waerme) : null;
+      return { e, wp, betrag, anteile, art: msNkArt(e.x), schluessel: wp ? (anteile ? "direkt" : "flaeche") : e.x.art === "aufzug" ? "einheiten" : "flaeche" };
+    });
+    const va = Math.round(msVerbrauchsanteil(ms) * 100);
+    const body = `
+      ${jahre.length > 1 ? `<div class="eq-w2-chips" role="group" aria-label="Jahr">${jahre.map(j => `<button type="button" class="eq-wl-chip" data-nkj="${j}" aria-pressed="${j === jahr}">${j}</button>`).join("")}</div>` : ""}
+      <div class="eq-zustand${J.tage < voll - 1 ? " achtung" : ""}"><div class="eq-zustand-tx"><div class="eq-zustand-t">${J.tage < voll - 1 ? "Ablesungen decken " + mehrzahl(J.tage, "Tag", "Tage") + " von " + jahr + " ab" : "Ganzes Jahr " + jahr + " abgedeckt"}</div>
+        <div class="eq-zustand-d">${J.erste ? "Von " + esc(J.erste.toLocaleDateString(LOC)) + " bis " + esc(new Date(J.letzte - 864e5).toLocaleDateString(LOC)) + ". " : ""}Zeiträume, die über den Jahreswechsel gehen, teilt ESTRIQ nach Tagen auf.${J.tage < voll - 1 ? " Für eine vollständige Abrechnung brauchst du Ablesungen zum 1.1. und 31.12." : ""}</div></div></div>
+      <div class="eq-ms-nk">${zeilen.map(z => `<div class="eq-ms-nkz">
+          <div><b>${esc(z.art)}</b><span>${zahlKwh(z.e.kwh)} · ${z.e.preisFehlt ? "Preis fehlt" : ct(z.e.kwh ? z.e.eur / z.e.kwh * 100 : 0) + " je kWh"} · ${z.wp ? (z.anteile ? va + " % nach Wärmemengenzähler, " + (100 - va) + " % nach Fläche" : "keine Wärmemengen – ersatzweise nach Fläche") : z.schluessel === "einheiten" ? "gleich je Einheit" : "nach Wohnfläche"}</span></div>
+          <strong>${eur2(z.betrag)}</strong>
+          ${z.anteile ? `<div class="eq-ms-nka">${(s.einheiten || []).filter(u => z.anteile[u._id] != null).map(u => `<div><span>${esc(u.wohnung || "Einheit")}</span><span>${zahlKwh(J.waerme[u._id])} Wärme</span><b>${eur2(z.anteile[u._id])}</b></div>`).join("")}</div>` : ""}
+        </div>`).join("") || `<div class="note">Für ${jahr} gibt es keine umlagefähige Stelle mit Verbrauch.</div>`}</div>
+      <div class="note" style="margin:10px 0">Es entstehen gewöhnliche Kostenarten in den Nebenkosten ${jahr}. Drückst du später noch einmal, werden die Beträge angepasst – nichts doppelt.</div>
+      <div class="ef-actions eq-fest"><div class="ef-msg" id="nkMsg" role="status"></div><div class="ef-knoepfe">
+        <button type="button" class="ef-save" id="nkGo"${zeilen.length ? "" : " disabled"}>In Nebenkosten ${jahr} übernehmen</button></div></div>`;
+    const sheet = openSheet("Allgemeinstrom → Nebenkosten", nameOhneBruch(s.name), body);
+    sheet.querySelectorAll("[data-nkj]").forEach(b => b.onclick = () => openMsNebenkosten(s, Number(b.dataset.nkj)));
+    const msg = sheet.querySelector("#nkMsg"), go = sheet.querySelector("#nkGo");
+    go.onclick = async () => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      if (zeilen.some(z => z.e.preisFehlt)) { msg.textContent = "Bei mindestens einer Stelle fehlt der Preis. Trag in den Einstellungen einen Umlagepreis ein."; msg.className = "ef-msg bad"; return; }
+      go.disabled = true; msg.textContent = "Übernehme…"; msg.className = "ef-msg";
+      try {
+        const { data: vorhanden, error } = await window.sb.from("nebenkosten").select("*").eq("objekt_id", s._id).eq("jahr", jahr);
+        if (error) throw error;
+        const stand = new Date().toLocaleDateString(LOC);
+        for (const z of zeilen) {
+          const alt = (vorhanden || []).find(p => p.art === z.art);
+          const d = { betrag: z.betrag, umlagefaehig: true, schluessel: z.schluessel, notiz: Math.round(z.e.kwh).toLocaleString(LOC) + " kWh aus Mieterstrom, Stand " + stand };
+          if (z.anteile) d.anteile = z.anteile;
+          let r = alt ? await window.sb.from("nebenkosten").update(d).eq("id", alt.id) : await window.sb.from("nebenkosten").insert({ ...d, objekt_id: s._id, jahr, art: z.art });
+          if (r.error && /anteile/.test(r.error.message || "")) throw Object.assign(new Error("anteile"), { eqText: "Für die Heizkosten nach Wärmemengenzähler fehlt die Spalte. Führ dafür 14-heizkosten.txt im SQL-Editor aus." });
+          if (r.error) throw r.error;
+        }
+        delete nkCache[s._id + ":" + jahr];
+        go.textContent = "Übernommen";
+        msg.innerHTML = `Übernommen: ${zeilen.length} ${zeilen.length === 1 ? "Kostenart" : "Kostenarten"}, zusammen ${esc(eur2(zeilen.reduce((a, z) => a + z.betrag, 0)))}. <button type="button" class="add-btn" id="nkOeffnen">Zur Abrechnung ${jahr}</button>`;
+        msg.querySelector("#nkOeffnen").onclick = () => { closeSheet(); setTimeout(() => openNkAbrechnung(objektMitId(s._id) || s, jahr, 1), 220); };
+        window.refreshView();
+      } catch (e) { go.disabled = false; msg.textContent = (e && e.eqText) || window.fehlerText(e); msg.className = "ef-msg bad"; }
+    };
   }
 
   /* ---------- Module je Objekt: Mieterstrom, Handwerker, Zeiterfassung ---------- */
