@@ -2602,6 +2602,17 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sheet .eq-ms-nka b{font-family:var(--fdisp);font-variant-numeric:tabular-nums;text-align:right;min-width:84px}
 @media(max-width:600px){.sheet .eq-ms-stz{grid-template-columns:1fr 1fr}}
 
+/* Allgemeinstromstellen als Karte (v=86) */
+.sheet .eq-ms-stz{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);gap:10px 12px;align-items:end;padding:12px;border:1px solid var(--stroke);border-radius:14px;background:var(--eq-mulde)}
+.sheet .eq-ms-stf{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sheet .eq-ms-stf>span{font-size:var(--eq-t-1);color:var(--soft)}
+.sheet .eq-ms-stf .ef-i{width:100%;min-width:0;box-sizing:border-box;font-size:16px;min-height:44px}
+.sheet .eq-ms-stf-n{grid-column:1/-1}
+.sheet .eq-ms-stfuss{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--stroke)}
+.sheet .eq-ms-stfuss .add-btn{min-height:44px}
+@media(max-width:600px){.sheet .eq-ms-stz{grid-template-columns:1fr 1fr}.sheet .eq-ms-stf:nth-child(2){grid-column:1/-1}}
+#app .eq-ms-abt{font-style:normal}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -2801,6 +2812,50 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 /* Rechner am Handy: ein Feld je Zeile */
 @media(max-width:599px){
   .rc-felder{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ---------- 6. Raster für große Bildschirme (v=87) ----------
+   iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
+   Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben
+   untereinander über die ganze Breite; kleine Bausteine teilen sich eine Zeile.
+   Die Reihenfolge bleibt wie auf dem Handy; nur der Kalender steht rechts neben
+   Suche und Verteilung (dense füllt diese eine Lücke). */
+@media(min-width:900px){
+  #views.wrap{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-flow:row dense;align-items:stretch}
+  #views.wrap>*{grid-column:1 / -1;min-width:0}
+  #views.wrap>.g-2{display:contents}
+  /* Kennzahlen: vier nebeneinander, die Zahl passt sich der Kachel an */
+  #app .g-kpi:not(.eq-kpi-plan){grid-template-columns:repeat(4,minmax(0,1fr))}
+  /* Planwerte (6 oder 9 Kennzahlen) bleiben in Dreierreihen */
+  #app .g-kpi.eq-kpi-plan{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #app .g-kpi .kpi{container-type:inline-size}
+  #app .g-kpi .kpi .num{font-size:clamp(20px,11.5cqi,32px)}
+  /* Übersicht: links Suche und Verteilung untereinander, rechts der Kalender, darunter Wetter */
+  #views.wrap>.search-card,#views.wrap>.search-card + .card:has(> .donut-row){grid-column:1 / span 6}
+  #views.wrap>.g-2>*{grid-column:span 6}
+  #views.wrap>.g-2>.cal-card{grid-column:7 / span 6;grid-row:span 2}
+  /* Objekt: Zusammensetzung neben dem Nebenkosten-Puffer */
+  #views.wrap>.card:has(> .donut-row):has(+ .card > .eq-puffer),
+  #views.wrap>.card:has(> .donut-row) + .card:has(> .eq-puffer){grid-column:span 6}
+  #views.wrap>.card:has(> .eq-puffer){display:flex;align-items:center}
+  #views.wrap>.card:has(> .eq-puffer)>.eq-puffer{width:100%}
+  /* Rechner und Wissen: Karten in Spalten statt einer langen Liste */
+  #views .eq-tl-liste{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,440px),1fr));align-items:start}
+  #views .eq-tl-liste>.eq-tl-kopf{grid-column:1 / -1}
+}
+@media(min-width:1200px){
+  /* Zeiterfassung neben Nebenkosten – nur, wenn beide da sind */
+  #views.wrap>.eq-zeit:has(+ .nk-card),#views.wrap>.eq-zeit + .nk-card{grid-column:span 6}
+  /* Kalender in der halben Breite: Tage flacher statt quadratisch, damit er nicht riesig wird */
+  #views.wrap>.g-2>.cal-card .cal-cell{aspect-ratio:auto;height:clamp(52px,4.2vw,76px)}
+}
+@media(min-width:1600px){
+  /* Großer Monitor: volle Breite. Breite Bausteine bleiben untereinander. */
+  .wrap{max-width:none}
+  .head{max-width:none}
+  #app .g-kpi:not(.eq-kpi-plan){grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  /* Zwei Kennzahl-Blöcke direkt hintereinander teilen sich eine Zeile */
+  #views.wrap>.g-kpi:has(+ .g-kpi),#views.wrap>.g-kpi + .g-kpi{grid-column:span 6}
 }
 
 /* Bewegung reduzieren: Einstellung am Gerät wird respektiert (unverändert) */
@@ -3697,10 +3752,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=85"></script>
-<script src="./data-save.js?v=85"></script>
-<script src="./finance-engine.js?v=85"></script>
-<script src="./app.js?v=85"></script>
+<script src="./data-loader.js?v=88"></script>
+<script src="./data-save.js?v=88"></script>
+<script src="./finance-engine.js?v=88"></script>
+<script src="./app.js?v=88"></script>
 
 <script>
 /* =====================================================================
