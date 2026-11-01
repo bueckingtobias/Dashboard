@@ -6640,8 +6640,8 @@
 
     const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside, stromMonat };
 
-    // FABLE-D3: Die Zahl steht oben, die Begrüßung folgt – außer ohne Objekt
-    if (!streams.length) host.appendChild(begruessungsKarte());
+    // Die Begrüßung steht immer ganz oben (Tobias, v=88)
+    host.appendChild(begruessungsKarte());
 
     // Noch kein Objekt: ein Satz, eine Aktion – Suche, Kalender und Wetter bleiben erreichbar
     if (!streams.length) {
@@ -6672,7 +6672,6 @@
 
     // 2 Was sonst Aufmerksamkeit braucht
     const hinweise = hinweisKarte(streams); if (hinweise) host.appendChild(hinweise);
-    host.appendChild(begruessungsKarte());   // FABLE-D3 (Opus: nach den Hinweisen)
 
     // 3 Kennzahlen: erst das Geld, dann die Kredite
     host.appendChild(wireActs(el(`<div class="grid g-kpi">
@@ -8159,7 +8158,7 @@
       }
     } catch (_) {}
     window.ESTRIQ_REGION = REGION;
-    LOC = istEN() ? "en-US" : "de-DE";
+    LOC = istEN() ? (istUS() ? "en-US" : "en-GB") : "de-DE";
     WAEHRUNG = istUS() ? "USD" : "EUR";
     if (istUS()) regionUSA();
     if (istEN() || istUS()) await uebersetzerStarten();
@@ -8245,12 +8244,12 @@
     return rund2(i > 0 ? summe * i / (1 - Math.pow(1 + i, -n)) : summe / n);
   }
 
-  // ---------- Sprache im Profil (nur für Konten in den USA) ----------
+  // ---------- Sprache im Profil (alle Konten; die Region bleibt, wie sie ist) ----------
   function spracheBlock() {
-    if (!istUS()) return "";
     const k = (v, t) => `<button type="button" class="eq-wahl-k eq-roh${SPRACHE === v ? " on" : ""}" data-sprache="${v}" aria-pressed="${SPRACHE === v}" lang="${v}">${t}</button>`;
     return `${efTitel("Sprache")}
-      <div class="eq-wahl" role="group" aria-label="Sprache">${k("en", "English")}${k("de", "Deutsch")}</div>
+      <div class="eq-wahl" role="group" aria-label="Sprache">${istUS() ? k("en", "English") + k("de", "Deutsch") : k("de", "Deutsch") + k("en", "English")}</div>
+      ${istUS() ? "" : `<div class="ef-h">Nur die Sprache. Beträge in €, Flächen in m² und die Regeln für Deutschland bleiben.</div>`}
       <div class="ef-msg" id="pSpracheMsg" role="status"></div>`;
   }
   function spracheVerdrahten(sheet) {
@@ -8294,6 +8293,7 @@
     return m[1] + f(m[2]) + m[3];
   }
   function zeit12(t) {
+    if (!istUS()) return t;
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(t).trim());
     if (!m) return t;
     const h = Number(m[1]);
@@ -8445,8 +8445,9 @@
     if (istEN()) {
       const d = await enLaden();
       if (d) {
-        UEB.exakt = d.e;
-        UEB.muster = d.m.map(([quelle, ziel, fest]) => [new RegExp(quelle), ziel, fest || 0]);
+        const eu = !istUS();
+        UEB.exakt = eu && d.eu ? Object.assign({}, d.e, d.eu) : d.e;
+        UEB.muster = d.m.map(([quelle, ziel, fest]) => [new RegExp(quelle), eu && d.eum && d.eum[quelle] != null ? d.eum[quelle] : ziel, fest || 0]);
         // Stücke nach dem ersten Wort, längste zuerst – für die Zerlegung
         UEB.praefix = new Map();
         Object.keys(d.e).forEach(key => { const w = key.split(" ")[0]; if (!UEB.praefix.has(w)) UEB.praefix.set(w, []); UEB.praefix.get(w).push(key); });
@@ -10185,19 +10186,39 @@
   const msHatWp = (ms) => msStellen(ms).some(x => x.art === "waermepumpe");
   const msTage = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / 864e5));
 
-  // Zeiträume aus den Ablesungen (nach Datum sortiert): Differenz je Zähler
+  // Zählerstand eines Zählers an einem Tag: abgelesen, sonst zwischen der Ablesung davor und danach anteilig nach Tagen.
+  // Über die letzte (oder vor die erste) Ablesung dieses Zählers hinaus wird nichts geschätzt.
+  const msTagNr = (d) => Math.round(Date.UTC(+String(d).slice(0, 4), +String(d).slice(5, 7) - 1, +String(d).slice(8, 10)) / 864e5);
+  function msStandAm(A, lies, datum) {
+    let vor = null, nach = null;
+    for (const a of A) {
+      const v = msZahl(lies(a)); if (v == null) continue;
+      if (a.datum <= datum) vor = [a.datum, v];
+      if (a.datum >= datum && !nach) nach = [a.datum, v];
+    }
+    if (vor && vor[0] === datum) return vor[1];
+    if (!vor || !nach) return null;
+    return vor[1] + (nach[1] - vor[1]) * (msTagNr(datum) - msTagNr(vor[0])) / (msTagNr(nach[0]) - msTagNr(vor[0]));
+  }
+  const msHausAbgelesen = (a) => ["pv", "bezug", "einspeisung"].some(k => msZahl(a[k]) != null);
+  // Zeiträume von Hauszähler-Ablesung zu Hauszähler-Ablesung (Solar, Netz oder Einspeisung abgelesen).
+  // Jeder Zähler zählt für sich: Wohnungen, Allgemeinstrom und Wärme dürfen an anderen Tagen abgelesen sein –
+  // ihr Stand an den Grenzen des Zeitraums wird dann anteilig nach Tagen ermittelt.
   function msZeitraeume(s) {
     const ms = s.mieterstrom || {}, A = (ms.ablesungen || []).slice().sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
+    const grenzen = A.filter(msHausAbgelesen);
+    const diff = (lies, a, b) => { const x = msStandAm(A, lies, a), y = msStandAm(A, lies, b); return x != null && y != null ? Math.max(0, y - x) : null; };
     const out = [];
-    for (let i = 1; i < A.length; i++) {
-      const a = A[i - 1], b = A[i], d = (k) => msZahl(b[k]) != null && msZahl(a[k]) != null ? msZahl(b[k]) - msZahl(a[k]) : null;
+    for (let i = 1; i < grenzen.length; i++) {
+      const von = grenzen[i - 1].datum, bis = grenzen[i].datum;
       const w = {};
-      msTeilnehmer(s, ms).forEach(u => { const x = msZahl((b.w || {})[u._id]), y = msZahl((a.w || {})[u._id]); if (x != null && y != null) w[u._id] = Math.max(0, x - y); });
+      msTeilnehmer(s, ms).forEach(u => { const v = diff(r => (r.w || {})[u._id], von, bis); if (v != null) w[u._id] = v; });
       const hz = {};
-      (s.einheiten || []).forEach(u => { const p = msZahl((b.h || {})[u._id]), q = msZahl((a.h || {})[u._id]); if (p != null && q != null) hz[u._id] = Math.max(0, p - q); });
+      (s.einheiten || []).forEach(u => { const v = diff(r => (r.h || {})[u._id], von, bis); if (v != null) hz[u._id] = v; });
       const st = {};
-      msStellen(ms).forEach(x => { const p = msZahl((b.s || {})[x.id]), q = msZahl((a.s || {})[x.id]); if (p != null && q != null) st[x.id] = Math.max(0, p - q); });
-      out.push({ von: a.datum, bis: b.datum, tage: msTage(a.datum, b.datum), E: Math.max(0, d("pv") || 0), N: Math.max(0, d("bezug") || 0), F: Math.max(0, d("einspeisung") || 0), W: w, A: st, H: hz, ist: true, idBis: b.id });
+      msStellen(ms).forEach(x => { const v = diff(r => (r.s || {})[x.id], von, bis); if (v != null) st[x.id] = v; });
+      out.push({ von, bis, tage: msTage(von, bis), E: diff(r => r.pv, von, bis) || 0, N: diff(r => r.bezug, von, bis) || 0, F: diff(r => r.einspeisung, von, bis) || 0,
+        W: w, A: st, H: hz, ist: true, idBis: grenzen[i].id });
     }
     return out;
   }
@@ -10323,6 +10344,19 @@
     </div>`;
   }
   const zahlKwh = (v) => Math.round(Number(v) || 0).toLocaleString(LOC) + " kWh";
+  // Kurztext einer Ablesung: welche Zähler abgelesen sind
+  function msAbText(s, ms, a) {
+    const t = [];
+    if (msZahl(a.pv) != null) t.push("Solar " + zahlKwh(a.pv));
+    if (msZahl(a.bezug) != null) t.push("Netz " + zahlKwh(a.bezug));
+    if (msZahl(a.einspeisung) != null) t.push("Einspeisung " + zahlKwh(a.einspeisung));
+    const nw = msTeilnehmer(s, ms).filter(u => msZahl((a.w || {})[u._id]) != null).length, ns = msStellen(ms).filter(x => msZahl((a.s || {})[x.id]) != null).length;
+    const nh = Object.values(a.h || {}).filter(v => msZahl(v) != null).length;
+    if (nw) t.push(mehrzahl(nw, "Wohnung", "Wohnungen"));
+    if (ns) t.push(ns + " Allgemeinstrom");
+    if (nh) t.push(nh + " Wärme");
+    return t.join(" · ") || "ohne Werte";
+  }
   const ct = (v) => v == null ? "—" : (Math.round(v * 100) / 100).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ct";
 
   // Karte auf der Objektseite
@@ -10394,7 +10428,7 @@
           <div class="eq-ms-ww"><b>${zahlKwh(r.haus)}</b><span>${r.misch != null ? eur(r.haus * r.misch / 100 / r.monate) + " im Monat" : ""}</span></div></div>` : ""}</div>
         <div class="note" style="margin-top:8px">„Kostet" = kWh × Mischpreis Beschaffung (${ct(r.misch)}), steckt schon im Zukauf. Die Umlage kommt über die Nebenkosten zurück und zählt oben als Erlös.</div>
         ${r.stellen.some(y => y.umlegen) && r.z.ist ? `<button type="button" class="eq-btn zweit" id="msNk" style="margin-top:10px;width:100%">In die Nebenkostenabrechnung übernehmen</button>` : ""}` : ""}
-        ${(ms.ablesungen || []).length ? `<div class="card-t eq-zwischen">Ablesungen</div><div class="eq-ms-ab">${(ms.ablesungen || []).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(a => `<button type="button" class="eq-ms-abz" data-ms-ab="${esc(a.id)}"><b>${esc(datumKurz(a.datum))}</b><span>Solar ${zahlKwh(a.pv)} · Netz ${zahlKwh(a.bezug)} · Einspeisung ${zahlKwh(a.einspeisung)}</span></button>`).join("")}</div>` : ""}`;
+        ${(ms.ablesungen || []).length ? `<div class="card-t eq-zwischen">Ablesungen</div><div class="eq-ms-ab">${(ms.ablesungen || []).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(a => `<button type="button" class="eq-ms-abz" data-ms-ab="${esc(a.id)}"><b>${esc(datumKurz(a.datum))}</b><span>${msAbText(s, ms, a).split(" · ").map(t => `<i class="eq-ms-abt">${esc(t)}</i>`).join(" · ")}</span></button>`).join("")}</div>` : ""}`;
       const nk = v.querySelector("#msNk"); if (nk) nk.onclick = () => openMsNebenkosten(s);
       v.querySelectorAll("[data-ms-ab]").forEach(b => b.onclick = () => openAblesung(s, (ms.ablesungen || []).find(a => a.id === b.dataset.msAb)));
       v.querySelectorAll(".eq-fl-lab[data-fl]").forEach(b => b.onclick = () => {
@@ -10472,51 +10506,93 @@
 
   function msStelleZeile(x) {
     return `<div class="eq-ms-stz" data-st="${esc(x.id)}">
-      <input class="ef-i" data-st-name placeholder="Bezeichnung, z. B. Flur Haus A" value="${esc(x.name || "")}" aria-label="Bezeichnung">
-      <select class="ef-i" aria-label="Art">${MS_STELLEN.map(a => `<option value="${a[0]}"${a[0] === x.art ? " selected" : ""}>${esc(a[1])}</option>`).join("")}</select>
-      <input class="ef-i" data-st-plan type="number" min="0" inputmode="decimal" placeholder="Plan kWh/Jahr" value="${esc(x.plan_kwh_jahr ?? "")}" aria-label="Plan kWh im Jahr">
-      <input class="ef-i" data-st-preis type="number" min="0" step="0.01" inputmode="decimal" placeholder="Preis ct" value="${esc(x.preis_ct ?? "")}" aria-label="Umlagepreis ct je kWh">
-      <label class="eq-ms-stu"><input type="checkbox" data-st-uml${msUmlegen(x) ? " checked" : ""}><span>umlegen</span></label>
-      <button type="button" class="add-btn" data-st-weg aria-label="Stelle entfernen">Entfernen</button>
+      <label class="eq-ms-stf eq-ms-stf-n"><span>Bezeichnung</span><input class="ef-i" data-st-name placeholder="z. B. Flur Haus A" value="${esc(x.name || "")}"></label>
+      <label class="eq-ms-stf"><span>Art</span><select class="ef-i">${MS_STELLEN.map(a => `<option value="${a[0]}"${a[0] === x.art ? " selected" : ""}>${esc(a[1])}</option>`).join("")}</select></label>
+      <label class="eq-ms-stf"><span>Plan kWh/Jahr</span><input class="ef-i" data-st-plan type="number" min="0" inputmode="decimal" placeholder="z. B. 1200" value="${esc(x.plan_kwh_jahr ?? "")}"></label>
+      <label class="eq-ms-stf"><span>Preis ct/kWh</span><input class="ef-i" data-st-preis type="number" min="0" step="0.01" inputmode="decimal" placeholder="aus Vertrag" value="${esc(x.preis_ct ?? "")}"></label>
+      <div class="eq-ms-stfuss">
+        <label class="eq-ms-stu"><input type="checkbox" data-st-uml${msUmlegen(x) ? " checked" : ""}><span>Auf Mieter umlegen</span></label>
+        <button type="button" class="add-btn" data-st-weg aria-label="${esc("Stelle " + (x.name || "") + " entfernen")}">Entfernen</button>
+      </div>
     </div>`;
   }
-  // Zählerstände eines Tages: Solar, Netzbezug, Einspeisung, je Wohnung
+  // Zählerstände eines Tages: Solar, Netzbezug, Einspeisung, je Wohnung, Allgemeinstrom, Wärme – alles freiwillig.
+  // Gibt es für den Tag schon eine Ablesung, werden nur die neu eingetragenen Zähler übernommen; der Rest bleibt.
   function openAblesung(s, alt) {
     const ms = s.mieterstrom || {};
     if (!s.mieterstrom) { openMieterstromEinstellungen(s); return; }
     const A = (ms.ablesungen || []).slice().sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
-    const vorher = alt ? A.filter(a => a.datum < alt.datum).pop() : A[A.length - 1];
     const tn = msTeilnehmer(s, ms);
-    const h = (v) => vorher && vorher[v] != null ? "Letzter Stand: " + Number(vorher[v]).toLocaleString(LOC) + " kWh am " + datumKurz(vorher.datum) : "Zählerstand in kWh";
+    const datum0 = alt ? alt.datum : heuteIso();
+    // Letzter Stand eines Zählers vor diesem Tag (die Ablesung, in der er zuletzt steht)
+    const letzter = (lies, d) => { let r = null; A.forEach(a => { if (a.datum < d && (!alt || a.id !== alt.id) && msZahl(lies(a)) != null) r = a; }); return r ? { v: msZahl(lies(r)), d: r.datum } : null; };
+    const hin = (lies, sonst, einheit) => { const l = letzter(lies, datum0); return l ? "Letzter Stand: " + l.v.toLocaleString(LOC) + " " + (einheit || "kWh") + " am " + datumKurz(l.d) : sonst; };
+    const wert = (lies) => alt ? (lies(alt) ?? "") : "";
     const body = `
-      ${ef("Datum der Ablesung", "datum", alt ? alt.datum : heuteIso(), "date", { pflicht: true })}
+      ${ef("Datum der Ablesung", "datum", datum0, "date", { pflicht: true })}
+      <div class="note" id="msAbTag" hidden></div>
       ${efTitel("Hauszähler")}
-      ${ef("Solaranlage (Erzeugung)", "pv", alt ? alt.pv : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("pv") })}
-      ${ef("Netzbezug", "bezug", alt ? alt.bezug : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("bezug") })}
-      ${ef("Einspeisung", "einspeisung", alt ? alt.einspeisung : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("einspeisung") })}
+      ${ef("Solaranlage (Erzeugung)", "pv", wert(a => a.pv), "number", { einheit: "kWh", min: 0, step: "0.1", hinweis: hin(a => a.pv, "Zählerstand in kWh") })}
+      ${ef("Netzbezug", "bezug", wert(a => a.bezug), "number", { einheit: "kWh", min: 0, step: "0.1", hinweis: hin(a => a.bezug, "Zählerstand in kWh") })}
+      ${ef("Einspeisung", "einspeisung", wert(a => a.einspeisung), "number", { einheit: "kWh", min: 0, step: "0.1", hinweis: hin(a => a.einspeisung, "Zählerstand in kWh") })}
       ${efTitel("Wohnungen")}
-      ${tn.map(u => ef(u.wohnung || "Einheit", "w_" + u._id, alt && alt.w ? (alt.w[u._id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
-        hinweis: vorher && vorher.w && vorher.w[u._id] != null ? "Letzter Stand: " + Number(vorher.w[u._id]).toLocaleString(LOC) + " kWh" : (u.mieter || "Zählerstand in kWh") })).join("")}
-      ${msStellen(ms).length ? efTitel("Allgemeinstrom") + msStellen(ms).map(x => ef(x.name || msStelleArt(x.art), "s_" + x.id, alt && alt.s ? (alt.s[x.id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
-        hinweis: vorher && vorher.s && vorher.s[x.id] != null ? "Letzter Stand: " + Number(vorher.s[x.id]).toLocaleString(LOC) + " kWh" : msStelleArt(x.art) })).join("") : ""}
-      ${msHatWp(ms) ? efTitel("Wärmemengenzähler") + (s.einheiten || []).map(u => ef(u.wohnung || "Einheit", "h_" + u._id, alt && alt.h ? (alt.h[u._id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
-        hinweis: vorher && vorher.h && vorher.h[u._id] != null ? "Letzter Stand: " + Number(vorher.h[u._id]).toLocaleString(LOC) + " kWh Wärme" : "Wärme in kWh" })).join("") : ""}
-      <div class="note" style="margin-top:8px">${A.length || alt ? "Aus zwei Ablesungen rechnet ESTRIQ den Zeitraum dazwischen." : "Die erste Ablesung ist der Startstand. Ab der zweiten siehst du echte Werte."}</div>
+      ${tn.map(u => ef(u.wohnung || "Einheit", "w_" + u._id, wert(a => (a.w || {})[u._id]), "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: hin(a => (a.w || {})[u._id], u.mieter || "Zählerstand in kWh") })).join("")}
+      ${msStellen(ms).length ? efTitel("Allgemeinstrom") + msStellen(ms).map(x => ef(x.name || msStelleArt(x.art), "s_" + x.id, wert(a => (a.s || {})[x.id]), "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: hin(a => (a.s || {})[x.id], msStelleArt(x.art)) })).join("") : ""}
+      ${msHatWp(ms) ? efTitel("Wärmemengenzähler") + (s.einheiten || []).map(u => ef(u.wohnung || "Einheit", "h_" + u._id, wert(a => (a.h || {})[u._id]), "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: hin(a => (a.h || {})[u._id], "Wärme in kWh", "kWh Wärme") })).join("") : ""}
+      <div class="note" style="margin-top:8px">Trag nur die Zähler ein, die du abgelesen hast – alle Felder sind freiwillig. ${A.length || alt ? "Abgerechnet wird von einer Ablesung der Hauszähler zur nächsten; Wohnungszähler von anderen Tagen rechnet ESTRIQ anteilig nach Tagen." : "Die erste Ablesung ist der Startstand. Ab der zweiten siehst du echte Werte."}</div>
       ${efAktionen({ loeschen: alt ? "Ablesung löschen" : null })}`;
     const sheet = openSheet(alt ? "Ablesung bearbeiten" : "Zählerstände erfassen", nameOhneBruch(s.name), body);
+    // Hinweis, wenn es für den gewählten Tag schon eine Ablesung gibt
+    const tagFeld = sheet.querySelector('[data-f="datum"]'), tagHinweis = sheet.querySelector("#msAbTag");
+    const tagPruefen = () => {
+      const gleich = !alt && tagFeld && A.find(a => a.datum === tagFeld.value);
+      tagHinweis.hidden = !gleich;
+      if (gleich) tagHinweis.textContent = "Für diesen Tag gibt es schon eine Ablesung. Es werden nur die Zähler übernommen, die du jetzt einträgst – alle anderen bleiben, wie sie sind.";
+    };
+    if (tagFeld) { tagFeld.addEventListener("input", tagPruefen); tagFeld.addEventListener("change", tagPruefen); tagPruefen(); }
     efBind(sheet, async (w) => {
       const datum = text(w.datum);
       if (!datum) throw Object.assign(new Error("datum"), { eqText: "Bitte gib das Datum der Ablesung an." });
-      if (A.some(a => a.datum === datum && (!alt || a.id !== alt.id))) throw Object.assign(new Error("doppelt"), { eqText: "Für diesen Tag gibt es schon eine Ablesung." });
-      const neu = { id: alt ? alt.id : "a" + Date.now().toString(36), datum, pv: zahl(w.pv), bezug: zahl(w.bezug), einspeisung: zahl(w.einspeisung), w: {} };
-      tn.forEach(u => { const x = zahl(w["w_" + u._id]); if (x != null) neu.w[u._id] = x; });
-      neu.s = {}; msStellen(ms).forEach(x => { const v = zahl(w["s_" + x.id]); if (v != null) neu.s[x.id] = v; });
-      if (msHatWp(ms)) { neu.h = {}; (s.einheiten || []).forEach(u => { const v = zahl(w["h_" + u._id]); if (v != null) neu.h[u._id] = v; }); }
-      // Zählerstände steigen: mit Nachbar-Ablesungen vergleichen
-      const rest = A.filter(a => !alt || a.id !== alt.id), davor = rest.filter(a => a.datum < datum).pop(), danach = rest.find(a => a.datum > datum);
-      const kleiner = (a, b, k) => a && b && a[k] != null && b[k] != null && Number(b[k]) < Number(a[k]);
-      for (const [k, n] of [["pv", "Solaranlage"], ["bezug", "Netzbezug"], ["einspeisung", "Einspeisung"]])
-        if (kleiner(davor, neu, k) || kleiner(neu, danach, k)) throw Object.assign(new Error("stand"), { eqText: "Der Zählerstand „" + n + "“ ist kleiner als bei der Ablesung davor (oder größer als danach). Bitte prüfen." });
+      // Eingetragene Zähler dieses Formulars
+      const ein = { w: {}, s: {}, h: {} };
+      ["pv", "bezug", "einspeisung"].forEach(k => { const v = zahl(w[k]); if (v != null) ein[k] = v; });
+      tn.forEach(u => { const v = zahl(w["w_" + u._id]); if (v != null) ein.w[u._id] = v; });
+      msStellen(ms).forEach(x => { const v = zahl(w["s_" + x.id]); if (v != null) ein.s[x.id] = v; });
+      if (msHatWp(ms)) (s.einheiten || []).forEach(u => { const v = zahl(w["h_" + u._id]); if (v != null) ein.h[u._id] = v; });
+      const anzahl = ["pv", "bezug", "einspeisung"].filter(k => ein[k] != null).length + Object.keys(ein.w).length + Object.keys(ein.s).length + Object.keys(ein.h).length;
+      if (!anzahl && !alt) throw Object.assign(new Error("leer"), { eqText: "Trag mindestens einen Zählerstand ein." });
+      // Bearbeiten: genau die Werte des Formulars (Leeres wird entfernt). Neu: an eine Ablesung desselben Tages anhängen.
+      const gleich = alt ? null : A.find(a => a.datum === datum);
+      let neu;
+      if (alt || !gleich) {
+        neu = { id: alt ? alt.id : "a" + Date.now().toString(36), datum, w: ein.w, s: ein.s };
+        ["pv", "bezug", "einspeisung"].forEach(k => { neu[k] = ein[k] != null ? ein[k] : null; });
+        if (msHatWp(ms) || (alt && alt.h)) neu.h = ein.h;
+        // Zähler, die das Formular nicht zeigt (z. B. ausgezogene Einheit), bleiben beim Bearbeiten erhalten
+        if (alt) ["w", "s", "h"].forEach(g => Object.keys(alt[g] || {}).forEach(id => {
+          const gezeigt = g === "w" ? tn.some(u => u._id === id) : g === "s" ? msStellen(ms).some(x => x.id === id) : msHatWp(ms) && (s.einheiten || []).some(u => u._id === id);
+          if (!gezeigt) { neu[g] = neu[g] || {}; neu[g][id] = alt[g][id]; }
+        }));
+      } else {
+        neu = { ...gleich, w: { ...(gleich.w || {}), ...ein.w }, s: { ...(gleich.s || {}), ...ein.s } };
+        ["pv", "bezug", "einspeisung"].forEach(k => { if (ein[k] != null) neu[k] = ein[k]; });
+        if (Object.keys(ein.h).length || gleich.h) neu.h = { ...(gleich.h || {}), ...ein.h };
+      }
+      // Zählerstände steigen: je Zähler mit der Ablesung davor und danach vergleichen, in der er steht
+      const rest = A.filter(a => a.id !== neu.id);
+      const pruef = [["pv", "Solaranlage", a => a.pv], ["bezug", "Netzbezug", a => a.bezug], ["einspeisung", "Einspeisung", a => a.einspeisung]]
+        .concat(tn.map(u => ["w" + u._id, u.wohnung || "Einheit", a => (a.w || {})[u._id]]))
+        .concat(msStellen(ms).map(x => ["s" + x.id, x.name || msStelleArt(x.art), a => (a.s || {})[x.id]]))
+        .concat(msHatWp(ms) ? (s.einheiten || []).map(u => ["h" + u._id, "Wärme " + (u.wohnung || "Einheit"), a => (a.h || {})[u._id]]) : []);
+      for (const [, n, lies] of pruef) {
+        const v = msZahl(lies(neu)); if (v == null) continue;
+        const davor = rest.filter(a => a.datum < datum && msZahl(lies(a)) != null).pop(), danach = rest.find(a => a.datum > datum && msZahl(lies(a)) != null);
+        if ((davor && v < msZahl(lies(davor))) || (danach && v > msZahl(lies(danach))))
+          throw Object.assign(new Error("stand"), { eqText: "Der Zählerstand „" + n + "“ ist kleiner als bei der Ablesung davor (oder größer als danach). Bitte prüfen." });
+      }
       const liste = rest.concat([neu]).sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
       await msSpeichern(s, { ...ms, ablesungen: liste });
     }, alt ? async () => { await msSpeichern(s, { ...ms, ablesungen: A.filter(a => a.id !== alt.id) }); } : null, "Ablesung wirklich löschen?");
