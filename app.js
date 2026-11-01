@@ -4,7 +4,19 @@
 (function () {
   "use strict";
   let D = window.DASHBOARD_DATA || {};
-  const FE = window.FinanceEngine;
+  const FE = (() => {
+    const E = window.FinanceEngine, W = Object.create(E);
+    const ms = (s) => (s && s.kind === "miete" && typeof mieterstromMonat === "function") ? mieterstromMonat(s) : 0;
+    const r2x = (n) => Math.round(n * 100) / 100;
+    W.streamMonthly = (s) => { const m = E.streamMonthly(s), x = ms(s); return x ? { ...m, netto: r2x(m.netto + x), mieterstrom: x } : m; };
+    W.immoKPIs = (s) => {
+      const k = E.immoKPIs(s), x = ms(s);
+      if (!x) return k;
+      const n = r2x(k.nettoCashflowMonat + x);
+      return { ...k, nettoCashflowMonat: n, nettoCashflowJahr: r2x(n * 12), cashflowRoi: k.invest ? r2x(n * 12 / k.invest * 100) : k.cashflowRoi, mieterstrom: x };
+    };
+    return W;
+  })();
   const SESSION = "buecking_income_v1";
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -6614,16 +6626,17 @@
       });
       (s.einheiten || []).forEach(u => { unitsTotal++; if (u.status === "vermietet") unitsLet++; });
     });
-    const nettoMonth = t.ist - debtMonth;
+    const stromMonat = (D.streams || []).reduce((a, s) => a + (s.kind === "miete" ? mieterstromMonat(s) : 0), 0);
+    const nettoMonth = t.ist - debtMonth + stromMonat;
     const upside = t.potenzial - t.ist;          // ungenutztes Einnahmenpotenzial
-    const nettoPot = t.potenzial - debtMonth;    // Netto bei Vollvermietung
+    const nettoPot = t.potenzial - debtMonth + stromMonat;    // Netto bei Vollvermietung (mit Mieterstrom)
     const stand = (D.meta && D.meta.version) || "";
 
     $("#eyebrow").textContent = "Portfolio";
     $("#pageTitle").textContent = "Übersicht";
     $("#pageSub").textContent = "Dein Bestand auf einen Blick" + (stand ? " · Stand " + (/^\d{4}-\d\d-\d\d/.test(stand) ? dateDE(stand) : stand) : "");
 
-    const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside };
+    const ctx = { t, debtMonth, debtRest, paidSoFar, debtOrig, unitsTotal, unitsLet, nettoMonth, nettoPot, upside, stromMonat };
 
     // FABLE-D3: Die Zahl steht oben, die Begrüßung folgt – außer ohne Objekt
     if (!streams.length) host.appendChild(begruessungsKarte());
@@ -6653,11 +6666,7 @@
       knopf: { id: "cfHerleitung", text: "So kommt die Zahl zustande", tun: () => openPortfolioSheet("netto", ctx) }
     }));
     // FABLE-D4: Wohin die Miete geht (Miete rein, Kreditraten raus, bleibt) – dieselben Zahlen wie oben
-    host.appendChild(eqWasserfall([
-      { l: "Miete rein", v: t.ist, art: "rein", text: unitsLet + " von " + unitsTotal + " Einheiten vermietet" },
-      { l: "Kreditraten", v: debtMonth, art: "raus", text: "davon " + eur(fin.tilgung) + " Tilgung – die bauen Vermögen" },
-      { l: "Bleibt", v: nettoMonth, art: "bleibt", text: CF_HINWEIS }
-    ], "Wohin die Miete geht"));
+    host.appendChild(eqWasserfall2(streams));   // interaktiv: mit/ohne Nebenkosten, je Objekt
 
     // 2 Was sonst Aufmerksamkeit braucht
     const hinweise = hinweisKarte(streams); if (hinweise) host.appendChild(hinweise);
@@ -7440,14 +7449,16 @@
     zusammensetzung: zusammensetzungKarte,
     ruecklage: nkPufferKarte,
     finanzierung: finanzierungBereich,
-    handwerker: (s) => gewerkeKarte(s),
-    zeiten: (s) => zeitenKarte(s),
+    handwerker: (s) => modulAn(s, "handwerker") ? modulMitAus(gewerkeKarte(s), s, "handwerker") : null,
+    zeiten: (s) => { zeitenModulPruefen(s); return modulAn(s, "zeiten") ? modulMitAus(zeitenKarte(s), s, "zeiten") : null; },
+    mieterstrom: (s) => !s.istProjekt && modulAn(s, "mieterstrom") ? mieterstromKarte(s) : null,
+    module: (s) => modulLeiste(s),
     mietraster: (s) => eqMietrasterKarte(s),   // FABLE-D4
     nebenkosten: (s) => nebenkostenKarte(s)
   };
   // Feste Reihenfolge der Objektseite. Der Baustein „mieten" (Karte Offene Mieten) steht hier nicht:
   // Auf der Objektseite bestätigt man den Eingang direkt in der Einheitenliste.
-  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "mietraster", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "nebenkosten"];
+  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "mietraster", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "mieterstrom", "nebenkosten", "module"];
 
   // Setzt eine Seite aus Bausteinen zusammen
   function objektSeite(host, s, reihenfolge) {
@@ -7657,6 +7668,7 @@
       <div class="card-b" id="zeitInhalt"><div class="note">Wird geladen…</div></div></div>`);
     karte.querySelector("#zeitLinkNeu").onclick = () => openZeitLink(s, null);
     ladeZeiten(s._id).then(d => {
+      if (d && !d.fehlt && !d.fehler && (d.links.length || d.eintraege.length)) zeitLinksBekannt[s._id] = true;
       const v = karte.querySelector("#zeitInhalt");
       if (!v) return;
       if (d.fehlt || d.fehler) {
@@ -9404,7 +9416,7 @@
     let tilgung = 0;
     FE.creditsOf(s).forEach(kr => { const km = kreditMonat(kr); if (km && !km.beginnt && !km.fertig) tilgung += km.tilgung + km.sonderPlan; });
     const fs = finanzStand(FE.creditsOf(s));
-    return { ein: m.gesamt, raten: m.kreditAbtrag, netto: m.netto, tilgung: kzR2(tilgung), anteil: fs.anteil, rest: fs.rest, puffer: !!m.puffer || !!s.nkAlsPuffer };
+    return { ein: m.gesamt, raten: m.kreditAbtrag, strom: m.mieterstrom || 0, netto: m.netto, tilgung: kzR2(tilgung), anteil: fs.anteil, rest: fs.rest, puffer: !!m.puffer || !!s.nkAlsPuffer };
   }
   function bilanzHtml(s, b) {
     const max = Math.max(b.ein, b.raten, Math.abs(b.netto), 1);
@@ -9416,6 +9428,7 @@
       <div class="eq-mc-bt">Was ${esc(nameOhneBruch(s.name))} im Monat bringt</div>
       ${balken(b.puffer ? "Mieten ohne Nebenkosten" : "Mieten", b.ein, "ein", "+" + eur(b.ein))}
       ${b.raten ? balken("Kreditraten", b.raten, "aus", "−" + eur(b.raten)) : ""}
+      ${b.strom ? balken("Mieterstrom", b.strom, b.strom >= 0 ? "ein" : "aus", (b.strom >= 0 ? "+" : "−") + eur(Math.abs(b.strom))) : ""}
       ${balken("Cashflow", b.netto, b.netto >= 0 ? "gut" : "minus", (b.netto >= 0 ? "+" : "−") + eur(Math.abs(b.netto)))}
       ${b.tilgung > 0 ? `<div class="eq-mc-plus">
         <div class="eq-mc-pz">+${eur(b.tilgung)}</div>
@@ -9825,8 +9838,17 @@
       const liste = kzRaten(kr).filter(e => e.faellig && !e.rec);
       if (b.dataset.sicher !== "1") { b.dataset.sicher = "1"; b.textContent = mehrzahl(liste.length, "Rate", "Raten") + " wirklich als gezahlt markieren?"; return; }
       b.disabled = true; b.textContent = "Speichere…";
-      const { data, error } = await window.sb.rpc("kreditraten_nachtragen", { p_kredit: kr._id,
+      let { data, error } = await window.sb.rpc("kreditraten_nachtragen", { p_kredit: kr._id,
         p_raten: liste.map(e => ({ jahr: e.j, monat: e.m, betrag: e.betrag, zins: e.zins, tilgung: e.tilgung, rest: e.rest })) });
+      // Ältere Datenbank ohne kreditraten_nachtragen (12-kreditzahlungen.txt aus v=79): Rate für Rate eintragen
+      if (error && funktionFehlt(error)) {
+        error = null; data = 0;
+        for (const [n, e] of liste.entries()) {
+          b.textContent = "Speichere " + (n + 1) + " von " + liste.length + "…";
+          try { await kreditRateSpeichern(kr, { jahr: e.j, monat: e.m, betrag: e.betrag, zins: e.zins, tilgung: e.tilgung, restNach: e.rest }, true); data++; }
+          catch (f) { error = f; break; }
+        }
+      }
       if (error || (typeof data === "string")) { b.disabled = false; b.textContent = "Erneut versuchen"; showToast(error ? window.fehlerText(error) : data === "gesperrt" ? "Mit dem aktuellen Tarif kannst du gerade nichts ändern." : "Die Raten ließen sich nicht speichern."); return; }
       try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
       showToast("Gespeichert: " + mehrzahl(liste.length, "Rate", "Raten") + " als gezahlt markiert.");
@@ -9994,6 +10016,510 @@
       if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") { ev.preventDefault(); zeige(f, (f._kvN != null ? f._kvN : k.d[0][0]) + (ev.key === "ArrowRight" ? schritt : -schritt)); }
     });
   }
+
+  /* ================= WASSERFALL: VOM MIETEINGANG ZUM CASHFLOW ================= */
+  // Interaktiv: mit/ohne Nebenkosten, Filter je Objekt, Kredite je Objekt (bei einem Objekt je Kredit, mit Zins und
+  // Tilgung im Balken), Mieterstrom als eigener Schritt. Alle Zahlen aus FE.unitIncome / FE.streamMonthly / kreditMonat –
+  // „mit Nebenkosten" endet genau beim Netto-Cashflow oben.
+  function wfSchritte(streams, mitNk) {
+    const S = [];
+    let kalt = 0, zus = 0, nk = 0, nkRueck = 0;
+    const jeObj = streams.map(s => {
+      let k = 0, z = 0, n = 0;
+      (s.einheiten || []).forEach(u => { if (u.status !== "vermietet") return; const i = FE.unitIncome(u); k += i.kalt; z += i.kueche + i.strom + i.stell; n += i.nk; });
+      kalt += k; zus += z; nk += n; if (s.nkAlsPuffer) nkRueck += n;
+      return { s, k, z, n };
+    });
+    const objZeilen = (feld) => jeObj.filter(o => o[feld] > 0.005).map(o => ({ l: nameOhneBruch(shortLabel(o.s.name)), v: o[feld] }));
+    S.push({ id: "kalt", art: "rein", l: "Kaltmiete", kurz: "Kalt", v: kalt, teile: objZeilen("k"), text: "Kaltmieten der vermieteten Einheiten" });
+    if (zus > 0.005) S.push({ id: "zus", art: "rein", l: "Zuschläge", kurz: "Zuschl.", v: zus, teile: objZeilen("z"), text: "Küche, Stellplatz, Strompauschale" });
+    if (mitNk && nk > 0.005) S.push({ id: "nk", art: "rein nk", l: "Nebenkosten-Vorauszahlungen", kurz: "NK", v: nk, teile: objZeilen("n"), text: "zahlen die Mieter zusätzlich zur Kaltmiete" });
+    const ein = kalt + zus + (mitNk ? nk : 0);
+    S.push({ id: "ein", art: "summe", l: mitNk ? "Mieteingang" : "Miete ohne Nebenkosten", kurz: "Eingang", v: ein, text: mitNk ? "alles, was die Mieter überweisen" : "ohne Nebenkosten-Vorauszahlungen" });
+    if (mitNk && nkRueck > 0.005) S.push({ id: "nkr", art: "raus nk", l: "Nebenkosten zurückgelegt", kurz: "NK-Rückl.", v: -nkRueck,
+      teile: jeObj.filter(o => o.s.nkAlsPuffer && o.n > 0.005).map(o => ({ l: nameOhneBruch(shortLabel(o.s.name)), v: -o.n })), text: "Rücklage für die Nebenkostenabrechnung – kein Ertrag" });
+    // Kredite: bei mehreren Objekten je Objekt, bei einem Objekt je Kredit
+    const kreditTeile = (s) => FE.creditsOf(s).map(kr => {
+      const rate = Number(kr.abtragMonat) || 0, km = kreditMonat(kr);
+      const ok = km && !km.beginnt && !km.fertig && km.betrag > 0;
+      return { l: kr.name || "Kredit", v: -rate, zins: ok ? Math.min(rate, km.zins) : null, tilgung: ok ? Math.max(0, rate - Math.min(rate, km.zins)) : null };
+    }).filter(t => t.v < -0.005);
+    const zt = (liste) => { const z = liste.reduce((a, t) => a + (t.zins == null ? -t.v : t.zins), 0), ti = liste.reduce((a, t) => a + (t.tilgung || 0), 0); return { zins: z, tilgung: ti }; };
+    if (streams.length === 1) {
+      kreditTeile(streams[0]).forEach((t, i) => S.push({ id: "kr" + i, art: "raus kredit", l: t.l, kurz: t.l, v: t.v, zins: t.zins == null ? -t.v : t.zins, tilgung: t.tilgung || 0,
+        text: t.tilgung ? "davon " + eur(t.tilgung) + " Tilgung – die baut Vermögen" : "Kreditrate" }));
+    } else {
+      streams.forEach(s => {
+        const teile = kreditTeile(s); if (!teile.length) return;
+        const v = teile.reduce((a, t) => a + t.v, 0), x = zt(teile);
+        S.push({ id: "kro" + s._id, art: "raus kredit", l: "Kredite " + nameOhneBruch(shortLabel(s.name)), kurz: nameOhneBruch(shortLabel(s.name)), v, zins: x.zins, tilgung: x.tilgung, teile,
+          text: x.tilgung ? "davon " + eur(x.tilgung) + " Tilgung – die baut Vermögen" : "Kreditraten" });
+      });
+    }
+    // Mieterstrom (Ergebnis im Monat, kann auch negativ sein)
+    const ms = streams.map(s => ({ s, v: typeof mieterstromMonat === "function" ? mieterstromMonat(s) : 0 })).filter(x => Math.abs(x.v) > 0.005);
+    const msSumme = ms.reduce((a, x) => a + x.v, 0);
+    if (ms.length) S.push({ id: "ms", art: msSumme >= 0 ? "rein strom" : "raus strom", l: "Mieterstrom", kurz: "Strom", v: msSumme,
+      teile: ms.map(x => ({ l: nameOhneBruch(shortLabel(x.s.name)), v: x.v })), text: "Ergebnis aus Stromverkauf, Zuschlag und Einspeisung abzüglich Zukauf und Betrieb" });
+    const ende = S.filter(x => x.art !== "summe").reduce((a, x) => a + x.v, 0);
+    const tilgung = S.filter(x => /kredit/.test(x.art)).reduce((a, x) => a + (x.tilgung || 0), 0);
+    S.push({ id: "cf", art: "summe ende" + (ende < 0 ? " minus" : ""), l: mitNk ? "Cashflow" : "Cashflow ohne Nebenkosten", kurz: "Cashflow", v: ende, tilgung,
+      text: (ende < 0 ? "du legst im Monat drauf" : "bleibt dir im Monat") + " – nach Kreditraten, ohne laufende Kosten" });
+    return S;
+  }
+
+  function eqWasserfall2(alleStreams) {
+    const objekte = alleStreams.filter(s => (s.einheiten || []).length || FE.creditsOf(s).length);
+    const stand = { nk: merkLesen("estriq_wf_nk") !== "0", obj: merkLesen("estriq_wf_obj") || "alle", wahl: null };
+    if (stand.obj !== "alle" && !objekte.some(s => s._id === stand.obj)) stand.obj = "alle";
+    const karte = el(`<div class="card eq-flaeche eq-w2-karte">
+      <div class="eq-w2-kopf">
+        <div><div class="card-t">Vom Mieteingang zum Cashflow</div><div class="card-s" id="w2Sub"></div></div>
+        <div class="eq-w2-seg" role="group" aria-label="Nebenkosten">
+          <button type="button" data-w2-nk="1">Mit Nebenkosten</button><button type="button" data-w2-nk="0">Ohne</button>
+        </div>
+      </div>
+      ${objekte.length > 1 ? `<div class="eq-w2-chips" role="group" aria-label="Objekt">
+        <button type="button" class="eq-wl-chip" data-w2-obj="alle">Alle Objekte</button>
+        ${objekte.map(s => `<button type="button" class="eq-wl-chip" data-w2-obj="${esc(s._id)}">${esc(nameOhneBruch(shortLabel(s.name)))}</button>`).join("")}
+      </div>` : ""}
+      <div class="eq-w2" role="listbox" tabindex="0" aria-label="Wasserfall: vom Mieteingang zum Cashflow. Pfeiltasten wählen einen Schritt."></div>
+      <div class="eq-w2-leg"><span><i class="ein"></i>rein</span><span><i class="zins"></i>Zins</span><span><i class="til"></i>Tilgung (baut Vermögen)</span>${objekte.some(s => s.nkAlsPuffer) ? `<span><i class="nk"></i>Nebenkosten</span>` : ""}</div>
+      <div class="eq-w2-detail" aria-live="polite"></div>
+    </div>`);
+    const feld = karte.querySelector(".eq-w2"), detail = karte.querySelector(".eq-w2-detail");
+    let S = [];
+    const zeichne = () => {
+      const streams = stand.obj === "alle" ? objekte : objekte.filter(s => s._id === stand.obj);
+      S = wfSchritte(streams, stand.nk);
+      karte.querySelectorAll("[data-w2-nk]").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.w2Nk === "1") === stand.nk)));
+      karte.querySelectorAll("[data-w2-obj]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.w2Obj === stand.obj)));
+      const ein = S.find(x => x.id === "ein"), cf = S[S.length - 1];
+      karte.querySelector("#w2Sub").textContent = ein.v > 0 ? "Von " + eur(ein.v) + " bleiben " + eur(cf.v) + (cf.v < 0 ? " – du legst drauf" : " · " + Math.round(cf.v / ein.v * 100) + " %") : "Noch keine Miete hinterlegt";
+      // Stufen: Start und Ende je Schritt
+      let lauf = 0;
+      S.forEach(x => {
+        if (/summe/.test(x.art)) { x.a = 0; x.b = x.v; lauf = x.v; }
+        else { x.a = lauf; x.b = lauf + x.v; lauf = x.b; }
+      });
+      const hi = Math.max(1, ...S.map(x => Math.max(x.a, x.b))), lo = Math.min(0, ...S.map(x => Math.min(x.a, x.b)));
+      const P = (v) => (v - lo) / (hi - lo) * 100;
+      feld.style.setProperty("--eq-w2-n", S.length);
+      feld.style.setProperty("--eq-w2-null", P(0).toFixed(2) + "%");
+      const da = new Map([...feld.querySelectorAll(".eq-w2-s")].map(n => [n.dataset.id, n]));
+      S.forEach((x, i) => {
+        let n = da.get(x.id);
+        if (!n) {
+          n = el(`<div class="eq-w2-s" role="option" data-id="${esc(x.id)}"><div class="eq-w2-spur"><div class="eq-w2-bar"><i class="z"></i><i class="t"></i></div><span class="eq-w2-w"></span></div><div class="eq-w2-n"></div></div>`);
+          n.querySelector(".eq-w2-bar").style.setProperty("--a", P(0).toFixed(2) + "%"); n.querySelector(".eq-w2-bar").style.setProperty("--b", "0%");
+          n.onclick = () => waehle(S.findIndex(y => y.id === x.id));
+        }
+        feld.appendChild(n); da.delete(x.id);
+        n.className = "eq-w2-s " + x.art + (stand.wahl === x.id ? " wahl" : "");
+        n.setAttribute("aria-selected", String(stand.wahl === x.id));
+        n.setAttribute("aria-label", x.l + ": " + (x.v < 0 ? "minus " : "") + eur(Math.abs(x.v)));
+        const unten = Math.min(x.a, x.b), hoehe = Math.abs(x.b - x.a);
+        const bar = n.querySelector(".eq-w2-bar");
+        requestAnimationFrame(() => { bar.style.setProperty("--a", P(unten).toFixed(2) + "%"); bar.style.setProperty("--b", Math.max(0.6, hoehe / (hi - lo) * 100).toFixed(2) + "%"); });
+        const z = /kredit/.test(x.art) && x.v ? Math.min(100, x.zins / -x.v * 100) : 0;
+        bar.querySelector(".z").style.flexBasis = (/kredit/.test(x.art) ? z : 0) + "%";
+        bar.querySelector(".t").style.flexBasis = (/kredit/.test(x.art) ? 100 - z : 0) + "%";
+        n.querySelector(".eq-w2-w").textContent = (x.v < 0 ? "−" : /summe/.test(x.art) || i === 0 ? "" : "+") + eur(Math.abs(x.v));
+        n.style.setProperty("--w", P(Math.max(x.a, x.b)).toFixed(2) + "%");
+        n.style.setProperty("--naechst", i < S.length - 1 ? P(x.b).toFixed(2) + "%" : "-10%");
+        n.querySelector(".eq-w2-n").textContent = x.kurz;
+        n.title = x.l;
+      });
+      da.forEach(n => n.remove());
+      if (stand.wahl && !S.some(x => x.id === stand.wahl)) stand.wahl = null;
+      zeigeDetail();
+    };
+    const zeigeDetail = () => {
+      const x = S.find(y => y.id === stand.wahl) || S[S.length - 1];
+      const ein = S.find(y => y.id === "ein");
+      const anteil = ein && ein.v > 0 && x !== ein ? Math.round(Math.abs(x.v) / ein.v * 100) + " % vom " + (stand.nk ? "Mieteingang" : "Eingang ohne Nebenkosten") : "";
+      detail.innerHTML = `<div class="eq-w2-dk"><b>${esc(x.l)}</b><strong class="${x.v < 0 ? "minus" : ""}">${x.v < 0 ? "−" : ""}${esc(eur(Math.abs(x.v)))}</strong></div>
+        <div class="eq-w2-dt">${esc([anteil, x.text].filter(Boolean).join(" · "))}</div>
+        ${/kredit/.test(x.art) && x.tilgung ? `<div class="rc-vh eq-w2-vh" role="img" aria-label="Zins ${esc(eur(x.zins))}, Tilgung ${esc(eur(x.tilgung))}"><i class="z" style="width:${(x.zins / -x.v * 100).toFixed(1)}%"></i><i class="t" style="width:${(x.tilgung / -x.v * 100).toFixed(1)}%"></i></div>
+          <div class="eq-rate-teile"><div><b class="z"></b><span>Zins</span><strong>${esc(eur(x.zins))}</strong></div><div><b class="t"></b><span>Tilgung</span><strong>${esc(eur(x.tilgung))}</strong></div></div>` : ""}
+        ${x.teile && x.teile.length > 1 || (x.teile && x.teile.length && /kredit/.test(x.art)) ? `<div class="eq-w2-teile">${x.teile.map(t => `<div><span>${esc(t.l)}${t.tilgung ? ` <small>davon ${esc(eur(t.tilgung))} Tilgung</small>` : ""}</span><b>${t.v < 0 ? "−" : ""}${esc(eur(Math.abs(t.v)))}</b></div>`).join("")}</div>` : ""}
+        ${x.id === "cf" && x.tilgung > 0 ? `<div class="eq-w2-plus">Dazu tilgst du <b>${esc(eur(x.tilgung))}</b> – zusammen wächst dein Vermögen um <b>${esc(eur(x.v + x.tilgung))}</b> im Monat.</div>` : ""}
+        ${x.id === "ms" ? `<button type="button" class="add-btn" id="w2Strom">Mieterstrom ansehen</button>` : ""}`;
+      const sb = detail.querySelector("#w2Strom");
+      if (sb) sb.onclick = () => { const s = (stand.obj !== "alle" ? objekte.find(o => o._id === stand.obj) : null) || objekte.find(o => mieterstromMonat(o)); if (s) geheZu(s.id); };
+    };
+    const waehle = (i) => { if (i < 0 || i >= S.length) return; stand.wahl = S[i].id; feld.querySelectorAll(".eq-w2-s").forEach(n => { const an = n.dataset.id === stand.wahl; n.classList.toggle("wahl", an); n.setAttribute("aria-selected", String(an)); }); zeigeDetail(); };
+    feld.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const i = S.findIndex(x => x.id === stand.wahl), vor = e.key === "ArrowRight" || e.key === "ArrowDown";
+      waehle(i < 0 ? (vor ? 0 : S.length - 1) : i + (vor ? 1 : -1));
+    });
+    karte.querySelectorAll("[data-w2-nk]").forEach(b => b.onclick = () => { stand.nk = b.dataset.w2Nk === "1"; merkSetzen("estriq_wf_nk", stand.nk ? "1" : "0"); zeichne(); });
+    karte.querySelectorAll("[data-w2-obj]").forEach(b => b.onclick = () => { stand.obj = b.dataset.w2Obj; merkSetzen("estriq_wf_obj", stand.obj); stand.wahl = null; zeichne(); });
+    zeichne();
+    return karte;
+  }
+
+  /* ================= MIETERSTROM ================= */
+  // Strom vom eigenen Dach für die Mieter: Solaranlage + Zukauf aus dem Netz, Verkauf an die Mieter zum Mieterstromtarif.
+  // Daten je Objekt in objekte.mieterstrom (13-mieterstrom.txt): Tarife, Anlage, Planwerte und Zählerstände.
+  // Aus zwei Ablesungen ergibt sich ein Zeitraum: Erzeugung, Netzbezug, Einspeisung und Verbrauch je Wohnung.
+  // Ohne zwei Ablesungen rechnet ESTRIQ mit den Planwerten (Jahr). Das Ergebnis im Monat fließt in den Cashflow.
+  const MS_FEHLT = "Für Mieterstrom fehlt noch die Datenbank-Spalte. Führ dafür 13-mieterstrom.txt im SQL-Editor aus.";
+  const MS_AFA_JAHRE = 20;   // lineare Nutzungsdauer einer Photovoltaikanlage laut AfA-Tabelle des BMF – änderbar
+  const msZahl = (v) => v === "" || v == null || isNaN(Number(v)) ? null : Number(v);
+  const msOn = (s) => !!(s && s.mieterstrom && modulAn(s, "mieterstrom"));
+  const msTeilnehmer = (s, ms) => (s.einheiten || []).filter(u => (ms.einheiten && ms.einheiten.length ? ms.einheiten.includes(u._id) : u.status === "vermietet"));
+  const msTage = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / 864e5));
+
+  // Zeiträume aus den Ablesungen (nach Datum sortiert): Differenz je Zähler
+  function msZeitraeume(s) {
+    const ms = s.mieterstrom || {}, A = (ms.ablesungen || []).slice().sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
+    const out = [];
+    for (let i = 1; i < A.length; i++) {
+      const a = A[i - 1], b = A[i], d = (k) => msZahl(b[k]) != null && msZahl(a[k]) != null ? msZahl(b[k]) - msZahl(a[k]) : null;
+      const w = {};
+      msTeilnehmer(s, ms).forEach(u => { const x = msZahl((b.w || {})[u._id]), y = msZahl((a.w || {})[u._id]); if (x != null && y != null) w[u._id] = Math.max(0, x - y); });
+      out.push({ von: a.datum, bis: b.datum, tage: msTage(a.datum, b.datum), E: Math.max(0, d("pv") || 0), N: Math.max(0, d("bezug") || 0), F: Math.max(0, d("einspeisung") || 0), W: w, ist: true, idBis: b.id });
+    }
+    return out;
+  }
+  // Planwerte als Jahreszeitraum: Verbrauch nach Fläche verteilt
+  function msPlan(s) {
+    const ms = s.mieterstrom || {}, p = ms.plan || {};
+    const E = msZahl(p.pv_kwh_jahr) || 0, V = msZahl(p.verbrauch_kwh_jahr) || 0, q = Math.min(100, Math.max(0, msZahl(p.solaranteil_pct) || 0)) / 100;
+    if (!(V > 0)) return null;
+    const S = Math.min(E, V * q), N = V - S, F = Math.max(0, E - S);
+    const tn = msTeilnehmer(s, ms), fl = tn.reduce((a, u) => a + (Number(u.flaeche) || 0), 0) || tn.length || 1;
+    const W = {}; tn.forEach(u => { W[u._id] = V * ((Number(u.flaeche) || (fl === tn.length ? 1 : 0)) / fl); });
+    return { von: null, bis: null, tage: 365, E, N, F, W, ist: false };
+  }
+
+  // Auswertung eines Zeitraums
+  function msRechnen(s, z) {
+    const ms = s.mieterstrom || {}, t = ms.tarif || {}, ek = ms.einkauf || {}, pv = ms.pv || {};
+    const monate = z.tage / (365.25 / 12);
+    const tn = msTeilnehmer(s, ms).filter(u => z.W[u._id] != null);
+    const Wsum = tn.reduce((a, u) => a + z.W[u._id], 0);
+    const S = Math.max(0, z.E - z.F);                         // selbst verbrauchter Solarstrom
+    const quelle = S + z.N;                                    // was ins Haus geflossen ist
+    const q = quelle > 0 ? S / quelle : 0;                     // Solaranteil am Verbrauch
+    const haus = Math.max(0, quelle - Wsum);                   // Allgemeinstrom, Verluste, Differenz
+    const preis = msZahl(t.preis_ct) || 0, grund = msZahl(t.grund_eur_monat) || 0;
+    const ekPreis = msZahl(ek.preis_ct) || 0, ekGrund = msZahl(ek.grund_eur_monat) || 0;
+    const erloes = Wsum * preis / 100 + grund * monate * tn.length;
+    const zuschlag = Wsum * q * (msZahl(ms.zuschlag_ct) || 0) / 100;
+    const einspeisung = z.F * (msZahl(ms.einspeise_ct) || 0) / 100;
+    const zukauf = z.N * ekPreis / 100 + ekGrund * monate;
+    const betrieb = ((msZahl(pv.betrieb_eur_jahr) || 0) + (msZahl(pv.mess_eur_jahr) || 0)) * monate / 12;
+    const afa = (msZahl(pv.investition) || 0) / (msZahl(pv.nutzungsdauer) || MS_AFA_JAHRE) * monate / 12;
+    const ergebnis = erloes + zuschlag + einspeisung - zukauf - betrieb;
+    const jahr = ergebnis / monate * 12;
+    const gest = z.E > 0 ? (afa + betrieb) / z.E * 100 : null;  // Gestehungskosten Solarstrom ct/kWh
+    const misch = quelle > 0 && gest != null ? (z.N * ekPreis + S * gest) / quelle : (quelle > 0 ? ekPreis : null);
+    const verkauf = Wsum > 0 ? erloes / Wsum * 100 : null;
+    const gv = msZahl(ms.grundversorgung_ct);
+    const wohnungen = tn.map(u => { const w = z.W[u._id]; const kosten = w * preis / 100 + grund * monate;
+      return { u, w, solar: w * q, netz: w * (1 - q), kosten, monat: kosten / monate, ersparnis: gv ? (w * gv / 100) - (w * preis / 100) : null }; });
+    return { z, monate, Wsum, S, N: z.N, E: z.E, F: z.F, q, haus, erloes, zuschlag, einspeisung, zukauf, betrieb, afa, ergebnis,
+      monat: ergebnis / monate, jahr, nachAfa: ergebnis - afa, gest, misch, verkauf, marge: Wsum > 0 ? ergebnis / Wsum * 100 : null,
+      eigen: z.E > 0 ? S / z.E : null, rendite: (msZahl(pv.investition) || 0) > 0 ? jahr / msZahl(pv.investition) * 100 : null,
+      amort: jahr > 0 && (msZahl(pv.investition) || 0) > 0 ? msZahl(pv.investition) / jahr : null,
+      gv, preis, unterGv: gv ? preis <= gv * 0.9 + 1e-9 : null, wohnungen };
+  }
+  // Aktueller Stand: letzter Ist-Zeitraum, sonst Plan
+  function msAktuell(s, idx) {
+    if (!s || !s.mieterstrom) return null;
+    const Z = msZeitraeume(s);
+    if (Z.length) return msRechnen(s, Z[idx == null ? Z.length - 1 : idx]);
+    const p = msPlan(s);
+    return p ? msRechnen(s, p) : null;
+  }
+  // Ergebnis im Monat für den Cashflow (0, wenn Modul aus oder nichts hinterlegt)
+  function mieterstromMonat(s) {
+    if (!msOn(s)) return 0;
+    const r = msAktuell(s);
+    return r ? Math.round(r.monat * 100) / 100 : 0;
+  }
+
+  // Stromfluss: links Solar und Netz, Mitte Zentrale, rechts die Wohnungen (und Einspeisung, Allgemeinstrom)
+  function msFlussHtml(s, r) {
+    const ziele = r.wohnungen.filter(w => w.w > 0.05).map(w => ({ id: w.u._id, l: w.u.wohnung || "Einheit", v: w.w, solar: w.solar, netz: w.netz, t: Math.round(r.q * 100) + " % Solar" }));
+    if (r.haus > Math.max(1, (r.S + r.N) * 0.01)) ziele.push({ id: "haus", l: "Allgemeinstrom", v: r.haus, solar: r.haus * r.q, netz: r.haus * (1 - r.q), t: "Treppenhaus, Technik, Verluste" });
+    const quelle = r.S + r.N;
+    if (!(quelle > 0) && !(r.F > 0)) return `<div class="note">Noch kein Stromfluss – erfasse Zählerstände oder Planwerte.</div>`;
+    // Maßstab: alle Ströme zusammen ~220 px hoch; jeder Knoten bekommt mindestens Platz für seine Beschriftung
+    const W = 720, gap = 10, SLOT = 44, gesamtL = Math.max(1, r.E + r.N), gesamtR = Math.max(1, ziele.reduce((a, z) => a + z.v, 0) + r.F);
+    const k = 220 / Math.max(gesamtL, gesamtR);
+    const nodeW = 14, xL = 0, xM = W / 2 - nodeW / 2, xR = W - nodeW;
+    const hE = Math.max(2, r.E * k), hN = Math.max(2, r.N * k);
+    const yE = 16, yN = yE + Math.max(hE, SLOT) + gap * 2;
+    let y = 16;
+    const rechts = [];
+    if (r.F > 0) { const h = Math.max(2, r.F * k); rechts.push({ id: "ein", l: "Einspeisung", v: r.F, y, h, t: "Überschuss vom Dach" }); y += Math.max(h, SLOT) + gap * 2; }
+    ziele.forEach(z => { const h = Math.max(2, z.v * k); rechts.push({ ...z, y, h }); y += Math.max(h, SLOT) + 4; });
+    const H = Math.max(260, y + 12, yN + Math.max(hN, SLOT) + 12);
+    const hM = Math.max(4, quelle * k), yM = (H - hM) / 2;
+    const band = (x1, y1a, y1b, x2, y2a, y2b, kl, titel) => {
+      const m = (x1 + x2) / 2;
+      return `<path class="${kl}" d="M${x1},${y1a} C${m},${y1a} ${m},${y2a} ${x2},${y2a} L${x2},${y2b} C${m},${y2b} ${m},${y1b} ${x1},${y1b} Z"><title>${esc(titel)}</title></path>`;
+    };
+    const hS = r.S * k, hF = r.F * k;
+    let pfade = "";
+    // Solar → Einspeisung (oberer Teil der Solarleiste), Solar → Zentrale (Rest)
+    if (r.F > 0) { const e = rechts[0]; pfade += band(xL + nodeW, yE, yE + hF, xR, e.y, e.y + e.h, "eq-fl-solar aus", "Einspeisung " + zahlKwh(r.F)); }
+    pfade += band(xL + nodeW, yE + hF, yE + hF + hS, xM, yM, yM + hS, "eq-fl-solar", "Solar ins Haus " + zahlKwh(r.S));
+    pfade += band(xL + nodeW, yN, yN + hN, xM, yM + hS, yM + hS + hN, "eq-fl-netz", "Netzbezug " + zahlKwh(r.N));
+    // Zentrale → Ziele, jeweils Solar- und Netzanteil
+    let ys = yM, yn = yM + hS;
+    rechts.filter(z => z.id !== "ein").forEach(z => {
+      const a = z.solar * k, b = z.netz * k;
+      pfade += band(xM + nodeW, ys, ys + a, xR, z.y, z.y + a, "eq-fl-solar", z.l + ": " + zahlKwh(z.solar) + " Solar");
+      pfade += band(xM + nodeW, yn, yn + b, xR, z.y + a, z.y + a + b, "eq-fl-netz", z.l + ": " + zahlKwh(z.netz) + " Netz");
+      ys += a; yn += b;
+    });
+    const pct = (v, g) => (v / g * 100).toFixed(2) + "%";
+    const label = (x, yy, h, titel, wert, kl, data) => `<button type="button" class="eq-fl-lab ${kl}" style="top:${pct(yy + h / 2, H)}" ${data || ""}><b>${esc(titel)}</b><span>${esc(wert)}</span></button>`;
+    return `<div class="eq-fl" style="--eq-fl-h:${H}px">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        ${pfade}
+        <rect class="eq-fl-k solar" x="${xL}" y="${yE}" width="${nodeW}" height="${hE}" rx="3"/>
+        <rect class="eq-fl-k netz" x="${xL}" y="${yN}" width="${nodeW}" height="${hN}" rx="3"/>
+        <rect class="eq-fl-k mitte" x="${xM}" y="${yM}" width="${nodeW}" height="${hM}" rx="3"/>
+        ${rechts.map(z => `<rect class="eq-fl-k ${z.id === "ein" ? "solar" : "ziel"}" x="${xR}" y="${z.y}" width="${nodeW}" height="${z.h}" rx="3"/>`).join("")}
+      </svg>
+      <div class="eq-fl-links">${label(0, yE, hE, "Solar", zahlKwh(r.E), "solar")}${label(0, yN, hN, "Netz", zahlKwh(r.N), "netz")}</div>
+      <div class="eq-fl-mitte" style="top:${pct(yM + hM / 2, H)}"><b>Zentrale</b><span>${zahlKwh(quelle)}</span><span>${Math.round(r.q * 100)} % Solar</span></div>
+      <div class="eq-fl-rechts">${rechts.map(z => label(0, z.y, z.h, z.l, zahlKwh(z.v) + (z.id === "ein" ? "" : " · " + Math.round(z.v ? z.solar / z.v * 100 : 0) + " %"), z.id === "ein" ? "solar" : "", `data-fl="${esc(z.id)}"`)).join("")}</div>
+    </div>`;
+  }
+  const zahlKwh = (v) => Math.round(Number(v) || 0).toLocaleString(LOC) + " kWh";
+  const ct = (v) => v == null ? "—" : (Math.round(v * 100) / 100).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ct";
+
+  // Karte auf der Objektseite
+  function mieterstromKarte(s) {
+    const ms = s.mieterstrom;
+    if (!ms) {
+      const k = el(`<div class="card eq-ms"><div class="card-h"><div><div class="card-t">Mieterstrom</div><div class="card-s">Strom vom eigenen Dach für deine Mieter</div></div>${modulAusKnopf("mieterstrom")}</div>
+        <div class="card-b"><div class="eq-leer"><div>Trag Tarife und Anlage ein. Danach siehst du, wie viel Strom von der Solaranlage und aus dem Netz in jede Wohnung geht – und was du daran verdienst.</div>
+        <div><button type="button" class="eq-btn" id="msStart">Mieterstrom einrichten</button></div></div></div></div>`);
+      k.querySelector("#msStart").onclick = () => openMieterstromEinstellungen(s);
+      modulAusVerdrahten(k, s, "mieterstrom");
+      return k;
+    }
+    const Z = msZeitraeume(s);
+    let idx = Z.length ? Z.length - 1 : null;
+    const karte = el(`<div class="card eq-ms">
+      <div class="card-h"><div><div class="card-t">Mieterstrom</div><div class="card-s" id="msSub"></div></div>
+        <div class="eq-ms-k"><button type="button" class="add-btn" id="msAblesen">+ Zählerstände</button><button type="button" class="add-btn" id="msEin">Einstellungen</button>${modulAusKnopf("mieterstrom")}</div></div>
+      ${Z.length > 1 ? `<div class="eq-w2-chips eq-ms-z" role="group" aria-label="Zeitraum">${Z.map((z, i) => `<button type="button" class="eq-wl-chip" data-ms-z="${i}">${esc(datumKurz(z.von).slice(0, 6) + "–" + datumKurz(z.bis))}</button>`).join("")}</div>` : ""}
+      <div class="card-b" id="msInhalt"></div></div>`);
+    const zeichne = () => {
+      const r = Z.length ? msRechnen(s, Z[idx]) : (msPlan(s) ? msRechnen(s, msPlan(s)) : null);
+      karte.querySelectorAll("[data-ms-z]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.msZ) === idx)));
+      const v = karte.querySelector("#msInhalt");
+      if (!r) {
+        karte.querySelector("#msSub").textContent = "Noch keine Werte";
+        v.innerHTML = `<div class="eq-leer"><div>Erfasse zwei Ablesungen (zum Beispiel heute und in einem Monat) – oder trag in den Einstellungen Planwerte für ein Jahr ein.</div>
+          <div><button type="button" class="eq-btn" id="msErste">Zählerstände erfassen</button></div></div>`;
+        v.querySelector("#msErste").onclick = () => openAblesung(s);
+        return;
+      }
+      karte.querySelector("#msSub").textContent = r.z.ist ? "Ist · " + datumKurz(r.z.von) + " bis " + datumKurz(r.z.bis) + " · " + mehrzahl(r.z.tage, "Tag", "Tage") : "Plan · ein Jahr (noch keine zwei Ablesungen)";
+      const pos = [
+        { l: "Stromverkauf an Mieter", v: r.erloes }, r.zuschlag > 0 ? { l: "Mieterstromzuschlag", v: r.zuschlag } : null, r.einspeisung > 0 ? { l: "Einspeisevergütung", v: r.einspeisung } : null,
+        { l: "Zukauf aus dem Netz", v: -r.zukauf }, r.betrieb > 0 ? { l: "Betrieb, Messung, Abrechnung", v: -r.betrieb } : null
+      ].filter(Boolean);
+      const maxP = Math.max(1, ...pos.map(p => Math.abs(p.v)));
+      v.innerHTML = `
+        <div class="eq-ms-held"><div><span>Ergebnis im Monat</span><b class="${r.monat < 0 ? "minus" : ""}">${r.monat < 0 ? "−" : "+"}${eur(Math.abs(r.monat))}</b><small>fließt in den Cashflow</small></div>
+          <div><span>Solaranteil</span><b>${Math.round(r.q * 100)} %</b><small>des Stroms im Haus kommt vom Dach</small></div></div>
+        ${msFlussHtml(s, r)}
+        <div class="eq-fl-leg"><span><i class="solar"></i>Solarstrom</span><span><i class="netz"></i>Netzstrom</span></div>
+        <div class="card-t eq-zwischen">Kennzahlen</div>
+        <div class="eq-werte">
+          ${wert("Mischpreis Beschaffung", ct(r.misch), "je kWh: Netz und Solar gemischt")}
+          ${wert("Verkaufspreis", ct(r.verkauf), "je kWh inkl. Grundpreis")}
+          ${wert("Marge", ct(r.marge), "Ergebnis je verkaufter kWh")}
+          ${wert("Eigenverbrauch", r.eigen == null ? "—" : Math.round(r.eigen * 100) + " %", "des Solarstroms bleibt im Haus")}
+          ${wert("Solarstrom kostet", ct(r.gest), "je kWh (Abschreibung + Betrieb)")}
+          ${wert("Rendite der Anlage", r.rendite == null ? "—" : prozent(r.rendite, 1), "Ergebnis im Jahr ÷ Investition")}
+          ${wert("Amortisation", r.amort == null ? "—" : (Math.round(r.amort * 10) / 10).toLocaleString(LOC) + " Jahre", "Investition ÷ Ergebnis im Jahr")}
+          ${wert("Ergebnis nach Abschreibung", eur(r.nachAfa / r.monate), "im Monat")}
+        </div>
+        ${r.gv ? `<div class="eq-zustand ${r.unterGv ? "gut" : "achtung"}" style="margin-top:12px"><div class="eq-zustand-tx"><div class="eq-zustand-t">${r.unterGv ? "Tarif liegt unter 90 % der Grundversorgung" : "Tarif liegt über 90 % der Grundversorgung"}</div>
+          <div class="eq-zustand-d">Mieterstrom darf höchstens 90 % des Grundversorgungstarifs kosten (§ 42a EnWG). Dein Arbeitspreis: ${ct(r.preis)}, Grundversorgung: ${ct(r.gv)}${r.unterGv ? "." : " – bitte prüfen."}</div></div></div>` : ""}
+        <div class="card-t eq-zwischen">Woher das Ergebnis kommt</div>
+        <div class="eq-ms-pos">${pos.map(p => `<div><span>${esc(p.l)}</span><span class="eq-ms-ps"><i class="${p.v < 0 ? "aus" : "ein"}" style="width:${(Math.abs(p.v) / maxP * 100).toFixed(1)}%"></i></span><b class="${p.v < 0 ? "minus" : ""}">${p.v < 0 ? "−" : "+"}${eur(Math.abs(p.v))}</b></div>`).join("")}
+          <div class="summe"><span>Ergebnis${r.z.ist ? " im Zeitraum" : " im Jahr"}</span><span></span><b class="${r.ergebnis < 0 ? "minus" : ""}">${r.ergebnis < 0 ? "−" : "+"}${eur(Math.abs(r.ergebnis))}</b></div></div>
+        <div class="card-t eq-zwischen">Je Wohnung</div>
+        <div class="eq-ms-wg">${r.wohnungen.map(w => `<div data-ms-wg="${esc(w.u._id)}"><div><b>${esc(w.u.wohnung || "Einheit")}</b><span>${esc(w.u.mieter || "")}</span></div>
+          <div class="eq-ms-wb" role="img" aria-label="${esc(zahlKwh(w.solar) + " Solar, " + zahlKwh(w.netz) + " Netz")}"><i class="solar" style="flex-basis:${(w.w ? w.solar / w.w * 100 : 0).toFixed(1)}%"></i><i class="netz" style="flex-basis:${(w.w ? w.netz / w.w * 100 : 0).toFixed(1)}%"></i></div>
+          <div class="eq-ms-ww"><b>${zahlKwh(w.w)}</b><span>${eur(w.monat)} im Monat${w.ersparnis != null ? " · spart " + eur(w.ersparnis / r.monate) : ""}</span></div></div>`).join("")}</div>
+        ${(ms.ablesungen || []).length ? `<div class="card-t eq-zwischen">Ablesungen</div><div class="eq-ms-ab">${(ms.ablesungen || []).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(a => `<button type="button" class="eq-ms-abz" data-ms-ab="${esc(a.id)}"><b>${esc(datumKurz(a.datum))}</b><span>Solar ${zahlKwh(a.pv)} · Netz ${zahlKwh(a.bezug)} · Einspeisung ${zahlKwh(a.einspeisung)}</span></button>`).join("")}</div>` : ""}`;
+      v.querySelectorAll("[data-ms-ab]").forEach(b => b.onclick = () => openAblesung(s, (ms.ablesungen || []).find(a => a.id === b.dataset.msAb)));
+      v.querySelectorAll(".eq-fl-lab[data-fl]").forEach(b => b.onclick = () => {
+        const z = v.querySelector(`[data-ms-wg="${CSS.escape(b.dataset.fl)}"]`); if (z) { z.scrollIntoView({ block: "center", behavior: "smooth" }); z.classList.add("blink"); setTimeout(() => z.classList.remove("blink"), 1200); }
+      });
+    };
+    karte.querySelector("#msAblesen").onclick = () => openAblesung(s);
+    karte.querySelector("#msEin").onclick = () => openMieterstromEinstellungen(s);
+    karte.querySelectorAll("[data-ms-z]").forEach(b => b.onclick = () => { idx = Number(b.dataset.msZ); zeichne(); });
+    modulAusVerdrahten(karte, s, "mieterstrom");
+    zeichne();
+    return karte;
+  }
+
+  async function msSpeichern(s, neu) {
+    const { error } = await window.sb.from("objekte").update({ mieterstrom: neu }).eq("id", s._id);
+    if (error) { if (/mieterstrom/.test(error.message || "")) throw Object.assign(new Error("fehlt"), { eqText: MS_FEHLT }); throw error; }
+  }
+
+  function openMieterstromEinstellungen(s) {
+    const ms = s.mieterstrom || {}, t = ms.tarif || {}, ek = ms.einkauf || {}, pv = ms.pv || {}, p = ms.plan || {};
+    const tn = ms.einheiten && ms.einheiten.length ? ms.einheiten : (s.einheiten || []).filter(u => u.status === "vermietet").map(u => u._id);
+    const body = `
+      ${efTitel("Tarif für die Mieter")}
+      ${ef("Arbeitspreis", "preis_ct", t.preis_ct ?? "", "number", { pflicht: true, einheit: "ct/kWh", min: 0, step: "0.01" })}
+      ${ef("Grundpreis", "grund", t.grund_eur_monat ?? "", "number", { einheit: "€/Monat", min: 0, step: "0.01", hinweis: "je teilnehmender Wohnung" })}
+      ${ef("Grundversorgung zum Vergleich", "gv", ms.grundversorgung_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01", hinweis: "Arbeitspreis des örtlichen Grundversorgers. Mieterstrom darf höchstens 90 % davon kosten (§ 42a EnWG)." })}
+      ${efTitel("Zukauf aus dem Netz")}
+      ${ef("Arbeitspreis Einkauf", "ek_ct", ek.preis_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01" })}
+      ${ef("Grundpreis Einkauf", "ek_grund", ek.grund_eur_monat ?? "", "number", { einheit: "€/Monat", min: 0, step: "0.01" })}
+      ${efTitel("Solaranlage")}
+      ${ef("Leistung", "kwp", pv.kwp ?? "", "number", { einheit: "kWp", min: 0, step: "0.1" })}
+      ${ef("Investition", "inv", pv.investition ?? "", "number", { einheit: "€", min: 0 })}
+      ${ef("Nutzungsdauer", "nd", pv.nutzungsdauer ?? MS_AFA_JAHRE, "number", { einheit: "Jahre", min: 1, max: 40, hinweis: "Für die Abschreibung. Vorgabe 20 Jahre laut AfA-Tabelle – änderbar." })}
+      ${ef("Betrieb und Wartung", "betrieb", pv.betrieb_eur_jahr ?? "", "number", { einheit: "€/Jahr", min: 0, hinweis: "Wartung, Versicherung, Reinigung" })}
+      ${ef("Messung und Abrechnung", "mess", pv.mess_eur_jahr ?? "", "number", { einheit: "€/Jahr", min: 0, hinweis: "Messstellenbetrieb, Abrechnungsdienst" })}
+      ${ef("Einspeisevergütung", "einsp", ms.einspeise_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01", hinweis: "Satz laut deinem Inbetriebnahme-Datum (Bundesnetzagentur)" })}
+      ${ef("Mieterstromzuschlag", "zuschlag", ms.zuschlag_ct ?? "", "number", { einheit: "ct/kWh", min: 0, step: "0.01", hinweis: "Förderung je an Mieter gelieferter Solar-kWh, falls du sie erhältst (Bundesnetzagentur)" })}
+      ${efTitel("Teilnehmende Wohnungen")}
+      <div class="eq-ms-tn">${(s.einheiten || []).map(u => `<label class="eq-ms-tnz"><input type="checkbox" value="${esc(u._id)}"${tn.includes(u._id) ? " checked" : ""}><span>${esc(u.wohnung || "Einheit")}<small>${esc(u.mieter || (u.status === "vermietet" ? "vermietet" : "frei"))}</small></span></label>`).join("")}</div>
+      ${efTitel("Planwerte (solange keine zwei Ablesungen da sind)")}
+      ${ef("Solarertrag", "plan_pv", p.pv_kwh_jahr ?? "", "number", { einheit: "kWh/Jahr", min: 0 })}
+      ${ef("Verbrauch der Mieter", "plan_v", p.verbrauch_kwh_jahr ?? "", "number", { einheit: "kWh/Jahr", min: 0, hinweis: "alle teilnehmenden Wohnungen zusammen" })}
+      ${ef("Solaranteil am Verbrauch", "plan_q", p.solaranteil_pct ?? "", "number", { einheit: "%", min: 0, max: 100, hinweis: "Deine Annahme: Wie viel des Verbrauchs deckt das Dach? Mit echten Zählerständen rechnet ESTRIQ das selbst." })}
+      ${efAktionen({ loeschen: s.mieterstrom ? "Mieterstrom-Daten löschen" : null })}`;
+    const sheet = openSheet("Mieterstrom", nameOhneBruch(s.name), body);
+    efBind(sheet, async (w) => {
+      const ids = [...sheet.querySelectorAll(".eq-ms-tn input:checked")].map(i => i.value);
+      const neu = { ...(s.mieterstrom || {}), v: 1,
+        tarif: { preis_ct: zahl(w.preis_ct), grund_eur_monat: zahl(w.grund) }, grundversorgung_ct: zahl(w.gv),
+        einkauf: { preis_ct: zahl(w.ek_ct), grund_eur_monat: zahl(w.ek_grund) },
+        pv: { kwp: zahl(w.kwp), investition: zahl(w.inv), nutzungsdauer: zahl(w.nd) || MS_AFA_JAHRE, betrieb_eur_jahr: zahl(w.betrieb), mess_eur_jahr: zahl(w.mess) },
+        einspeise_ct: zahl(w.einsp), zuschlag_ct: zahl(w.zuschlag), einheiten: ids,
+        plan: { pv_kwh_jahr: zahl(w.plan_pv), verbrauch_kwh_jahr: zahl(w.plan_v), solaranteil_pct: zahl(w.plan_q) },
+        ablesungen: (s.mieterstrom && s.mieterstrom.ablesungen) || [] };
+      await msSpeichern(s, neu);
+    }, s.mieterstrom ? async () => { await msSpeichern(s, null); } : null, "Alle Mieterstrom-Daten löschen?");
+  }
+
+  // Zählerstände eines Tages: Solar, Netzbezug, Einspeisung, je Wohnung
+  function openAblesung(s, alt) {
+    const ms = s.mieterstrom || {};
+    if (!s.mieterstrom) { openMieterstromEinstellungen(s); return; }
+    const A = (ms.ablesungen || []).slice().sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
+    const vorher = alt ? A.filter(a => a.datum < alt.datum).pop() : A[A.length - 1];
+    const tn = msTeilnehmer(s, ms);
+    const h = (v) => vorher && vorher[v] != null ? "Letzter Stand: " + Number(vorher[v]).toLocaleString(LOC) + " kWh am " + datumKurz(vorher.datum) : "Zählerstand in kWh";
+    const body = `
+      ${ef("Datum der Ablesung", "datum", alt ? alt.datum : heuteIso(), "date", { pflicht: true })}
+      ${efTitel("Hauszähler")}
+      ${ef("Solaranlage (Erzeugung)", "pv", alt ? alt.pv : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("pv") })}
+      ${ef("Netzbezug", "bezug", alt ? alt.bezug : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("bezug") })}
+      ${ef("Einspeisung", "einspeisung", alt ? alt.einspeisung : "", "number", { pflicht: true, einheit: "kWh", min: 0, step: "0.1", hinweis: h("einspeisung") })}
+      ${efTitel("Wohnungen")}
+      ${tn.map(u => ef(u.wohnung || "Einheit", "w_" + u._id, alt && alt.w ? (alt.w[u._id] ?? "") : "", "number", { einheit: "kWh", min: 0, step: "0.1",
+        hinweis: vorher && vorher.w && vorher.w[u._id] != null ? "Letzter Stand: " + Number(vorher.w[u._id]).toLocaleString(LOC) + " kWh" : (u.mieter || "Zählerstand in kWh") })).join("")}
+      <div class="note" style="margin-top:8px">${A.length || alt ? "Aus zwei Ablesungen rechnet ESTRIQ den Zeitraum dazwischen." : "Die erste Ablesung ist der Startstand. Ab der zweiten siehst du echte Werte."}</div>
+      ${efAktionen({ loeschen: alt ? "Ablesung löschen" : null })}`;
+    const sheet = openSheet(alt ? "Ablesung bearbeiten" : "Zählerstände erfassen", nameOhneBruch(s.name), body);
+    efBind(sheet, async (w) => {
+      const datum = text(w.datum);
+      if (!datum) throw Object.assign(new Error("datum"), { eqText: "Bitte gib das Datum der Ablesung an." });
+      if (A.some(a => a.datum === datum && (!alt || a.id !== alt.id))) throw Object.assign(new Error("doppelt"), { eqText: "Für diesen Tag gibt es schon eine Ablesung." });
+      const neu = { id: alt ? alt.id : "a" + Date.now().toString(36), datum, pv: zahl(w.pv), bezug: zahl(w.bezug), einspeisung: zahl(w.einspeisung), w: {} };
+      tn.forEach(u => { const x = zahl(w["w_" + u._id]); if (x != null) neu.w[u._id] = x; });
+      // Zählerstände steigen: mit Nachbar-Ablesungen vergleichen
+      const rest = A.filter(a => !alt || a.id !== alt.id), davor = rest.filter(a => a.datum < datum).pop(), danach = rest.find(a => a.datum > datum);
+      const kleiner = (a, b, k) => a && b && a[k] != null && b[k] != null && Number(b[k]) < Number(a[k]);
+      for (const [k, n] of [["pv", "Solaranlage"], ["bezug", "Netzbezug"], ["einspeisung", "Einspeisung"]])
+        if (kleiner(davor, neu, k) || kleiner(neu, danach, k)) throw Object.assign(new Error("stand"), { eqText: "Der Zählerstand „" + n + "“ ist kleiner als bei der Ablesung davor (oder größer als danach). Bitte prüfen." });
+      const liste = rest.concat([neu]).sort((x, y) => String(x.datum).localeCompare(String(y.datum)));
+      await msSpeichern(s, { ...ms, ablesungen: liste });
+    }, alt ? async () => { await msSpeichern(s, { ...ms, ablesungen: A.filter(a => a.id !== alt.id) }); } : null, "Ablesung wirklich löschen?");
+  }
+
+  /* ---------- Module je Objekt: Mieterstrom, Handwerker, Zeiterfassung ---------- */
+  // objekte.module (13-mieterstrom.txt): { mieterstrom: true|false, handwerker: …, zeiten: … }. Fehlt ein Eintrag,
+  // gilt: Handwerker an, wenn schon Handwerker erfasst sind; Zeiterfassung an, wenn es schon Links gibt; Mieterstrom aus.
+  const MODULE = { handwerker: "Handwerker", zeiten: "Zeiterfassung", mieterstrom: "Mieterstrom" };
+  const MODUL_TEXT = { handwerker: "Zahlung gegen Baufortschritt", zeiten: "Arbeitszeiten von Hausmeister und Helfern", mieterstrom: "Strom vom Dach für die Mieter" };
+  function modulAn(s, name) {
+    const m = s && s.module;
+    if (m && typeof m[name] === "boolean") return m[name];
+    if (name === "handwerker") return s.istProjekt || gewerkeVon(s).length > 0;
+    if (name === "zeiten") return !!(zeitLinksBekannt[s._id]);
+    if (name === "mieterstrom") return !!s.mieterstrom;
+    return true;
+  }
+  const zeitLinksBekannt = {};   // Objekt-ID → true, sobald dort Zeit-Links bekannt sind
+  async function modulSetzen(s, name, an) {
+    const neu = { ...(s.module || {}), [name]: !!an };
+    const { error } = await window.sb.from("objekte").update({ module: neu }).eq("id", s._id);
+    if (error) { showToast(/module/.test(error.message || "") ? MS_FEHLT : window.fehlerText(error)); return false; }
+    s.module = neu;
+    try { await window.nachSpeichern(); } catch (_) { window.refreshView && window.refreshView(); }
+    return true;
+  }
+  const modulAusKnopf = (name) => `<button type="button" class="add-btn eq-mod-aus" data-mod-aus="${name}" aria-label="${esc(MODULE[name])} ausblenden" title="Ausblenden">Ausblenden</button>`;
+  function modulAusVerdrahten(karte, s, name) {
+    karte.querySelectorAll(`[data-mod-aus="${name}"]`).forEach(b => b.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true;
+      if (await modulSetzen(s, name, false)) showToast(MODULE[name] + " ausgeblendet – unten unter „Weitere Module“ wieder einschalten.");
+      else b.disabled = false;
+    });
+  }
+  // Leiste unten: ausgeblendete Module klein, ein Tippen schaltet sie ein
+  function modulLeiste(s) {
+    if (s.istProjekt) return null;
+    const aus = Object.keys(MODULE).filter(n => !modulAn(s, n));
+    if (!aus.length) return null;
+    const k = el(`<div class="card eq-mod-leiste"><div class="eq-mod-t">Weitere Module</div>
+      <div class="eq-mod-z">${aus.map(n => `<button type="button" class="eq-mod-b" data-mod-an="${n}">${svg(n === "mieterstrom" ? "sun" : n === "zeiten" ? "clock" : "tool")}<span><b>${esc(MODULE[n])}</b><small>${esc(MODUL_TEXT[n])}</small></span><i>+</i></button>`).join("")}</div></div>`);
+    k.querySelectorAll("[data-mod-an]").forEach(b => b.onclick = async () => {
+      if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+      b.disabled = true;
+      if (await modulSetzen(s, b.dataset.modAn, true)) showToast(MODULE[b.dataset.modAn] + " eingeschaltet.");
+      else b.disabled = false;
+    });
+    return k;
+  }
+  // Zeiterfassung ohne Eintrag in module: einmal nachsehen, ob es Links gibt – dann gilt sie als eingeschaltet
+  function zeitenModulPruefen(s) {
+    if ((s.module && typeof s.module.zeiten === "boolean") || zeitLinksBekannt[s._id] !== undefined) return;
+    zeitLinksBekannt[s._id] = false;
+    ladeZeiten(s._id).then(d => { if (d && !d.fehlt && !d.fehler && (d.links.length || d.eintraege.length)) { zeitLinksBekannt[s._id] = true; window.refreshView && window.refreshView(); } }).catch(() => {});
+  }
+
+  // „Ausblenden" in die Kopfzeile einer vorhandenen Modulkarte setzen (Handwerker, Zeiterfassung)
+  function modulMitAus(teil, s, name) {
+    if (s.istProjekt) return teil;
+    const erste = Array.isArray(teil) ? teil.find(Boolean) : teil;
+    const kopf = erste && erste.querySelector && (erste.querySelector(".card-h") || erste.querySelector(".eq-abschnitt"));
+    if (kopf && !kopf.querySelector("[data-mod-aus]")) {
+      const b = el(modulAusKnopf(name));
+      const ziel = kopf.querySelector(".eq-abschnitt-k, .card-h > button, .card-h > div:last-child");
+      if (ziel && ziel.tagName === "BUTTON") ziel.insertAdjacentElement("beforebegin", b); else kopf.appendChild(b);
+      modulAusVerdrahten(erste, s, name);
+    }
+    return teil;
+  }
+  IC.sun = '<circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  IC.clock = '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
 
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
@@ -11733,6 +12259,7 @@
       <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
       ${kv("Ertrag" + (s.nkAlsPuffer ? " ohne Nebenkosten" : ""), eur(m.gesamt))}
       ${kredite.map(kr => kv("− " + (kr.name || "Kredit"), "−" + eur(kr.abtragMonat))).join("")}
+      ${m.mieterstrom ? kv((m.mieterstrom < 0 ? "− " : "+ ") + "Mieterstrom", (m.mieterstrom < 0 ? "−" : "") + eur(Math.abs(m.mieterstrom))) : ""}
       ${kv("Netto-Cashflow im Monat", eur(m.netto))}
       <div class="eq-zustand" style="margin:14px 0 0"><div class="eq-zustand-tx">
         <div class="eq-zustand-t">Laufende Kosten sind hier nicht abgezogen</div>
@@ -11895,6 +12422,7 @@
         <div class="card-t" style="font-size:14px;margin-bottom:10px">Herleitung</div>
         ${kv("Einnahmen gesamt", eur(t.ist))}
         ${kv("− Kreditraten, alle Kredite", "−" + eur(c.debtMonth))}
+        ${c.stromMonat ? kv((c.stromMonat < 0 ? "− " : "+ ") + "Mieterstrom", (c.stromMonat < 0 ? "−" : "") + eur(Math.abs(c.stromMonat))) : ""}
         ${kv("Netto-Cashflow", eur(c.nettoMonth))}
         <div class="card-t" style="font-size:14px;margin:20px 0 10px">Tilgungsanteil je Kredit</div>
         ${miniBars((() => {
