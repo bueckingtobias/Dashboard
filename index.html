@@ -2325,6 +2325,43 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sheet .tarif-k s{color:var(--softer)}
 .sheet .eq-angebot-verweis{display:block;width:100%;min-height:48px;margin-bottom:14px;padding:10px 14px;border-radius:14px;border:2px solid var(--mint);background:color-mix(in srgb,var(--mint) 14%,var(--bg2));color:var(--text);font:600 var(--eq-t-3) var(--fbody);cursor:pointer;text-align:left}
 
+/* Monatscheck und Kreditzahlungen (v=79) */
+.sheet .eq-mc-block{margin-bottom:var(--eq-a4)}
+.sheet .eq-mc-frage{display:flex;align-items:center;gap:9px;font:600 var(--eq-t-3) var(--fbody);color:var(--text);margin-bottom:10px}
+.sheet .eq-mc-frage svg{flex:0 0 auto;width:18px;height:18px;color:var(--mint)}
+.sheet .eq-mc-vh{height:6px;border-radius:99px;margin-top:8px;max-width:240px}
+.sheet .eq-mc-sonder{margin-top:10px}
+.sheet .eq-mc-bilanz{margin:6px 0 var(--eq-a4);padding:14px;border-radius:16px;border:1px solid var(--stroke);background:var(--eq-mulde)}
+.sheet .eq-mc-bt{font:600 var(--eq-t-2) var(--fbody);color:var(--soft);margin-bottom:10px}
+.sheet .eq-mc-b{display:grid;grid-template-columns:minmax(92px,auto) minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:8px;font-size:var(--eq-t-2)}
+.sheet .eq-mc-bl{color:var(--soft)}
+.sheet .eq-mc-bs{height:10px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.sheet .eq-mc-bs i{display:block;height:100%;border-radius:99px}
+.sheet .eq-mc-bs i.ein{background:var(--mint)}
+.sheet .eq-mc-bs i.aus{background:var(--eq-reihe-2)}
+.sheet .eq-mc-bs i.gut{background:var(--ok)}
+.sheet .eq-mc-bs i.minus{background:var(--danger)}
+.sheet .eq-mc-bw{font-family:var(--fdisp);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.sheet .eq-mc-plus{margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke)}
+.sheet .eq-mc-plus.gross{margin-top:4px;padding:16px;border:1px solid color-mix(in srgb,var(--mint) 45%,transparent);border-radius:16px;background:color-mix(in srgb,var(--mint) 9%,var(--eq-mulde))}
+.sheet .eq-mc-pz{font:700 26px/1.1 var(--fdisp);color:var(--mint-2);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.sheet .eq-mc-plus.gross .eq-mc-pz{font-size:34px}
+.sheet .eq-mc-pt{font-size:var(--eq-t-2);color:var(--soft);margin:4px 0 10px}
+.sheet .eq-mc-fort{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.sheet .eq-mc-fort i{display:block;height:100%;border-radius:99px;background:var(--mint)}
+.sheet .eq-mc-ft{font-size:var(--eq-t-1);color:var(--softer);margin-top:6px}
+.sheet .eq-mc-vorschau{min-height:22px;margin:4px 0 8px;font-size:var(--eq-t-2);color:var(--soft)}
+.sheet .eq-mc-vorschau b{color:var(--text);font-family:var(--fdisp)}
+.sheet .eq-kz-liste{display:flex;flex-direction:column;gap:8px}
+.sheet .eq-kz-z{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:start;padding:10px 12px;border-radius:12px;border:1px dashed var(--stroke)}
+.sheet .eq-kz-z.ok{border-style:solid;background:var(--eq-mulde)}
+.sheet .eq-kz-tx b,.sheet .eq-kz-w b{display:block;font-size:var(--eq-t-2);font-weight:600}
+.sheet .eq-kz-w{text-align:right}
+.sheet .eq-kz-w b{font-family:var(--fdisp);font-variant-numeric:tabular-nums}
+.sheet .eq-kz-tx span,.sheet .eq-kz-w span{display:block;font-size:var(--eq-t-1);color:var(--softer);margin-top:2px}
+.sheet .eq-kz-weg{grid-column:1/-1;justify-self:start}
+@media(max-width:600px){.sheet .eq-kz-z{grid-template-columns:1fr}.sheet .eq-kz-w{text-align:left}.sheet .eq-mc-b{grid-template-columns:minmax(78px,auto) minmax(0,1fr) auto;gap:8px}}
+
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
 .prof-head .ava-circle.filled{border:2px solid var(--mint)}
@@ -3420,10 +3457,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=76"></script>
-<script src="./data-save.js?v=76"></script>
-<script src="./finance-engine.js?v=76"></script>
-<script src="./app.js?v=76"></script>
+<script src="./data-loader.js?v=79"></script>
+<script src="./data-save.js?v=79"></script>
+<script src="./finance-engine.js?v=79"></script>
+<script src="./app.js?v=79"></script>
 
 <script>
 /* =====================================================================
