@@ -2584,6 +2584,23 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 #app .eq-mod-b svg{width:18px;height:18px;flex:0 0 auto;color:var(--soft)}
 #app .eq-mod-b span{flex:1;min-width:0}#app .eq-mod-b b{display:block;font-size:var(--eq-t-2)}#app .eq-mod-b small{display:block;font-size:var(--eq-t-1);color:var(--softer)}
 #app .eq-mod-b i{font-style:normal;font-size:20px;color:var(--mint)}
+/* Allgemeinstromstellen (v=84) */
+#app .eq-fl-k.allg{fill:var(--soft)}
+.sheet .eq-ms-st{display:flex;flex-direction:column;gap:8px}
+.sheet .eq-ms-stz{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.2fr) minmax(0,.9fr) auto;gap:8px;align-items:center}
+@media(max-width:600px){.sheet .eq-ms-stz{grid-template-columns:1fr 1fr;padding:8px;border:1px solid var(--stroke);border-radius:12px}.sheet .eq-ms-stz [data-st-name]{grid-column:1/-1}}
+/* Allgemeinstrom → Nebenkosten (v=85) */
+.sheet .eq-ms-stz{grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) minmax(0,.8fr) minmax(0,.8fr) auto auto}
+.sheet .eq-ms-stu{display:inline-flex;align-items:center;gap:6px;min-height:44px;font-size:var(--eq-t-2)}
+.sheet .eq-ms-stu input{width:20px;height:20px}
+.sheet .eq-ms-nk{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.sheet .eq-ms-nkz{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:12px;border-radius:12px;border:1px solid var(--stroke);background:var(--eq-mulde)}
+.sheet .eq-ms-nkz b{display:block;font-size:var(--eq-t-2)}.sheet .eq-ms-nkz span{display:block;font-size:var(--eq-t-1);color:var(--soft)}
+.sheet .eq-ms-nkz strong{font:700 var(--eq-t-3) var(--fdisp);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sheet .eq-ms-nka{grid-column:1/-1;display:flex;flex-direction:column;gap:4px;padding-top:8px;border-top:1px solid var(--stroke)}
+.sheet .eq-ms-nka div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:var(--eq-t-2)}
+.sheet .eq-ms-nka b{font-family:var(--fdisp);font-variant-numeric:tabular-nums;text-align:right;min-width:84px}
+@media(max-width:600px){.sheet .eq-ms-stz{grid-template-columns:1fr 1fr}}
 
 /* Dashboard-Bausteine, die sich Klassen mit dem Login teilen (dort unverändert) */
 .prof-head .ava-circle{border:1px dashed var(--eq-linie-feld);background:var(--eq-mulde)}
@@ -3680,10 +3697,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=83"></script>
-<script src="./data-save.js?v=83"></script>
-<script src="./finance-engine.js?v=83"></script>
-<script src="./app.js?v=83"></script>
+<script src="./data-loader.js?v=85"></script>
+<script src="./data-save.js?v=85"></script>
+<script src="./finance-engine.js?v=85"></script>
+<script src="./app.js?v=85"></script>
 
 <script>
 /* =====================================================================
