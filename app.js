@@ -7222,7 +7222,8 @@
     const zins = fertig || beginntNoch ? 0 : Math.min(rate, rest * (Number(kr.zinsPa) || 0) / 100 / 12);
     const tilgung = fertig || beginntNoch ? 0 : Math.max(0, Math.min(rate - zins, rest));
     const tilgtNie = !fertig && !!p && !p.getilgt;      // Rate deckt die Zinsen nicht (oder Laufzeit über 50 Jahre)
-    const ende = p && p.getilgt ? p.abzahlDatum : null;
+    let ende = p && p.getilgt ? p.abzahlDatum : null;
+    if (ende && kr.start) { const lauf = kzRaten(kr); if (lauf.length) ende = lauf[lauf.length - 1].key; }
     let restMonate = null;
     if (ende) restMonate = Math.max(0, (Number(ende.slice(0, 4)) - Number(nowKey.slice(0, 4))) * 12 + Number(ende.slice(5, 7)) - Number(nowKey.slice(5, 7)));
     const zinsOffen = p ? p.rows.filter(r => r.monat >= nowKey).reduce((a, r) => a + r.zins, 0) : 0;
@@ -7305,6 +7306,10 @@
 
   // Kurve der Restschuld für das Diagramm: höchstens 96 Stützpunkte, dazu die Stelle „heute"
   function kreditKurve(kr, k) {
+    if (kr && kr.start) { const genau = kreditVerlaufHtml(kr, k); if (genau) { kvVerdrahten(); return genau; } }
+    return kreditKurveAlt(kr, k);
+  }
+  function kreditKurveAlt(kr, k) {
     const plan = k.plan, rowsPlan = plan ? plan.rows : [];
     const curve = [], keys = [];
     let markerIdx = null;
@@ -9373,7 +9378,8 @@
   // Zeile einer Kreditrate: Name, Fälligkeit, Zins und Tilgung als Balken, Betrag, Knopf
   function rateZeile(o, erledigt) {
     const km = o.km, z = km.betrag ? km.zins / km.betrag * 100 : 0;
-    return `<div class="mk-row eq-mc-rate${erledigt ? " erledigt" : ""}" data-kredit="${esc(o.kredit._id)}" tabindex="-1">
+    const spaeter = !erledigt && !km.faellig;
+    return `<div class="mk-row eq-mc-rate${erledigt ? " erledigt" : ""}${spaeter ? " eq-mc-spaeter" : ""}" data-kredit="${esc(o.kredit._id)}" tabindex="-1">
       <div class="mk-tx">
         <div class="mk-n">${esc(o.kredit.name || "Kredit")}</div>
         <div class="mk-m">fällig am ${km.faelligAm.getDate()}. · Zins ${eur2(km.zins)} · Tilgung ${eur2(km.tilgung)}</div>
@@ -9381,9 +9387,16 @@
       </div>
       <div class="mk-soll">${eur2(km.betrag)}</div>
       ${erledigt ? `<div class="mk-da"><span class="eq-marke gut">gebucht</span></div>`
+        : spaeter ? `<div class="mk-da"><span class="eq-marke">noch nicht fällig</span></div>`
         : `<button type="button" class="mk-ok" data-kredit="${esc(o.kredit._id)}">Gebucht</button>`}
     </div>`;
   }
+  // Geplante Sondertilgung dieses Monats (aus den Kreditdaten): gelb markiert, nur zur Übersicht
+  const sonderZeile = (kr, betrag, wann) => `<div class="mk-row eq-mc-geplant">
+      <div class="mk-tx"><div class="mk-n">Sondertilgung ${esc(kr.name || "Kredit")}</div><div class="mk-m">${esc(wann)}</div></div>
+      <div class="mk-soll">${eur2(betrag)}</div>
+      <div class="mk-da"><span class="eq-marke eq-gelb">geplant</span></div>
+    </div>`;
 
   // Was der Monat bei einem Objekt bringt: Mieten, Raten, Cashflow – und wie viel Schuld die Raten tilgen
   function objektBilanz(s) {
@@ -9474,8 +9487,17 @@
     const g = gruppen[schritt];
     const s = (D.streams || []).find(x => x._id === g.id);
     if (!s) { weiter(schritt + 1); return; }
-    const mietO = g.mieten.map(m => { const u = (s.einheiten || []).find(x => x._id === m.einheit); return u ? { objekt: s, einheit: u, soll: m.soll, erledigt: erledigt.mieten.has(u._id) } : null; }).filter(Boolean);
-    const ratenO = g.raten.map(id => { const kr = FE.creditsOf(s).find(c => c._id === id); const km = kr && kreditMonat(kr); return kr && km && km.betrag ? { objekt: s, kredit: kr, km, erledigt: erledigt.raten.has(id) } : null; }).filter(Boolean);
+    // Alle Mieten und Raten des Monats: offene mit Knopf, schon bestätigte als erledigt – so steht das ganze Objekt da
+    const mietO = (s.einheiten || []).map(u => {
+      const st = mietStand(u), fertig = st === "bestaetigt" || erledigt.mieten.has(u._id);
+      return st === "offen" || fertig ? { objekt: s, einheit: u, soll: FE.unitIncome(u).gesamt, erledigt: fertig } : null;
+    }).filter(Boolean);
+    const ratenO = FE.creditsOf(s).map(kr => {
+      const km = kreditMonat(kr);
+      if (!km || km.beginnt || km.fertig || !(km.betrag > 0)) return null;
+      return { objekt: s, kredit: kr, km, erledigt: erledigt.raten.has(kr._id) || !!kzRate(kr, km.jahr, km.monat) };
+    }).filter(Boolean);
+    const sonderO = ratenO.filter(o => o.km.sonderPlan > 0);
     const name = nameOhneBruch(s.name);
     const body = `
       <div class="wc-hero" style="padding-bottom:10px">
@@ -9490,6 +9512,7 @@
       ${ratenO.length ? `<div class="eq-mc-block">
         <div class="eq-mc-frage">${svg("bank")}<span>Sind die Kreditraten gebucht?</span></div>
         ${ratenO.map(o => rateZeile(o, o.erledigt)).join("")}
+        ${sonderO.map(o => sonderZeile(o.kredit, o.km.sonderPlan, "laut Kreditvertrag im " + monatsName())).join("")}
         <button type="button" class="add-btn eq-mc-sonder" id="mcSonder">+ Sonderzahlung erfassen</button>
       </div>` : ""}
       ${bilanzHtml(s, objektBilanz(s))}
@@ -9602,95 +9625,213 @@
     });
   }
 
-  // Alle Zahlungen eines Kredits seit der ersten Rate: gebuchte Raten mit ihren Werten, sonst die Zeile des Plans
-  // (als „laut Plan" gekennzeichnet), dazu Sonderzahlungen.
-  function kzVerlauf(kr) {
+  // Alle Raten des Kredits, eine je Monat (Ortszeit), von der ersten bis zur letzten.
+  // Vor diesem Monat: Zeilen des Tilgungsplans. Ab diesem Monat: von der Restschuld vor der Rate aus weitergerechnet –
+  // so stecken Kontostand und Sonderzahlungen drin, dazu die vereinbarten Sondertilgungen. Gebuchte Monate tragen ihre
+  // gespeicherten Werte.
+  function kzRaten(kr) {
     const p = FE.creditPlan(kr);
     if (!p || !kr.start) return [];
     const recs = kzVon(kr), km = kreditMonat(kr);
     const jetzt = new Date(), heuteNr = kzMonNr(jetzt.getFullYear(), jetzt.getMonth() + 1), start = kzStartNr(kr);
-    const zeilen = [];
-    p.rows.forEach((row, idx) => {
-      const nr = start + idx;
-      if (nr > heuteNr) return;
-      const key = kzKeyNr(nr), j = Math.floor(nr / 12), m = nr % 12 + 1;
-      const rec = recs.find(z => z.art === "rate" && Number(z.jahr) === j && Number(z.monat) === m);
-      if (nr === heuteNr && !rec && !(km && km.faellig)) return;   // diese Rate ist noch nicht fällig
-      if (rec) zeilen.push({ key, art: "rate", betrag: Number(rec.betrag), zins: Number(rec.zins) || 0, tilgung: Number(rec.tilgung) || 0, rest: rec.rest_danach != null ? Number(rec.rest_danach) : null, ok: true, datum: rec.datum });
-      else zeilen.push({ key, art: "rate", betrag: kzR2(row.zins + row.tilgung), zins: row.zins, tilgung: row.tilgung, rest: null, ok: false });
-      if (row.sonder > 0 && !recs.some(z => z.art === "sonder" && Number(z.jahr) === j && Number(z.monat) === m))
-        zeilen.push({ key, art: "sonderplan", betrag: row.sonder, zins: 0, tilgung: row.sonder, ok: false });
-    });
-    recs.filter(z => z.art === "sonder").forEach(z => zeilen.push({ key: kzKey(Number(z.jahr), Number(z.monat)), art: "sonder", id: z.id, betrag: Number(z.betrag), zins: 0, tilgung: Number(z.betrag), rest: z.rest_danach != null ? Number(z.rest_danach) : null, ok: true, datum: z.datum, notiz: z.notiz }));
-    return zeilen.sort((a, b) => a.key === b.key ? (a.art === "rate" ? 1 : -1) : (a.key < b.key ? 1 : -1));
-  }
-  const kzZeileHtml = (z) => `<div class="eq-kz-z${z.ok ? " ok" : ""}">
-      <div class="eq-kz-tx"><b>${esc(monatLang(z.key))}${z.art === "sonder" ? " · Sonderzahlung" : z.art === "sonderplan" ? " · Sondertilgung" : ""}</b>
-        <span>${z.art === "sonder" ? esc(["am " + dateDE(z.datum), z.notiz || ""].filter(Boolean).join(" · ")) : z.ok ? "gebucht am " + esc(dateDE(z.datum)) : "laut Plan · nicht bestätigt"}</span></div>
-      <div class="eq-kz-w"><b>${eur2(z.betrag)}</b><span>${z.art === "rate" ? "Zins " + eur2(z.zins) + " · Tilgung " + eur2(z.tilgung) : "Tilgung " + eur2(z.tilgung)}${z.rest != null ? " · Rest " + eur(z.rest) : ""}</span></div>
-      ${z.art === "sonder" ? `<button type="button" class="add-btn eq-kz-weg" data-kz-weg="${esc(z.id)}">Entfernen</button>` : ""}
-      </div>`;
-
-  // Abschnitt im Kredit-Fenster: Rate dieses Monats, Sonderzahlung, alle geleisteten Zahlungen
-  function kreditZahlungenHtml(kr, kstream) {
-    if (!kzAn() || !kr.start || (kstream && kstream.istProjekt)) return "";
-    const km = kreditMonat(kr);
-    let monat = "";
-    if (km && !km.beginnt && !km.fertig && km.betrag > 0) {
-      const rec = kzRate(kr, km.jahr, km.monat);
-      const z = km.betrag ? km.zins / km.betrag * 100 : 0;
-      monat = `<div class="card-t eq-zwischen">Rate im ${esc(monatLang(km.key))}</div>
-        <div class="mk-row eq-mc-rate${rec ? " erledigt" : ""}">
-          <div class="mk-tx">
-            <div class="mk-n">${rec ? "Gebucht am " + esc(dateDE(rec.datum)) : km.faellig ? "Fällig seit dem " + km.faelligAm.getDate() + "." : "Fällig am " + km.faelligAm.getDate() + "."}</div>
-            <div class="mk-m">Zins ${eur2(rec ? rec.zins : km.zins)} · Tilgung ${eur2(rec ? rec.tilgung : km.tilgung)}</div>
-            <div class="rc-vh eq-mc-vh" role="img" aria-label="${Math.round(z)} Prozent Zins, ${Math.round(100 - z)} Prozent Tilgung"><i class="z" style="width:${z.toFixed(1)}%"></i><i class="t" style="width:${(100 - z).toFixed(1)}%"></i></div>
-          </div>
-          <div class="mk-soll">${eur2(rec ? rec.betrag : km.betrag)}</div>
-          <button type="button" class="mk-ok" id="kzMonat" data-gebucht="${rec ? "1" : "0"}">${rec ? "Zurücknehmen" : "Gebucht"}</button>
-        </div>`;
+    const rate = Number(kr.abtragMonat) || 0, i = (Number(kr.zinsPa) || 0) / 100 / 12, st = kr.sondertilgung || null;
+    const stB = st ? Number(st.betrag) || 0 : 0, stM = st && Array.isArray(st.monate) ? st.monate : [];
+    const liste = [];
+    const add = (nr, w) => {
+      const j = Math.floor(nr / 12), m = nr % 12 + 1;
+      const rec = recs.find(z => z.art === "rate" && Number(z.jahr) === j && Number(z.monat) === m) || null;
+      const sonderRec = recs.filter(z => z.art === "sonder" && Number(z.jahr) === j && Number(z.monat) === m);
+      const e = { nr, n: liste.length + 1, key: kzKey(j, m), j, m, ...w, rec, sonderRec, jetzt: nr === heuteNr,
+        faellig: nr < heuteNr || (nr === heuteNr && !!(km && km.faellig)), darf: nr <= heuteNr };
+      if (rec) { e.zins = Number(rec.zins) || 0; e.tilgung = Number(rec.tilgung) || 0; if (rec.rest_danach != null) e.rest = Number(rec.rest_danach); }
+      e.betrag = kzR2(e.zins + e.tilgung);
+      liste.push(e);
+    };
+    const vorher = Math.min(p.rows.length, Math.max(0, heuteNr - start));
+    for (let idx = 0; idx < vorher; idx++) { const r = p.rows[idx]; add(start + idx, { zins: r.zins, tilgung: r.tilgung, sonder: r.sonder, rest: r.rest }); }
+    let r = null, nr = start + vorher;
+    if (km && km.beginnt) r = Number(kr.summe) || 0;
+    else if (km && !km.fertig && km.restVor != null) r = km.restVor;
+    for (let n = 0; r != null && r > 0.005 && n < 600; n++) {
+      const zins = r * i, til = Math.max(0, Math.min(rate - zins, r));
+      r -= til;
+      let so = 0;
+      if (stB && stM.includes(nr % 12 + 1) && r > 0) { so = Math.min(stB, r); r -= so; }
+      add(nr, { zins: kzR2(zins), tilgung: kzR2(til), sonder: kzR2(so), rest: kzR2(Math.max(0, r)) });
+      nr++;
+      if (!(til > 0) && !(so > 0)) break;   // Rate deckt die Zinsen nicht: hier endet der Plan
     }
-    const v = kzVerlauf(kr);
-    const summe = v.reduce((a, z) => a + z.betrag, 0), zins = v.reduce((a, z) => a + z.zins, 0), tilg = v.reduce((a, z) => a + z.tilgung, 0);
-    const raten = v.filter(z => z.art === "rate"), bestaetigt = raten.filter(z => z.ok).length;
-    const zp = summe ? zins / summe * 100 : 0;
-    return `${monat}
-      <button type="button" class="add-btn wide" id="kzSonder" style="margin-top:12px">+ Sonderzahlung erfassen</button>
-      <div class="card-t eq-zwischen">Geleistete Zahlungen</div>
-      ${v.length ? `<div class="eq-werte" style="margin-bottom:12px">
-          ${wert("Gezahlt bisher", eur(summe), mehrzahl(raten.length, "Rate", "Raten") + (v.length > raten.length ? " und Sonderzahlungen" : ""))}
-          ${wert("Davon Zinsen", eur(zins), prozent(zp, 0) + " der Zahlungen")}
-          ${wert("Davon Tilgung", eur(tilg), "Vermögen, das du aufgebaut hast")}
-        </div>
-        <div class="rc-vh" role="img" aria-label="${Math.round(zp)} Prozent Zins, ${Math.round(100 - zp)} Prozent Tilgung"><i class="z" style="width:${zp.toFixed(1)}%"></i><i class="t" style="width:${(100 - zp).toFixed(1)}%"></i></div>
-        <div class="eq-rate-teile" style="margin-top:8px"><div><b class="z"></b><span>Zins</span><strong>${eur(zins)}</strong></div><div><b class="t"></b><span>Tilgung</span><strong>${eur(tilg)}</strong></div></div>
-        <div class="note" style="margin:8px 0 12px">${bestaetigt === raten.length ? "Alle Raten sind bestätigt." : mehrzahl(bestaetigt, "Rate ist", "Raten sind") + " bestätigt. Die übrigen stehen so da, wie der Tilgungsplan sie rechnet."}</div>
-        <div class="eq-kz-liste">${v.slice(0, 6).map(kzZeileHtml).join("")}</div>
-        ${v.length > 6 ? `<button type="button" class="add-btn wide" id="kzAlle" style="margin-top:10px">Alle ${v.length} Zahlungen zeigen</button>` : ""}`
-        : `<div class="note">Die erste Rate ist noch nicht fällig.</div>`}`;
+    return liste;
   }
-  function kreditZahlungenVerdrahten(sh, kr) {
-    const neu = () => { const t = kreditNachId(kr._id); if (t && sh.isConnected) { closeSheet(); setTimeout(() => openCreditSheet(t.kr), 200); } };
-    const mb = sh.querySelector("#kzMonat");
-    if (mb) mb.onclick = async () => {
+  // Vereinbarte Sondertilgung eines vergangenen Monats, für die keine Sonderzahlung erfasst ist: zählt laut Plan
+  const kzSonderPlan = (e) => e.sonder > 0 && !e.sonderRec.length ? e.sonder : 0;
+  const kzSonderSumme = (e) => kzSonderPlan(e) + e.sonderRec.reduce((a, z) => a + Number(z.betrag), 0);
+  const kzStatus = (e) => e.rec ? "eq-q-gez" : e.sonder > 0 ? "eq-q-son" : "eq-q-plan";   // eigene Namen: .plan gibt es schon auf der Landingpage
+  const kzStatusText = (e) => e.rec ? "gezahlt am " + dateDE(e.rec.datum) : e.sonder > 0 ? "Rate mit geplanter Sondertilgung" : e.faellig ? "fällig · noch nicht bestätigt" : "geplant";
+  const kzMonatsText = (e) => monatLang(e.key);
+  let kzWahl = null;   // ausgewähltes Quadrat: { id, nr }
+
+  // Rate dieses Monats im Kredit-Fenster: groß, mit Zustand, Zins und Tilgung, darunter ein Knopf
+  function kreditMonatHtml(kr, ersatz) {
+    if (!kzAn() || !kr.start) return ersatz;
+    const km = kreditMonat(kr);
+    if (!km || km.beginnt || km.fertig || !(km.betrag > 0)) return ersatz;
+    const rec = kzRate(kr, km.jahr, km.monat);
+    const zins = rec ? Number(rec.zins) || 0 : km.zins, til = rec ? Number(rec.tilgung) || 0 : km.tilgung, betrag = kzR2(zins + til);
+    const z = betrag ? zins / betrag * 100 : 0;
+    const naechste = kzRaten(kr).find(e => e.nr > kzMonNr(km.jahr, km.monat) && e.sonder > 0);
+    return `<div class="eq-km${rec ? " erledigt" : ""}">
+      <div class="eq-km-kopf">
+        <div class="eq-km-tx"><span class="eq-km-t">Rate im ${esc(monatsName())}</span>
+          ${rec ? `<span class="eq-marke gut">gezahlt am ${esc(dateDE(rec.datum))}</span>` : km.faellig ? `<span class="eq-marke achtung">fällig seit dem ${km.faelligAm.getDate()}.</span>` : `<span class="eq-marke">fällig am ${km.faelligAm.getDate()}.</span>`}</div>
+        <b class="eq-km-b">${eur2(betrag)}</b>
+      </div>
+      <div class="rc-vh" role="img" aria-label="${Math.round(z)} Prozent Zins, ${Math.round(100 - z)} Prozent Tilgung"><i class="z" style="width:${z.toFixed(1)}%"></i><i class="t" style="width:${(100 - z).toFixed(1)}%"></i></div>
+      <div class="eq-rate-teile">
+        <div><b class="z"></b><span>Zins</span><strong>${eur2(zins)}</strong></div>
+        <div><b class="t"></b><span>Tilgung</span><strong>${eur2(til)}</strong></div>
+      </div>
+      ${km.sonderPlan > 0 ? `<div class="eq-km-sonder"><span class="eq-marke eq-gelb">geplant</span><span>Sondertilgung in diesem Monat: <b>${eur2(km.sonderPlan)}</b></span></div>`
+        : naechste ? `<div class="eq-km-sonder"><span class="eq-marke eq-gelb">geplant</span><span>Nächste Sondertilgung: <b>${eur2(naechste.sonder)}</b> im ${esc(kzMonatsText(naechste))}</span></div>` : ""}
+      <button type="button" class="eq-btn ${rec ? "zweit " : ""}eq-km-knopf" id="kzMonat" data-gebucht="${rec ? "1" : "0"}">${rec ? "Zurücknehmen" : "Als gezahlt markieren"}</button>
+    </div>`;
+  }
+
+  // Ratenraster: ein Quadrat je Rate über die ganze Laufzeit, zwei Jahre je Zeile (Januar bis Dezember, zweimal)
+  function kreditRasterHtml(kr) {
+    if (!kzAn() || !kr.start) return "";
+    const L = kzRaten(kr);
+    if (!L.length) return "";
+    const nrs = new Map(L.map((e, i) => [e.nr, i]));
+    const erste = Math.floor(L[0].nr / 24) * 24, letzte = Math.floor(L[L.length - 1].nr / 24) * 24;
+    let zeilen = "";
+    for (let z = erste; z <= letzte; z += 24) {
+      let q = "";
+      for (let c = 0; c < 24; c++) {
+        if (c === 12) q += `<b class="sp"></b>`;   // kleine Lücke zwischen den beiden Jahren
+        const i = nrs.get(z + c);
+        if (i == null) { q += `<i class="leer"></i>`; continue; }
+        const e = L[i];
+        q += `<i class="q ${kzStatus(e)}${e.sonderRec.length ? " punkt" : ""}${e.jetzt ? " heute" : ""}" data-n="${i}"></i>`;
+      }
+      zeilen += `<div class="eq-rr-z"><span class="eq-rr-j">${Math.floor(z / 12)}</span><div class="eq-rr-q">${q}</div></div>`;
+    }
+    const gez = L.filter(e => e.rec).length, son = L.filter(e => !e.rec && e.sonder > 0).length, sz = L.filter(e => e.sonderRec.length).length;
+    const offenBisher = L.filter(e => e.faellig && !e.rec).length;
+    return `<div class="card-t eq-zwischen">Alle Raten auf einen Blick</div>
+      <div class="eq-rr" id="kzRaster">
+        <div class="eq-rr-kopf">${mehrzahl(L.length, "Rate", "Raten")} · ${gez} gezahlt · ${L.length - gez} offen</div>
+        <div class="eq-rr-feld" role="img" aria-label="${L.length} Raten, davon ${gez} gezahlt, ${son} mit geplanter Sondertilgung">${zeilen}</div>
+        <div class="eq-rr-leg">
+          <span><i class="q eq-q-gez"></i>gezahlt (${gez})</span>
+          <span><i class="q eq-q-plan"></i>geplant</span>
+          ${son ? `<span><i class="q eq-q-son"></i>Sondertilgung geplant (${son})</span>` : ""}
+          ${sz ? `<span><i class="q eq-q-gez punkt"></i>Sonderzahlung geleistet (${sz})</span>` : ""}
+          <span><i class="q eq-q-plan heute"></i>dieser Monat</span>
+        </div>
+        <div class="eq-rr-detail" id="kzDetail" aria-live="polite"></div>
+        ${offenBisher > 1 ? `<button type="button" class="add-btn wide" id="kzNachtragen" style="margin-top:10px">Alle ${offenBisher} bisherigen Raten als gezahlt markieren</button>` : ""}
+      </div>`;
+  }
+  function kzDetailHtml(kr, L, i) {
+    const e = L[i];
+    return `<div class="eq-rr-dk">
+        <button type="button" class="eq-rr-pfeil" data-schritt="-1" aria-label="Vorherige Rate"${i ? "" : " disabled"}>‹</button>
+        <div class="eq-rr-dt"><b>Rate ${e.n} von ${L.length}</b><span>${esc(kzMonatsText(e))}</span></div>
+        <button type="button" class="eq-rr-pfeil" data-schritt="1" aria-label="Nächste Rate"${i < L.length - 1 ? "" : " disabled"}>›</button>
+      </div>
+      <div class="eq-rr-st"><span class="eq-marke${e.rec ? " gut" : e.sonder > 0 ? " eq-gelb" : ""}">${esc(kzStatusText(e))}</span></div>
+      <div class="eq-werte eq-rr-w">
+        ${wert("Rate", eur2(e.betrag))}
+        ${wert("Zins", eur2(e.zins))}
+        ${wert("Tilgung", eur2(e.tilgung))}
+        ${wert("Restschuld danach", eur(e.rest))}
+        ${e.sonder > 0 ? wert("Sondertilgung geplant", eur2(e.sonder)) : ""}
+        ${e.sonderRec.map(z => wert("Sonderzahlung geleistet", eur2(z.betrag), "am " + dateDE(z.datum))).join("")}
+      </div>
+      ${e.darf ? `<button type="button" class="eq-btn ${e.rec ? "zweit " : ""}eq-km-knopf" id="kzQuadrat">${e.rec ? "Zurücknehmen" : "Als gezahlt markieren"}</button>` : ""}`;
+  }
+
+  // Knöpfe zu den Details
+  function kreditKnoepfeHtml(kr) {
+    const L = kzRaten(kr).filter(e => e.faellig || e.rec);
+    const summe = L.reduce((a, e) => a + e.betrag + kzSonderSumme(e), 0);
+    return `<div class="eq-kk">
+        <button type="button" class="eq-kk-b" id="kzZahlungen"><b>Geleistete Zahlungen</b><span>${L.length ? mehrzahl(L.length, "Rate", "Raten") + " · " + eur(summe) : "noch keine Rate fällig"}</span></button>
+        <button type="button" class="eq-kk-b" id="kzPlan"><b>Tilgungsplan</b><span>Verlauf, Kosten und Plan je Jahr</span></button>
+      </div>
+      <button type="button" class="add-btn wide" id="kzSonder" style="margin-top:10px">+ Sonderzahlung erfassen</button>`;
+  }
+
+  const kzZurueck = (kr) => `<button type="button" class="add-btn eq-zurueck" id="kzZurueck">‹ Zurück zum Kredit</button>`;
+  function kzZurueckVerdrahten(sh, kr) {
+    sh.querySelector("#kzZurueck").onclick = () => { const t = kreditNachId(kr._id); closeSheet(); if (t) setTimeout(() => openCreditSheet(t.kr), 200); };
+  }
+  function openKreditPlanSheet(kr, html) {
+    const sh = openSheet("Tilgungsplan", kr.name || "Kredit", kzZurueck(kr) + html);
+    kzZurueckVerdrahten(sh, kr);
+  }
+
+  // Zahlungs-Fenster: Summen, Zins und Tilgung je Jahr als Balken, alle Zahlungen
+  function openZahlungenSheet(kr) {
+    const L = kzRaten(kr).filter(e => e.faellig || e.rec);
+    const sonder = L.flatMap(e => e.sonderRec);
+    const sonderPlanN = L.filter(e => kzSonderPlan(e) > 0).length;
+    const zins = L.reduce((a, e) => a + e.zins, 0), til = L.reduce((a, e) => a + e.tilgung + kzSonderSumme(e), 0);
+    const summe = zins + til, zp = summe ? zins / summe * 100 : 0, best = L.filter(e => e.rec).length;
+    const jahre = {};
+    L.forEach(e => { const y = jahre[e.j] = jahre[e.j] || { z: 0, t: 0 }; y.z += e.zins; y.t += e.tilgung + kzSonderSumme(e); });
+    const max = Math.max(1, ...Object.values(jahre).map(y => y.z + y.t));
+    const zeilen = [];
+    L.slice().reverse().forEach(e => {
+      if (kzSonderPlan(e)) zeilen.push(`<div class="eq-kz-z"><div class="eq-kz-tx"><b>${esc(kzMonatsText(e))} · Sondertilgung</b><span>laut Plan · nicht bestätigt</span></div>
+        <div class="eq-kz-w"><b>${eur2(e.sonder)}</b><span>Tilgung ${eur2(e.sonder)}</span></div></div>`);
+      e.sonderRec.forEach(z => zeilen.push(`<div class="eq-kz-z ok"><div class="eq-kz-tx"><b>${esc(kzMonatsText(e))} · Sonderzahlung</b><span>${esc(["am " + dateDE(z.datum), z.notiz || ""].filter(Boolean).join(" · "))}</span></div>
+        <div class="eq-kz-w"><b>${eur2(z.betrag)}</b><span>Tilgung ${eur2(z.betrag)}${z.rest_danach != null ? " · Rest " + eur(z.rest_danach) : ""}</span></div>
+        <button type="button" class="add-btn eq-kz-weg" data-kz-weg="${esc(z.id)}">Entfernen</button></div>`));
+      zeilen.push(`<div class="eq-kz-z${e.rec ? " ok" : ""}"><div class="eq-kz-tx"><b>${esc(kzMonatsText(e))}</b><span>${e.rec ? "gezahlt am " + esc(dateDE(e.rec.datum)) : "laut Plan · nicht bestätigt"}</span></div>
+        <div class="eq-kz-w"><b>${eur2(e.betrag)}</b><span>Zins ${eur2(e.zins)} · Tilgung ${eur2(e.tilgung)}</span></div></div>`);
+    });
+    const offen = L.filter(e => e.faellig && !e.rec).length;
+    const body = `${kzZurueck(kr)}
+      ${L.length ? `<div class="eq-werte" style="margin-bottom:14px">
+        ${wert("Gezahlt bisher", eur(summe), mehrzahl(L.length, "Rate", "Raten") + (sonder.length + sonderPlanN ? " und " + mehrzahl(sonder.length + sonderPlanN, "Sondertilgung", "Sondertilgungen") : ""))}
+        ${wert("Davon Zinsen", eur(zins), prozent(zp, 0) + " der Zahlungen")}
+        ${wert("Davon Tilgung", eur(til), "Vermögen, das du aufgebaut hast")}
+      </div>
+      <div class="card-t eq-zwischen">Zins und Tilgung je Jahr</div>
+      <div class="eq-kz-jahre">${Object.keys(jahre).sort().map(j => { const y = jahre[j]; return `<div class="eq-kz-jz"><span class="eq-kz-jl">${j}</span>
+        <span class="eq-kz-js" role="img" aria-label="${j}: Zins ${eur(y.z)}, Tilgung ${eur(y.t)}"><i class="z" style="width:${(y.z / max * 100).toFixed(1)}%"></i><i class="t" style="width:${(y.t / max * 100).toFixed(1)}%"></i></span>
+        <b class="eq-kz-jw">${eur(y.z + y.t)}</b></div>`; }).join("")}</div>
+      <div class="eq-rate-teile" style="margin:8px 0 6px"><div><b class="z"></b><span>Zins</span><strong>${eur(zins)}</strong></div><div><b class="t"></b><span>Tilgung</span><strong>${eur(til)}</strong></div></div>
+      <div class="note" style="margin:6px 0 12px">${best === L.length ? "Alle Raten sind bestätigt." : best + " von " + L.length + " Raten bestätigt. Die übrigen stehen so da, wie der Tilgungsplan sie rechnet."}</div>
+      ${offen > 1 ? `<button type="button" class="add-btn wide" id="kzNachtragen" style="margin-bottom:12px">Alle ${offen} bisherigen Raten als gezahlt markieren</button>` : ""}
+      <div class="card-t eq-zwischen">Alle Zahlungen</div>
+      <div class="eq-kz-liste">${zeilen.join("")}</div>`
+      : `<div class="note">Die erste Rate ist noch nicht fällig.</div>`}`;
+    const sh = openSheet("Geleistete Zahlungen", kr.name || "Kredit", body);
+    kzZurueckVerdrahten(sh, kr);
+    const zurueck = () => { const t = kreditNachId(kr._id); if (t && sh.isConnected) { closeSheet(); setTimeout(() => openZahlungenSheet(t.kr), 200); } };
+    kzNachtragenVerdrahten(sh, kr, zurueck);
+    kzWegVerdrahten(sh, kr, zurueck);
+  }
+
+  // Alle fälligen, noch nicht bestätigten Raten auf einmal als gezahlt vermerken (Werte laut Plan)
+  function kzNachtragenVerdrahten(sh, kr, danach) {
+    const b = sh.querySelector("#kzNachtragen");
+    if (!b) return;
+    b.onclick = async () => {
       if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
-      const km = kreditMonat(kr), vorher = mb.textContent;
-      mb.disabled = true; mb.textContent = "Speichere…";
-      try { await kreditRateSpeichern(kr, km, mb.dataset.gebucht !== "1"); }
-      catch (e) { mb.disabled = false; mb.textContent = vorher; showToast(kzFehler(e)); return; }
+      const liste = kzRaten(kr).filter(e => e.faellig && !e.rec);
+      if (b.dataset.sicher !== "1") { b.dataset.sicher = "1"; b.textContent = mehrzahl(liste.length, "Rate", "Raten") + " wirklich als gezahlt markieren?"; return; }
+      b.disabled = true; b.textContent = "Speichere…";
+      const { data, error } = await window.sb.rpc("kreditraten_nachtragen", { p_kredit: kr._id,
+        p_raten: liste.map(e => ({ jahr: e.j, monat: e.m, betrag: e.betrag, zins: e.zins, tilgung: e.tilgung, rest: e.rest })) });
+      if (error || (typeof data === "string")) { b.disabled = false; b.textContent = "Erneut versuchen"; showToast(error ? window.fehlerText(error) : data === "gesperrt" ? "Mit dem aktuellen Tarif kannst du gerade nichts ändern." : "Die Raten ließen sich nicht speichern."); return; }
       try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
-      showToast(mb.dataset.gebucht !== "1" ? "Gespeichert: Rate ist gebucht." : "Gespeichert: Rate ist wieder offen.");
-      neu();
+      showToast("Gespeichert: " + mehrzahl(liste.length, "Rate", "Raten") + " als gezahlt markiert.");
+      danach();
     };
-    const so = sh.querySelector("#kzSonder");
-    if (so) so.onclick = () => { closeSheet(); setTimeout(() => openSonderzahlung(kr, () => { const t = kreditNachId(kr._id); if (t) openCreditSheet(t.kr); }), 220); };
-    const al = sh.querySelector("#kzAlle");
-    if (al) al.onclick = () => {
-      sh.querySelector(".eq-kz-liste").innerHTML = kzVerlauf(kr).map(kzZeileHtml).join("");
-      al.remove();
-      kzWegVerdrahten(sh, kr, neu);
-    };
-    kzWegVerdrahten(sh, kr, neu);
   }
   function kzWegVerdrahten(sh, kr, neu) {
     sh.querySelectorAll("[data-kz-weg]").forEach(b => b.onclick = async () => {
@@ -9702,6 +9843,155 @@
       try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
       showToast("Sonderzahlung entfernt.");
       neu();
+    });
+  }
+
+  // Alles im Kredit-Fenster verdrahten: Monatsrate, Raster mit Detail, Knöpfe
+  function kreditKarteVerdrahten(sh, kr, planHtml) {
+    const neu = () => { const t = kreditNachId(kr._id); if (t && sh.isConnected) { closeSheet(); setTimeout(() => openCreditSheet(t.kr), 200); } };
+    const speichere = async (knopf, werte, gebucht, meldung) => {
+      if (istGesperrt()) { closeSheet(); openUpgradeSheet("gesperrt"); return; }
+      const vorher = knopf.textContent;
+      knopf.disabled = true; knopf.textContent = "Speichere…";
+      try { await kreditRateSpeichern(kr, werte, gebucht); }
+      catch (e) { knopf.disabled = false; knopf.textContent = vorher; showToast(kzFehler(e)); return; }
+      try { await window.nachSpeichern(); } catch (_) { showToast(NEULADEN_HINWEIS); return; }
+      showToast(meldung);
+      neu();
+    };
+    const mb = sh.querySelector("#kzMonat");
+    if (mb) mb.onclick = () => { const an = mb.dataset.gebucht !== "1"; speichere(mb, kreditMonat(kr), an, an ? "Gespeichert: Rate ist gezahlt." : "Gespeichert: Rate ist wieder offen."); };
+    // Raster
+    const feld = sh.querySelector("#kzRaster");
+    if (feld) {
+      const L = kzRaten(kr), detail = sh.querySelector("#kzDetail");
+      let wahl = kzWahl && kzWahl.id === kr._id ? L.findIndex(e => e.nr === kzWahl.nr) : -1;
+      if (wahl < 0) { wahl = L.findIndex(e => e.jetzt); if (wahl < 0) wahl = L.findIndex(e => !e.rec); if (wahl < 0) wahl = L.length - 1; }
+      const zeige = (i) => {
+        wahl = Math.max(0, Math.min(L.length - 1, i));
+        kzWahl = { id: kr._id, nr: L[wahl].nr };
+        feld.querySelectorAll("i.q.wahl").forEach(q => q.classList.remove("wahl"));
+        const q = feld.querySelector(`i.q[data-n="${wahl}"]`); if (q) q.classList.add("wahl");
+        detail.innerHTML = kzDetailHtml(kr, L, wahl);
+        detail.querySelectorAll("[data-schritt]").forEach(b => b.onclick = () => zeige(wahl + Number(b.dataset.schritt)));
+        const k = detail.querySelector("#kzQuadrat");
+        if (k) k.onclick = () => { const e = L[wahl]; speichere(k, { jahr: e.j, monat: e.m, betrag: e.betrag, zins: e.zins, tilgung: e.tilgung, restNach: e.rest }, !e.rec,
+          !e.rec ? "Gespeichert: Rate " + e.n + " ist gezahlt." : "Gespeichert: Rate " + e.n + " ist wieder offen."); };
+      };
+      feld.querySelector(".eq-rr-feld").addEventListener("click", (ev) => { const q = ev.target.closest("i.q[data-n]"); if (q) zeige(Number(q.dataset.n)); });
+      zeige(wahl);
+    }
+    kzNachtragenVerdrahten(sh, kr, neu);
+    const zb = sh.querySelector("#kzZahlungen");
+    if (zb) zb.onclick = () => { closeSheet(); setTimeout(() => openZahlungenSheet(kr), 200); };
+    const pb = sh.querySelector("#kzPlan");
+    if (pb) pb.onclick = () => { closeSheet(); setTimeout(() => openKreditPlanSheet(kr, planHtml), 200); };
+    const so = sh.querySelector("#kzSonder");
+    if (so) so.onclick = () => { closeSheet(); setTimeout(() => openSonderzahlung(kr, () => { const t = kreditNachId(kr._id); if (t) openCreditSheet(t.kr); }), 220); };
+  }
+  // Neues Kredit-Fenster nur mit Tabelle kreditzahlungen und begonnenem Kredit eines Mietobjekts
+  const kreditNeuesFenster = (kr, kstream) => kzAn() && !!kr.start && !(kstream && kstream.istProjekt);
+
+  /* ================= KREDITKURVE (genau je Monat) ================= */
+  // Verlauf der Restschuld aus kzRaten(): ein Punkt je Monat nach Ortszeit, Sondertilgungen als Stufe im richtigen
+  // Monat, ab heute vom aktuellen Stand (Kontostand, Sonderzahlungen) weitergerechnet. Weicht der ursprüngliche Plan
+  // davon ab, steht er gestrichelt dahinter. Antippen oder Pfeiltasten zeigen Monat und Restschuld.
+  function kreditVerlaufHtml(kr, k) {
+    const L = kzRaten(kr);
+    if (L.length < 2) return null;
+    const summe = Number(kr.summe) || 0;
+    const jetzt = new Date(), heuteNr = kzMonNr(jetzt.getFullYear(), jetzt.getMonth() + 1);
+    const x0 = L[0].nr - 1, x1 = L[L.length - 1].nr;
+    // Punkte: [Monatsnummer, Restschuld, Art] – vor dem ersten Monat die volle Summe
+    const pk = [[x0, summe, ""]];
+    let vorher = summe;
+    L.forEach((e, i) => {
+      // Ab heute rechnet kzRaten vom echten Stand; liegt der unter dem Plan (Sonderzahlung, Kontostand), fällt die Linie hier
+      if (e.nr === heuteNr && i > 0 && kreditMonat(kr) && kreditMonat(kr).restVor != null) {
+        const rv = kreditMonat(kr).restVor;
+        if (Math.abs(rv - vorher) > 0.5) pk.push([e.nr - 1, rv, rv < vorher ? "sz" : ""]);
+      }
+      const so = kzSonderPlan(e) || 0, nachRate = e.rest + so;
+      if (so > 0) { pk.push([e.nr, nachRate, ""]); pk.push([e.nr, e.rest, e.nr < heuteNr ? "st-alt" : "st"]); }
+      else pk.push([e.nr, e.rest, e.sonderRec.length ? "sz" : ""]);
+      vorher = e.rest;
+    });
+    // Ursprünglicher Plan der Engine (ab der vollen Summe), nach Zeilen gezählt
+    const p = FE.creditPlan(kr), start = kzStartNr(kr);
+    const plan = p ? [[start - 1, summe]].concat(p.rows.map((r, i) => [start + i, r.rest])) : [];
+    const planEnde = plan.length ? plan[plan.length - 1][0] : x1;
+    const jeMonat = new Map(); pk.forEach(a => jeMonat.set(a[0], Math.round(a[1])));   // Stand am Monatsende (nach Sondertilgung)
+    const zeigePlan = plan.length > 1 && (Math.abs(planEnde - x1) >= 1 || plan.some(([n, v]) => jeMonat.has(n) && Math.abs(jeMonat.get(n) - v) > summe * 0.01));
+    const xMax = Math.max(x1, zeigePlan ? planEnde : x1), yMax = Math.max(summe, ...pk.map(a => a[1])) || 1;
+    const W = 720, H = 200, pl = 0, pr = 0, pt = 12, pb = 6;
+    const X = (n) => pl + (n - x0) / ((xMax - x0) || 1) * (W - pl - pr);
+    const Y = (v) => pt + (1 - v / yMax) * (H - pt - pb);
+    const pfad = (liste) => liste.map((a, i) => (i ? "L" : "M") + X(a[0]).toFixed(1) + "," + Y(a[1]).toFixed(1)).join(" ");
+    const iHeute = pk.reduce((a, q, i) => q[0] <= Math.min(heuteNr, x1) ? i : a, 0);
+    const bisher = pk.slice(0, iHeute + 1), spaeter = pk.slice(iHeute);
+    const flaeche = (liste) => liste.length > 1 ? pfad(liste) + ` L${X(liste[liste.length - 1][0]).toFixed(1)},${Y(0)} L${X(liste[0][0]).toFixed(1)},${Y(0)} Z` : "";
+    const heuteIn = heuteNr >= x0 && heuteNr <= x1;
+    // Jahresmarken: höchstens sechs, immer im Januar
+    const jahre = Math.max(1, Math.round((xMax - x0) / 12)), schritt = Math.max(1, Math.ceil(jahre / 5));
+    const marken = [];
+    for (let j = Math.ceil((x0 + 1) / 12); j * 12 <= xMax; j += 1) if ((j - Math.ceil((x0 + 1) / 12)) % schritt === 0) marken.push(j);
+    const pct = (n) => (X(n) / W * 100).toFixed(2) + "%", pctY = (v) => (Y(v) / H * 100).toFixed(2) + "%";
+    const punkte = pk.filter(a => a[2]).map(a => `<span class="eq-kv-p ${a[2] === "sz" ? "sz" : a[2] === "st-alt" ? "st alt" : "st"}" style="left:${pct(a[0])};top:${pctY(a[1])}"></span>`).join("");
+    const ende = L[L.length - 1], endeText = monatLang(ende.key);
+    const daten = JSON.stringify([...jeMonat]);
+    const nochRaten = L.filter(e => e.nr > heuteNr || (e.nr === heuteNr && !e.rec)).length;
+    const kurz = (v) => v >= 1e6 ? (v / 1e6).toLocaleString(LOC, { maximumFractionDigits: 1 }) + " Mio. €" : Math.round(v / 1000).toLocaleString(LOC) + " T€";
+    const frueher = zeigePlan ? planEnde - x1 : 0;
+    return `<div class="eq-kv">
+      <div class="eq-kv-y"><span style="top:${pctY(yMax)}">${esc(kurz(yMax))}</span><span style="top:${pctY(yMax / 2)}">${esc(kurz(yMax / 2))}</span><span style="top:${pctY(0)}">0 €</span></div>
+      <div class="eq-kv-feld" tabindex="0" role="img" data-kv='${daten}' data-kv-x0="${x0}" data-kv-xmax="${xMax}" data-kv-ymax="${yMax}"
+        aria-label="${esc("Restschuld von " + eur(summe) + " im " + monatLang(kzKeyNr(x0 + 1)) + " bis null im " + endeText + ". Pfeiltasten zeigen einzelne Monate.")}">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <line class="eq-kv-g" x1="0" x2="${W}" y1="${Y(yMax / 2)}" y2="${Y(yMax / 2)}"/><line class="eq-kv-g" x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}"/>
+          ${marken.map(j => `<line class="eq-kv-g fein" x1="${X(j * 12 - 0.5)}" x2="${X(j * 12 - 0.5)}" y1="${pt}" y2="${Y(0)}"/>`).join("")}
+          ${zeigePlan ? `<path class="eq-kv-plan" d="${pfad(plan)}"/>` : ""}
+          <path class="eq-kv-f1" d="${flaeche(bisher)}"/><path class="eq-kv-f2" d="${flaeche(spaeter)}"/>
+          ${bisher.length > 1 ? `<path class="eq-kv-l1" d="${pfad(bisher)}"/>` : ""}<path class="eq-kv-l2" d="${pfad(spaeter)}"/>
+          ${heuteIn ? `<line class="eq-kv-heute" x1="${X(heuteNr)}" x2="${X(heuteNr)}" y1="${pt}" y2="${Y(0)}"/>` : ""}
+        </svg>
+        ${punkte}
+        ${heuteIn ? `<span class="eq-kv-hp" style="left:${pct(pk[iHeute][0])};top:${pctY(pk[iHeute][1])}"></span><span class="eq-kv-ht${X(heuteNr) / W > 0.8 ? " links" : ""}" style="left:${pct(heuteNr)}">heute</span>` : ""}
+        <span class="eq-kv-cur" hidden></span><span class="eq-kv-tip" hidden></span>
+      </div>
+      <div class="eq-kv-x">${marken.map(j => `<span style="left:${pct(j * 12 - 0.5)}">${j}</span>`).join("")}</div>
+      <div class="eq-kv-leg">
+        <span><i class="eq-kv-i1"></i>bisher</span><span><i class="eq-kv-i2"></i>geplant</span>
+        ${pk.some(a => a[2] === "st" || a[2] === "st-alt") ? `<span><i class="eq-kv-ist"></i>Sondertilgung</span>` : ""}
+        ${pk.some(a => a[2] === "sz") ? `<span><i class="eq-kv-isz"></i>Sonderzahlung geleistet</span>` : ""}
+        ${zeigePlan ? `<span><i class="eq-kv-io"></i>ursprünglicher Plan</span>` : ""}
+      </div>
+      <div class="note eq-kv-n">Schuldenfrei im ${esc(endeText)}${nochRaten ? " · noch " + mehrzahl(nochRaten, "Rate", "Raten") : ""}${frueher > 0 ? esc(" · " + mehrzahl(frueher, "Monat", "Monate") + " früher als ursprünglich geplant (" + monatLang(kzKeyNr(planEnde)) + ")") : frueher < 0 ? esc(" · ursprünglich geplant: " + monatLang(kzKeyNr(planEnde))) : ""}</div>
+    </div>`;
+  }
+
+  // Antippen / Ziehen / Pfeiltasten: Monat und Restschuld an der Stelle zeigen (ein Zuhörer für alle Kurven)
+  let kvBereit = false;
+  function kvVerdrahten() {
+    if (kvBereit) return; kvBereit = true;
+    const lies = (f) => { if (!f._kv) f._kv = { d: JSON.parse(f.dataset.kv || "[]"), x0: Number(f.dataset.kvX0), xm: Number(f.dataset.kvXmax), ym: Number(f.dataset.kvYmax) }; return f._kv; };
+    const zeige = (f, n) => {
+      const k = lies(f); if (!k.d.length) return;
+      n = Math.max(k.d[0][0], Math.min(k.d[k.d.length - 1][0], Math.round(n)));
+      let w = k.d[0][1]; for (const [m, v] of k.d) { if (m <= n) w = v; else break; }
+      f._kvN = n;
+      const x = (n - k.x0) / ((k.xm - k.x0) || 1) * 100, y = 6 + (1 - w / k.ym) * 91;
+      const cur = f.querySelector(".eq-kv-cur"), tip = f.querySelector(".eq-kv-tip");
+      cur.hidden = false; cur.style.left = x + "%"; cur.style.top = y + "%";
+      tip.hidden = false; tip.textContent = monatLang(kzKeyNr(n)) + " · " + eur(w);
+      tip.style.left = x + "%"; tip.classList.toggle("links", x > 60);
+    };
+    const ausX = (f, ev) => { const r = f.getBoundingClientRect(), k = lies(f); return k.x0 + (ev.clientX - r.left) / r.width * (k.xm - k.x0); };
+    document.addEventListener("pointerdown", (ev) => { const f = ev.target.closest && ev.target.closest(".eq-kv-feld"); if (f) zeige(f, ausX(f, ev)); });
+    document.addEventListener("pointermove", (ev) => { const f = ev.target.closest && ev.target.closest(".eq-kv-feld"); if (f && (ev.pointerType === "mouse" || ev.buttons)) zeige(f, ausX(f, ev)); });
+    document.addEventListener("keydown", (ev) => {
+      const f = document.activeElement; if (!f || !f.classList || !f.classList.contains("eq-kv-feld")) return;
+      const k = lies(f), schritt = ev.shiftKey ? 12 : 1;
+      if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") { ev.preventDefault(); zeige(f, (f._kvN != null ? f._kvN : k.d[0][0]) + (ev.key === "ArrowRight" ? schritt : -schritt)); }
     });
   }
 
@@ -11383,7 +11673,8 @@
 
     // Plan je Jahr
     const byYear = {};
-    p.rows.forEach(r => {
+    const lauf = kr.start ? kzRaten(kr) : [];
+    (lauf.length ? lauf.map(e => ({ monat: e.key, zins: e.zins, tilgung: e.tilgung, sonder: kzSonderSumme(e), rest: e.rest })) : p.rows).forEach(r => {
       const y = r.monat.slice(0, 4);
       byYear[y] = byYear[y] || { zins: 0, tilgung: 0, sonder: 0, rest: 0 };
       byYear[y].zins += r.zins; byYear[y].tilgung += r.tilgung;
@@ -11391,7 +11682,7 @@
     });
     const dieses = String(new Date().getFullYear());
     const ganz = (n) => Math.round(Number(n) || 0).toLocaleString(LOC);   // in der Tabelle ohne Euro-Zeichen, damit fünf Spalten aufs Handy passen
-    const mitSonder = p.sonderGesamt > 0;
+    const mitSonder = Object.keys(byYear).some(y => byYear[y].sonder > 0);
     const trs = Object.keys(byYear).sort().map(y => {
       const b = byYear[y];
       return `<tr${y === dieses ? ' class="jetzt" aria-current="true"' : ""}><td>${y}${y === dieses ? "<small>heute</small>" : ""}</td><td>${ganz(b.zins)}</td><td>${ganz(b.tilgung)}</td>
@@ -11399,20 +11690,8 @@
     }).join("");
     const zinsQuote = p.zinsGesamt / (k.summe + p.zinsGesamt || 1) * 100;
 
-    const body = `
-      ${zustand}
-      ${rate}
-      ${kreditZahlungenHtml(kr, kstream)}
-      <div class="eq-werte" style="margin-bottom:22px">
-        ${wert(kstream && kstream.istProjekt && !kr.start ? "Darlehenssumme" : "Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
-        ${wert("Getilgt bisher", eur(k.getilgt), prozent(k.anteil, 0) + " von " + eur(k.summe))}
-        ${wert("Zinssatz", prozent(kr.zinsPa || 0, null), "im Jahr")}
-        ${wert("Erste Rate", esc(monatLang(p.startKey)))}
-        ${endeWert(k)}
-        ${wert("Zinsen gesamt", eur(p.zinsGesamt), k.tilgtNie ? "" : "davon noch " + eur(k.zinsOffen) + " offen")}
-        ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
-        ${mitSonder ? wert("Sondertilgung gesamt", eur(p.sonderGesamt), "über die ganze Laufzeit") : ""}
-      </div>
+    const neuesF = kreditNeuesFenster(kr, kstream);
+    const planHtml = `
       <div class="card-t eq-zwischen">Verlauf der Restschuld</div>
       ${kreditKurve(kr, k)}
       <div class="card-t eq-zwischen">Was der Kredit insgesamt kostet</div>
@@ -11425,10 +11704,25 @@
       <div class="tbl-wrap"><table class="tbl eq-plan"><thead><tr><th>Jahr</th><th>Zins</th><th>Tilgung</th>${mitSonder ? "<th>Sonder\u00ADtilgung</th>" : ""}<th>Rest\u00ADschuld</th></tr></thead>
       <tbody>${trs}</tbody></table></div>
       <div class="note" style="margin-top:8px">Alle Beträge in Euro, je Jahr zusammengezählt. Restschuld am Jahresende.</div>
+`;
+    const body = `
+      ${zustand}
+      ${neuesF ? kreditMonatHtml(kr, rate) : rate}
+      <div class="eq-werte" style="margin-bottom:22px">
+        ${wert(kstream && kstream.istProjekt && !kr.start ? "Darlehenssumme" : "Restschuld heute", eur2(k.rest), kr.restStand && kr.restStand.betrag != null && kr.restStand.datum ? "nach Kontostand vom " + dateDE(kr.restStand.datum) : "")}
+        ${wert("Getilgt bisher", eur(k.getilgt), prozent(k.anteil, 0) + " von " + eur(k.summe))}
+        ${wert("Zinssatz", prozent(kr.zinsPa || 0, null), "im Jahr")}
+        ${wert("Erste Rate", esc(monatLang(p.startKey)))}
+        ${endeWert(k)}
+        ${wert("Zinsen gesamt", eur(p.zinsGesamt), k.tilgtNie ? "" : "davon noch " + eur(k.zinsOffen) + " offen")}
+        ${st ? wert("Sondertilgung", eur(st.betrag), sonderText(st)) : ""}
+        ${mitSonder ? wert("Sondertilgung gesamt", eur(p.sonderGesamt), "über die ganze Laufzeit") : ""}
+      </div>
+      ${neuesF ? kreditRasterHtml(kr) + kreditKnoepfeHtml(kr) : planHtml}
       <button type="button" class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet(kr.name || "Kredit", kstream ? kstream.name : "", body);
     sh.querySelector("#efEdit").onclick = () => openCreditEdit(kstream, kr, false);
-    kreditZahlungenVerdrahten(sh, kr);
+    if (neuesF) kreditKarteVerdrahten(sh, kr, planHtml);
   }
 
   function openCashflowSheet(s) {
