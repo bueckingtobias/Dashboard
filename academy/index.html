@@ -1582,6 +1582,22 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
     if (r.status === 409 || /duplicate|unique|23505/i.test(txt)) return "schon";
     throw new Error("HTTP " + r.status);
   }
+  /* ---------- Rechner-Auswertung über Brevo (Double-Opt-in, Supabase-Funktion brevo-auswertung) ---------- */
+  async function auswertungSenden(email) {
+    try {
+      const r = await fetch(SB_URL + "/functions/v1/brevo-auswertung", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY },
+        body: JSON.stringify({
+          email,
+          rechner: window.__estriqTab ? window.__estriqTab() : "objekt",
+          link: window.__estriqLink ? window.__estriqLink() : "https://estriq.com/rechner/",
+          ergebnis: window.__estriqErgebnis || ""
+        })
+      });
+      return r.ok;
+    } catch (e) { return false; }   // Funktion noch nicht eingerichtet: Eintrag in der Warteliste reicht
+  }
   $$("form.wl").forEach(f => {
     f.addEventListener("submit", async e => {
       e.preventDefault();
@@ -1594,7 +1610,11 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
         let notiz = "Academy: " + (f.dataset.notiz || "Seite");
         if (f.dataset.notiz === "Rechner" && window.__acErgebnis) notiz += " · " + window.__acErgebnis();
         const r = await eintragen(wert, notiz.slice(0, 300));
-        msg.textContent = r === "schon" ? "Du bist schon vorgemerkt – wir melden uns zum Kursstart." : "Danke! Du bist vorgemerkt. Zum Kursstart am 01.12. bekommst du deinen Zugang zum Beta-Preis.";
+        const gesendet = f.dataset.notiz === "Rechner" ? await auswertungSenden(wert) : false;
+        msg.textContent = gesendet
+          ? "Fast geschafft: Bitte bestätige deine E-Mail-Adresse. Danach schicken wir dir Auswertung und Vorlage."
+          : f.dataset.notiz === "Rechner" ? "Danke! Deine Adresse ist gespeichert – die Auswertung schicken wir dir in Kürze."
+          : (r === "schon" ? "Du bist schon vorgemerkt – wir melden uns zum Kursstart." : "Danke! Du bist vorgemerkt. Zum Kursstart am 01.12. bekommst du deinen Zugang zum Beta-Preis.");
         msg.className = "wl-msg ok";
         inp.value = "";
       } catch (err) {

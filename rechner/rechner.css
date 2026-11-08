@@ -142,3 +142,22 @@
   .rc-scroll .rc-svg{min-width:560px}
 }
 @media(prefers-reduced-motion:reduce){.rc-ring .fg{transition:none}}
+
+/* ---------- Werkzeugleiste ---------- */
+.rc-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin:-8px auto 18px}
+.rc-tools button{appearance:none;cursor:pointer;min-height:40px;padding:0 14px;border-radius:11px;border:1px solid var(--line-2);background:rgba(17,26,43,.7);color:var(--tx-1);font:500 13px var(--font-b)}
+.rc-tools button:hover{color:var(--tx-0);border-color:rgba(34,197,94,.45)}
+.rc-hint{flex-basis:100%;text-align:center;font-size:12.5px;color:var(--green-2);min-height:16px}
+/* ---------- Druck / PDF: nur der Rechner ---------- */
+@media print{
+  @page{size:A4;margin:10mm}
+  html,body{background:#0B1220!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #landing{position:static!important;overflow:visible!important}
+  #lpNav,.hero,.trust,.sec:not(#rechner),.final,.foot,.sticky,.ac-rcta,.rc-tools,.rc-tabs,.rc-form,.sec-h,.eq-flow,.lmodal{display:none!important}
+  #rechner{padding:0!important}
+  .rc-body{display:block!important}.rc-body.hide{display:none!important}
+  .rc-out{gap:8px}.rc-panel,.rc-kpi,.rc-head{break-inside:avoid}
+  .rc-two,.rc-emp{grid-template-columns:1fr 1fr}
+  .rc-kpis{grid-template-columns:repeat(4,1fr)}
+  .rc-fein{display:block!important}
+}

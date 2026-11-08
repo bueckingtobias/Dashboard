@@ -256,6 +256,27 @@
      ===================================================================== */
   const werte = { objekt: {}, rahmen: {} };
   Object.keys(FELDER).forEach(r => FELDER[r].forEach(f => werte[r][f.id] = f.v));
+  // Rechnung aus dem Link wiederherstellen (#r=<tab>.<base64url JSON>), z. B. aus der Ergebnis-Mail
+  let aktiv = "objekt";
+  try {
+    const m = (location.hash || "").match(/[#&]r=(objekt|rahmen)\.([A-Za-z0-9_-]+)/);
+    if (m) {
+      const json = decodeURIComponent(escape(atob(m[2].replace(/-/g, "+").replace(/_/g, "/"))));
+      const v = JSON.parse(json);
+      FELDER[m[1]].forEach(f => {
+        if (!(f.id in v)) return;
+        if (f.typ) { werte[m[1]][f.id] = String(v[f.id]); return; }
+        const n = Number(v[f.id]); if (isFinite(n)) werte[m[1]][f.id] = clamp(n, f.min, f.max);
+      });
+      aktiv = m[1];
+    }
+  } catch (e) { /* ungültiger Link: Vorgaben bleiben */ }
+  function linkFuer(r) {
+    const json = JSON.stringify(werte[r]);
+    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const basis = location.origin + location.pathname.replace(/academy\/?.*$/, "rechner/");
+    return basis + "#r=" + r + "." + b64;
+  }
 
   function feldHtml(r, f) {
     const id = "rc-" + r + "-" + f.id;
@@ -264,8 +285,8 @@
       return `<label class="rc-f" for="${id}"><span class="rc-l">${f.l}</span><span class="rc-in"><select id="${id}" data-r="${r}" data-f="${f.id}">${opts}</select></span></label>`;
     }
     return `<label class="rc-f" for="${id}"><span class="rc-l">${f.l}</span>
-      <span class="rc-in"><input id="${id}" inputmode="decimal" data-r="${r}" data-f="${f.id}" value="${fmtIn(f, f.v)}"><em>${f.e}</em></span>
-      <input class="rc-sl" type="range" tabindex="-1" aria-hidden="true" data-r="${r}" data-sl="${f.id}" min="${f.min}" max="${f.max}" step="${f.s}" value="${f.v}"></label>`;
+      <span class="rc-in"><input id="${id}" inputmode="decimal" data-r="${r}" data-f="${f.id}" value="${fmtIn(f, werte[r][f.id])}"><em>${f.e}</em></span>
+      <input class="rc-sl" type="range" tabindex="-1" aria-hidden="true" data-r="${r}" data-sl="${f.id}" min="${f.min}" max="${f.max}" step="${f.s}" value="${werte[r][f.id]}"></label>`;
   }
   function fmtIn(f, v) { return f.d ? Number(v).toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: f.d }) : Math.round(v).toLocaleString("de-DE"); }
 
@@ -427,6 +448,7 @@
       <button role="tab" class="on" data-tab="objekt" aria-selected="true"><b>Objekt-Check</b><small>Rechnet sich diese Immobilie?</small></button>
       <button role="tab" data-tab="rahmen" aria-selected="false"><b>Finanzierungsrahmen</b><small>Was kann ich mir leisten?</small></button>
     </div>
+    <div class="rc-tools"><button type="button" data-rc="link">Link zu dieser Rechnung kopieren</button><button type="button" data-rc="pdf">Als PDF sichern</button><span class="rc-hint" aria-live="polite"></span></div>
     <div class="rc-body" data-pane="objekt"><form class="rc-form" novalidate>${formHtml("objekt")}</form><div class="rc-out" id="rcOutObjekt" aria-live="polite"></div></div>
     <div class="rc-body hide" data-pane="rahmen"><form class="rc-form" novalidate>${formHtml("rahmen")}</form><div class="rc-out" id="rcOutRahmen" aria-live="polite"></div></div>
     <p class="rc-fein">Vereinfachte Modellrechnung mit deinen Annahmen. Grunderwerbsteuer Stand 2026 ohne Gewähr. Steuereffekt vereinfacht (Abschreibung, Zinsen, nicht umlagefähige Kosten). Keine Anlage-, Steuer- oder Finanzierungsberatung – Banken und Finanzamt rechnen mit eigenen Werten.</p>`;
@@ -448,11 +470,26 @@
     spaeter(r);
   });
   host.addEventListener("change", e => { const t = e.target; if (t.dataset.f && !t.dataset.sl) { const r = t.dataset.r, f = FELDER[r].find(x => x.id === t.dataset.f); if (!f.typ) { const v = clamp(werte[r][f.id], f.min, f.max); werte[r][f.id] = v; t.value = fmtIn(f, v); } spaeter(r); } });
-  $$(".rc-tabs button", host).forEach(b => b.addEventListener("click", () => {
-    $$(".rc-tabs button", host).forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", x === b); });
-    $$(".rc-body", host).forEach(p => p.classList.toggle("hide", p.dataset.pane !== b.dataset.tab));
-    zeichne(b.dataset.tab);
-  }));
+  function tabSetzen(t) {
+    aktiv = t;
+    $$(".rc-tabs button", host).forEach(x => { const on = x.dataset.tab === t; x.classList.toggle("on", on); x.setAttribute("aria-selected", on); });
+    $$(".rc-body", host).forEach(p => p.classList.toggle("hide", p.dataset.pane !== t));
+    zeichne(t);
+  }
+  $$(".rc-tabs button", host).forEach(b => b.addEventListener("click", () => tabSetzen(b.dataset.tab)));
+  const hint = $(".rc-hint", host);
+  const melden = t => { if (!hint) return; hint.textContent = t; clearTimeout(melden.t); melden.t = setTimeout(() => hint.textContent = "", 3500); };
+  $('[data-rc="link"]', host).addEventListener("click", async () => {
+    const l = linkFuer(aktiv);
+    try { await navigator.clipboard.writeText(l); melden("Link kopiert – damit öffnest du genau diese Rechnung wieder."); }
+    catch (e) { window.prompt("Link zu deiner Rechnung:", l); }
+  });
+  $('[data-rc="pdf"]', host).addEventListener("click", () => { document.documentElement.classList.add("rc-druck"); setTimeout(() => { window.print(); }, 50); });
+  window.addEventListener("afterprint", () => document.documentElement.classList.remove("rc-druck"));
   zeichneObjekt(); zeichneRahmen();
+  if (aktiv !== "objekt") tabSetzen(aktiv);
+  if (/[#&]r=/.test(location.hash || "")) setTimeout(() => host.scrollIntoView({ block: "start" }), 300);
   window.__acErgebnis = () => window.__estriqErgebnis || "";
+  window.__estriqLink = () => linkFuer(aktiv);
+  window.__estriqTab = () => aktiv;
 })();
