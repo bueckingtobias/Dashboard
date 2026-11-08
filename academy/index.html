@@ -579,10 +579,6 @@
   .h1{font-size:36px}
   .cockpit .ck-tile.big .ck-num{font-size:24px}
 }
-@media(max-width:600px){
-  .ac-chip-a{display:none}
-  .ac-chip-b{position:relative;left:auto;bottom:auto;margin-top:12px;display:block}
-}
 @media(prefers-reduced-motion:reduce){
   #landing *,#landing *:before,#landing *:after{animation:none!important;transition:none!important}
   .rv,.up,.ktoast,.pcard{opacity:1!important;transform:none!important}
@@ -748,7 +744,37 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
   .ac-video{height:200px}
   .ac-vtitle{font-size:20px}
 }
+@media(max-width:600px){
+  .ac-chip-a{display:none}
+  .ac-chip-b{position:relative;left:auto;bottom:auto;margin-top:12px;display:block}
+}
 @media(prefers-reduced-motion:reduce){.ac-wf i,.ac-wf2 i{transition:none;transform:none}}
+
+/* ---------- Durchgehender Farbverlauf über die ganze Seite ---------- */
+#landing main{position:relative;isolation:isolate}
+.eq-flow{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;
+  background:
+    radial-gradient(60vw 900px at 92% 0%,rgba(34,197,94,.20),transparent 70%),
+    radial-gradient(55vw 900px at 0% 9%,rgba(59,130,246,.15),transparent 70%),
+    radial-gradient(50vw 1000px at 100% 20%,rgba(34,197,94,.10),transparent 70%),
+    radial-gradient(55vw 1000px at 0% 32%,rgba(59,130,246,.11),transparent 70%),
+    radial-gradient(50vw 1000px at 100% 45%,rgba(34,197,94,.10),transparent 70%),
+    radial-gradient(55vw 1000px at 0% 58%,rgba(59,130,246,.11),transparent 70%),
+    radial-gradient(50vw 1000px at 100% 71%,rgba(34,197,94,.10),transparent 70%),
+    radial-gradient(55vw 1000px at 0% 84%,rgba(59,130,246,.10),transparent 70%),
+    radial-gradient(70vw 900px at 50% 100%,rgba(34,197,94,.14),transparent 70%)}
+.eq-flow:after{content:"";position:absolute;inset:0;
+  background-image:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1px);background-size:28px 28px;
+  -webkit-mask-image:linear-gradient(180deg,#000 0,rgba(0,0,0,.35) 18%,rgba(0,0,0,.15) 60%,rgba(0,0,0,.3) 100%);
+          mask-image:linear-gradient(180deg,#000 0,rgba(0,0,0,.35) 18%,rgba(0,0,0,.15) 60%,rgba(0,0,0,.3) 100%)}
+.hero-bg .glow,.hero-bg .glow2,.hero-bg .dots{display:none}
+.final:before{opacity:.6}
+.trust{background:rgba(11,18,32,.35)}
+
+/* ---------- Cockpit aus der Landing im Abschnitt Kurs + Software ---------- */
+.ac-cockpit .cockpit{transition:transform 1.4s var(--ease)}
+.ac-cockpit.in .cockpit{transform:rotateY(-5deg) rotateX(2deg)}
+.ac-split .ac-cockpit{padding:30px 10px 50px}
 
 </style>
 </head>
@@ -776,6 +802,7 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
 </header>
 
 <main id="top">
+<div class="eq-flow" aria-hidden="true"></div>
 
 <!-- ============================ HELD ============================ -->
 <section class="hero" id="hero">
@@ -897,40 +924,6 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
   </div>
 </section>
 
-<!-- ============================ KURS + SOFTWARE ============================ -->
-<section class="sec" id="software">
-  <div class="lwrap ac-split">
-    <div class="rv">
-      <div class="leb">Learn · Invest · Manage</div>
-      <h2 class="h2">Gelernt wird mit den Werkzeugen, mit denen du danach arbeitest.</h2>
-      <p class="lead">Jede Lektion endet mit einem Knopf in den passenden ESTRIQ-Rechner – mit den Zahlen aus der Lektion. Und wenn du ein echtes Objekt prüfst, schlägt dir die App die passende Lektion vor.</p>
-      <div class="gr-pr">
-        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v18H6"/></svg></span><div><b>Learn</b><span>Kurs und Wissensartikel in der App, ein Login für alles.</span></div></div>
-        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><div><b>Invest</b><span>Projekte anlegen, Stresstest, Bewertung von Rot bis Grün.</span></div></div>
-        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/></svg></span><div><b>Manage</b><span>Mieten, Kredite und Cashflow jeden Monat im Blick.</span></div></div>
-      </div>
-    </div>
-    <div class="ac-app rv d1" aria-hidden="true">
-      <div class="ac-appbar"><i></i><i></i><i></i><span>estriq.com · Tools · Projekt „Wohnung Syke“</span></div>
-      <div class="ac-appin">
-        <div class="ac-apl">
-          <small>Projekt · in Prüfung</small>
-          <b class="ac-apt">Wohnung Syke</b>
-          <div class="ac-apcard"><small>Cashflow nach Plan</small><b class="neg">− 158 € / Monat</b>
-            <div class="ac-skala"><i></i></div><small>Gesamtbewertung: noch im roten Bereich</small></div>
-          <div class="ac-apk"><div><small>Rendite</small><b>5,25 %</b></div><div><small>Faktor</small><b>19,0</b></div><div><small>Eigenkapital</small><b>60.000 €</b></div></div>
-        </div>
-        <div class="ac-apr">
-          <small class="ac-blau">Passt zu diesem Projekt</small>
-          <b>Modul 05 · Lektion 2</b>
-          <div class="ac-mini">▶</div>
-          <span>Was im Monat wirklich bleibt – und welche drei Hebel aus Rot Grün machen.</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- ============================ RECHNER ============================ -->
 <section class="sec" id="rechner">
   <div class="lwrap">
@@ -969,6 +962,278 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
         </form>
         <p class="ac-fein">Vereinfachte Rechnung mit Annahmen (Grunderwerbsteuer Stand 2026, Notar und Grundbuch 2 %). Keine Anlage- oder Finanzierungsberatung.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ KURS + SOFTWARE ============================ -->
+<section class="sec" id="software">
+  <div class="lwrap ac-split">
+    <div class="rv">
+      <div class="leb">Learn · Invest · Manage</div>
+      <h2 class="h2">Gelernt wird mit den Werkzeugen, mit denen du danach arbeitest.</h2>
+      <p class="lead">Jede Lektion endet mit einem Knopf in den passenden ESTRIQ-Rechner – mit den Zahlen aus der Lektion. Und wenn du ein echtes Objekt prüfst, schlägt dir die App die passende Lektion vor.</p>
+      <div class="gr-pr">
+        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v18H6"/></svg></span><div><b>Learn</b><span>Kurs und Wissensartikel in der App, ein Login für alles.</span></div></div>
+        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><div><b>Invest</b><span>Projekte anlegen, Stresstest, Bewertung von Rot bis Grün.</span></div></div>
+        <div class="gr-p"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/></svg></span><div><b>Manage</b><span>Mieten, Kredite und Cashflow jeden Monat im Blick.</span></div></div>
+      </div>
+    </div>
+<div class="hero-vis ac-cockpit rv d1" aria-hidden="true">
+      <div class="stage">
+        <div class="cockpit" id="cockpit">
+          <div class="ck-top"><i></i><i></i><i></i><span class="ck-url">estriq.com</span><span class="ck-pill">August 2026</span></div>
+          <div class="ck-body">
+            <aside class="ck-rail">
+              <i class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10.5h20"/><path d="M6 15h3"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M8 6h8M8 11h2M12 11h2M8 15h2M12 15h2M16 11v4"/></svg></i>
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></i>
+            </aside>
+            <div class="ck-main">
+              <div class="ck-head">
+                <div><span class="ck-eb">Portfolio</span><b>Übersicht</b><small>3 Objekte · 7 Einheiten</small></div>
+              </div>
+              <div class="ck-grid">
+                <div class="ck-tile big">
+                  <span class="ck-lab">Einnahmen / Monat</span>
+                  <b class="ck-num" data-count="8326" data-suffix=" €">0 €</b>
+                  <small>6 von 7 Einheiten vermietet</small>
+                  <svg class="spark" viewBox="0 0 120 40" preserveAspectRatio="none">
+                    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ADE80" stop-opacity=".35"/><stop offset="1" stop-color="#4ADE80" stop-opacity="0"/></linearGradient></defs>
+                    <path class="a" d="M0,30 L15,27 L30,28 L45,22 L60,23 L75,17 L90,15 L105,10 L120,8 L120,40 L0,40 Z"/>
+                    <path class="l" d="M0,30 L15,27 L30,28 L45,22 L60,23 L75,17 L90,15 L105,10 L120,8"/>
+                  </svg>
+                </div>
+                <div class="ck-tile"><span class="ck-lab">Cashflow</span><b class="ck-num green" data-count="1766" data-suffix=" €">0 €</b><small>nach Rate &amp; Kosten</small></div>
+                <div class="ck-tile"><span class="ck-lab">Restschuld</span><b class="ck-num" data-count="939883" data-suffix=" €">0 €</b><small>34 % entschuldet</small></div>
+                <div class="ck-tile"><span class="ck-lab">Bruttorendite Ø</span><b class="ck-num">5,9 %</b><small>3 Objekte</small></div>
+                <div class="ck-tile"><span class="ck-lab">Offene Mieten</span><b class="ck-num amber">1</b><small>Dachgeschoss · 650 €</small></div>
+              </div>
+              <div class="ck-list">
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V9l7-5 7 5v12"/></svg></span><span class="nm">Bergstraße 12<small>5 Einheiten · 4 vermietet</small></span><b>4.180 €</b></div>
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span><span class="nm">Parkallee 8<small>1 Einheit · vermietet</small></span><b>2.940 €</b></div>
+                <div class="ck-row"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span><span class="nm">Seestraße 4<small>1 Einheit · vermietet</small></span><b>1.206 €</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ktoast t1">
+          <span class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span>Miete eingegangen<small>EG links · Familie Müller · 830 €</small></span>
+        </div>
+        <div class="ktoast t2">
+          <span class="tk bl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M15 8h5v5"/></svg></span>
+          <span>Restschuld gesunken<small>−4.760 € getilgt im August</small></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ EIN MONAT (aus der Landing) ============================ -->
+<section class="sec" id="monat">
+  <div class="lwrap">
+    <div class="sec-h rv">
+      <div class="leb">Nach dem Kauf</div>
+      <h2 class="h2">Ein Monat als Vermieter – mit ESTRIQ.</h2>
+      <p class="lead">Vier Momente nach deinem ersten Kauf – und wie sie aussehen, wenn die Zahlen von selbst stimmen. Alles mit den 6 Monaten Premium aus dem Bundle.</p>
+    </div>
+
+    <div class="ltl" id="ltl">
+      <div class="ltl-rail" aria-hidden="true"><i id="tlFill"></i></div>
+
+      <!-- Tag 1 -->
+      <div class="st">
+        <div class="st-date">01<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Zahltag. ESTRIQ fragt nach.</h3>
+          <p>Du öffnest die App – und ESTRIQ legt dir die Mieten vor, die heute fällig sind. Objekt für Objekt,
+            mit Mieter und Sollbetrag. Ein Tipp pro Wohnung, fertig. Was offen bleibt, bleibt sichtbar.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Mietkontrolle beim Anmelden</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Mietkontrolle · August</span><b>Sind diese Mieten da?</b></div><span class="pill">Bergstraße 12</span></div>
+            <div class="ui-list">
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">EG links<small>Familie Müller</small></span><b>830 €</b></div>
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">EG rechts<small>H. Petersen</small></span><b>795 €</b></div>
+              <div class="ui-row" data-tick><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">1. OG rechts<small>M. Schneider</small></span><b>905 €</b></div>
+              <div class="ui-row offen"><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="nm">Dachgeschoss<small>K. Weber</small></span><b>650 €</b><span class="stt">offen</span></div>
+            </div>
+            <div class="ui-foot"><span>Eingegangen im August</span><b>3.180 € von 3.830 €</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 3 -->
+      <div class="st">
+        <div class="st-date">03<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Die Rate ist abgebucht. Der Cashflow steht.</h3>
+          <p>Miete minus Kreditrate minus Bewirtschaftung: ESTRIQ rechnet den ehrlichen Cashflow – nicht die Kaltmiete,
+            die dir mal jemand versprochen hat. Fürs ganze Portfolio und für jedes Objekt einzeln.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Cashflow nach Rate &amp; Kosten</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Cashflow · August</span><b>Was am Monatsende bleibt</b></div><span class="pill gr">Portfolio</span></div>
+            <div class="wf">
+              <div><i class="bar plus" style="--h:100%"></i><span class="lb">Mieten</span><span class="vl">8.326 €</span></div>
+              <div><i class="bar minus" style="--h:65%"></i><span class="lb">Kreditraten</span><span class="vl neg">−5.412 €</span></div>
+              <div><i class="bar minus2" style="--h:14%"></i><span class="lb">Kosten</span><span class="vl neg">−1.148 €</span></div>
+              <div><i class="bar rest" style="--h:21%"></i><span class="lb">Cashflow</span><span class="vl pos">+1.766 €</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 15 -->
+      <div class="st">
+        <div class="st-date">15<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Zwischendurch ein Blick aufs Handy.</h3>
+          <p>Im Café, vor dem Banktermin, auf der Baustelle: Einnahmen, Auslastung, Rendite – jedes Objekt in einer Karte.
+            Farben sagen dir sofort, wo es läuft und wo nicht. ESTRIQ liegt als App auf deinem Home-Bildschirm.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Rendite je Objekt</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard" style="background:transparent;border:none;box-shadow:none;padding:0">
+            <div class="phone">
+              <div class="notch"></div>
+              <div class="scr">
+                <div class="ui-h"><div><span>Portfolio</span><b>Übersicht</b></div><span class="pill">Aug</span></div>
+                <div class="ui-big" data-count="8326" data-suffix=" €">0 €<small>Einnahmen im Monat · 6/7 vermietet</small></div>
+                <div class="ui-list" style="margin-top:14px">
+                  <div class="ob"><div class="t"><span>Bergstraße 12</span><b>4.180 €</b></div><div class="u"><span>4/5</span><span class="ui-bar"><i style="--w:80%"></i></span><span class="pill gr">6,1 %</span></div></div>
+                  <div class="ob"><div class="t"><span>Parkallee 8</span><b>2.940 €</b></div><div class="u"><span>1/1</span><span class="ui-bar"><i style="--w:100%"></i></span><span class="pill gr">5,4 %</span></div></div>
+                  <div class="ob"><div class="t"><span>Seestraße 4</span><b>1.206 €</b></div><div class="u"><span>1/1</span><span class="ui-bar"><i style="--w:100%"></i></span><span class="pill gr">6,6 %</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag 30 -->
+      <div class="st">
+        <div class="st-date">30<small>Aug</small></div>
+        <div class="st-tx">
+          <h3>Monatsabschluss. Dein Vermögen ist gewachsen.</h3>
+          <p>Cashflow plus Tilgung: ESTRIQ zeigt dir, wie viel Vermögen du in diesem Monat aufgebaut hast – und wie weit du
+            bei jedem Kredit schon bist. Die Zahl, wegen der du überhaupt vermietest.</p>
+          <span class="st-kpi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Tilgung &amp; Restschuld</span>
+        </div>
+        <div class="st-vis">
+          <div class="pcard">
+            <div class="ui-h"><div><span>Monatsabschluss · August</span><b>Vermögensaufbau</b></div><span class="pill gr">+6.526 €</span></div>
+            <div class="ui-big" data-count="6526" data-suffix=" €">0 €<small>Cashflow + Tilgung in diesem Monat</small></div>
+            <div class="ui-list" style="margin-top:16px">
+              <div class="ui-row"><span class="nm">Cashflow nach Rate &amp; Kosten</span><b style="color:var(--green-2)">+1.766 €</b></div>
+              <div class="ui-row"><span class="nm">Getilgt im August</span><b style="color:var(--green-2)">+4.760 €</b></div>
+              <div class="ui-row"><span class="nm">Restschuld gesamt<small>Sondertilgung im Dezember geplant: 10.000 €</small></span><b>939.883 €</b></div>
+            </div>
+            <div class="ui-foot"><span>Entschuldet</span><span class="ui-bar" style="margin:0 12px"><i style="--w:34%"></i></span><b>34 %</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FUNKTIONEN (aus der Landing) ============================ -->
+<section class="sec" id="funktionen">
+  <div class="lwrap">
+    <div class="sec-h rv">
+      <div class="leb">6 Monate Premium inklusive</div>
+      <h2 class="h2">Gebaut für Vermieter, die es genau wissen wollen.</h2>
+      <p class="lead">Kein Baukasten, keine Funktionen fürs Prospekt. Jede Ansicht ist an einem echten Bestand entstanden und wird dort jeden Monat benutzt.</p>
+    </div>
+    <div class="bento">
+
+      <article class="bc bc-7 rv">
+        <div>
+          <h3>Jedes Objekt einzeln durchleuchtet.</h3>
+          <p>Bruttorendite, Cashflow nach Kreditrate, eingesetztes Kapital, Auslastung – pro Objekt, pro Monat. Du siehst auf einen Blick, welches Haus dich trägt und welches dich nur beschäftigt.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Vermietung</span><b>Bergstraße 12</b></div><span class="pill">5 Einheiten · Baujahr 1994</span></div>
+          <div class="ui-kv">
+            <div><b class="gr">6,11 %</b><small>Bruttorendite</small></div>
+            <div><b class="gr">1.842 €</b><small>Cashflow nach Rate</small></div>
+            <div><b>4.180 €</b><small>Einnahmen / Monat</small></div>
+            <div><b class="bl">820.000 €</b><small>Investition</small></div>
+          </div>
+          <div class="ui-foot"><span>Vermietet</span><span class="ui-bar" style="margin:0 12px"><i style="--w:80%"></i></span><b>4 / 5</b></div>
+        </div>
+      </article>
+
+      <article class="bc bc-5 rv d1">
+        <div>
+          <h3>Der Jahresblick.</h3>
+          <p>Zwölf Monate auf einen Blick: Einnahmen, Ausreißer, Leerstand. Die Prognose fürs Jahr läuft mit.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Einnahmen 2026</span><b>Jahresprognose</b></div><span class="pill gr">99.912 €</span></div>
+          <div class="jahr" aria-hidden="true">
+            <i style="--h:72%"></i><i style="--h:72%"></i><i style="--h:74%"></i><i style="--h:74%"></i><i style="--h:78%"></i><i style="--h:82%"></i>
+            <i style="--h:86%"></i><i style="--h:88%"></i><i class="lo" style="--h:60%"></i><i class="lo" style="--h:60%"></i><i class="lo" style="--h:62%"></i><i class="lo" style="--h:62%"></i>
+          </div>
+          <div class="jahr-m"><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span></div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv">
+        <div>
+          <h3>Erklärt statt nur angezeigt.</h3>
+          <p>Hinter jeder Kennzahl steckt ein „i“: was sie bedeutet, wie sie gerechnet wird, was ein guter Wert ist.</p>
+        </div>
+        <div class="vis">
+          <div class="ui-h"><div><span>Kennzahl</span><b>Bruttomietrendite</b></div></div>
+          <div class="formel">(Jahreskaltmiete ÷ Investition) × 100</div>
+          <div class="merke">Unter 4 % wird positiver Cashflow schwierig. Ab 6 % wird es interessant.</div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv d1">
+        <div>
+          <h3>Vom Apartment bis zum Mehrfamilienhaus.</h3>
+          <p>Alle Mietobjekte in einem Portfolio – statt in drei Tabellen.</p>
+        </div>
+        <div class="vis arten">
+          <div class="art"><span class="ic a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M10 21v-6h4v6"/></svg></span><span class="nm">Eigentumswohnung<small>Einzelne Wohnung mit einem Mieter</small></span></div>
+          <div class="art"><span class="ic b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg></span><span class="nm">Mehrfamilienhaus<small>Mehrere Einheiten unter einem Dach</small></span></div>
+          <div class="art"><span class="ic c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9l1.5-5h13L20 9M4 9h16M5 9v11h14V9"/><path d="M9.5 20v-6h5v6"/></svg></span><span class="nm">Gewerbeeinheit<small>Laden, Büro oder Praxis</small></span></div>
+        </div>
+      </article>
+
+      <article class="bc bc-4 rv d2">
+        <div>
+          <h3>Elf Rechner. Acht Themen.</h3>
+          <p>Vom Kaufpreisfaktor bis zur Sondertilgung – die Werkzeuge, die du vor dem nächsten Kauf brauchst. Inklusive.</p>
+        </div>
+        <div class="vis chips">
+          <span>Rendite</span><span>Kredit</span><span>Zinseszins</span><span>Sondertilgung</span><span>Kaufnebenkosten</span>
+          <span>Cashflow</span><span>Mieterhöhung</span><span>Kaufpreisfaktor</span><span class="mehr">+ 3 weitere</span>
+        </div>
+      </article>
+
+      <article class="bc bc-12 rv">
+        <div>
+          <h3>Tipps, die du am selben Tag umsetzen kannst.</h3>
+          <p>ESTRIQ schaut in deine Zahlen und schlägt vor, was sich lohnt: eine fehlende Rücklage, eine Sondertilgung, eine Belegung, die noch nicht eingetragen ist. Jeder Tipp bringt einen kleinen Assistenten mit – ein paar Fragen, und es ist erledigt.</p>
+        </div>
+        <div class="vis">
+          <div class="tipp">
+            <div class="th"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1.5 2-1.5 4h-5c0-2-.5-3-1.5-4z"/></svg>Verbesserungstipp</div>
+            <b>Für die Bergstraße 12 ist noch keine Instandhaltungsrücklage hinterlegt.</b>
+            <p>Mit einer Rücklage rechnet ESTRIQ deinen Cashflow realistischer – und du bist beim nächsten Dach nicht überrascht.</p>
+            <span class="tb">Assistent starten <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          </div>
+        </div>
+      </article>
+
     </div>
   </div>
 </section>
@@ -1186,6 +1451,48 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
     rvIO.unobserve(e.target);
   }), { threshold: .12, rootMargin: "0px 0px -6% 0px" });
   $$(".rv", lp).forEach(el => rvIO.observe(el));
+
+
+  /* ---------- Grafiken aus der Landing: Zahlen, Monats-Stationen, Zeitstrahl ---------- */
+  const fmt = n => n.toLocaleString("de-DE");
+  function zaehlen(el) {
+    if (el.dataset.fertig) return;
+    el.dataset.fertig = "1";
+    const ziel = parseInt(el.dataset.count, 10), suffix = el.dataset.suffix || "";
+    const kleiner = el.querySelector("small");
+    const setzen = txt => { if (kleiner) { el.firstChild.nodeValue = txt; } else { el.textContent = txt; } };
+    if (ruhig) { setzen(fmt(ziel) + suffix); return; }
+    const dauer = 1500, t0 = performance.now();
+    const tick = t => { const p = Math.min(1, (t - t0) / dauer), e = 1 - Math.pow(1 - p, 3); setzen(fmt(Math.round(ziel * e)) + suffix); if (p < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+  const zIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    $$("[data-count]", e.target).forEach(zaehlen);
+    zIO.unobserve(e.target);
+  }), { threshold: .2 });
+  $$(".ac-cockpit, .bento .bc", lp).forEach(el => zIO.observe(el));
+  const stIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const st = e.target;
+    st.classList.add("on");
+    $$(".ui-row[data-tick]", st).forEach((r, i) => setTimeout(() => r.classList.add("done"), 500 + i * 420));
+    $$("[data-count]", st).forEach(el => setTimeout(() => zaehlen(el), 250));
+    stIO.unobserve(st);
+  }), { threshold: .35 });
+  $$(".st", lp).forEach(el => stIO.observe(el));
+  const tl = $("#ltl"), tlFill = $("#tlFill");
+  if (tl && tlFill) {
+    let warten = false;
+    const anpassen = () => {
+      warten = false;
+      const r = tl.getBoundingClientRect(), vh = window.innerHeight;
+      const p = Math.max(0, Math.min(1, (vh * .62 - r.top) / r.height));
+      tlFill.style.height = (p * 100).toFixed(1) + "%";
+    };
+    lp.addEventListener("scroll", () => { if (!warten) { warten = true; requestAnimationFrame(anpassen); } }, { passive: true });
+    anpassen();
+  }
 
   /* ---------- Countdown bis 31.12.2026, 23:59:59 (Berlin) – echte Frist ---------- */
   const ENDE = new Date("2026-12-31T23:59:59+01:00").getTime();
