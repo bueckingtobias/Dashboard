@@ -161,3 +161,11 @@
   .rc-kpis{grid-template-columns:repeat(4,1fr)}
   .rc-fein{display:block!important}
 }
+
+.rc-tools .rc-pdfbtn{background:linear-gradient(180deg,rgba(34,197,94,.22),rgba(34,197,94,.1));border-color:rgba(34,197,94,.55);color:var(--tx-0)}
+.rc-tools .rc-pdfbtn b{font-weight:700}
+.rc-tools button:disabled{opacity:.6;cursor:progress}
+.ac-rcta.rc-frei .rc-frei-k{display:grid;gap:10px}
+.ac-rcta.rc-frei .btn{width:100%;justify-content:center}
+.rc-blink{animation:rcBlink 1.6s ease}
+@keyframes rcBlink{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 4px rgba(34,197,94,.45)}}

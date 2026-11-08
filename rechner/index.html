@@ -826,15 +826,15 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
     <div data-estriq-rechner></div>
     <div class="ac-rcta rv">
       <div>
-        <b>Deine Auswertung als PDF – plus Excel-Vorlage</b>
-        <span>Wir schicken dir dein Ergebnis und die Vorlage per E-Mail. In ESTRIQ Premium speicherst du Objekte als Projekt, vergleichst sie und siehst Lage und Vergleichsmiete.</span>
+        <b>Dein Analyse-PDF – kostenlos</b>
+        <span>Bestätige einmal deine E-Mail-Adresse, dann lädst du deine Analyse als PDF herunter – mit Ampel, Stresstest, Prognose, Empfehlungen und allen Annahmen. Den Link zu deiner Rechnung bekommst du zusätzlich per Mail.</span>
       </div>
       <form class="wl ac-wl" data-notiz="Rechner" novalidate>
         <div class="fld">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
           <input type="email" name="email" placeholder="deine@e-mail.de" autocomplete="email" inputmode="email" aria-label="E-Mail-Adresse">
         </div>
-        <button class="btn btn-p" type="submit">Auswertung anfordern</button>
+        <button class="btn btn-p" type="submit">Analyse-PDF freischalten</button>
         <div class="wl-msg" aria-live="polite"></div>
       </form>
     </div>
@@ -1098,7 +1098,7 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
     if (new URLSearchParams(location.search).get("bestaetigt") === "1") {
       const b = document.createElement("div");
       b.className = "ac-danke";
-      b.innerHTML = "<b>Danke, deine E-Mail-Adresse ist bestätigt.</b> Deine Auswertung und die Vorlage sind unterwegs – schau in dein Postfach.";
+      b.innerHTML = "<b>Danke, deine E-Mail-Adresse ist bestätigt.</b> Deine Analyse ist freigeschaltet – unten kannst du dein Analyse-PDF herunterladen. Den Link zu deiner Rechnung bekommst du zusätzlich per Mail.";
       const ziel = $("#rechner .sec-h"); if (ziel) ziel.after(b);
     }
   } catch (e) { /* egal */ }
@@ -1132,7 +1132,7 @@ em.lk{background:rgba(59,130,246,.16);color:var(--blue-2)}
         const r = await eintragen(wert, notiz.slice(0, 300));
         const gesendet = f.dataset.notiz === "Rechner" ? await auswertungSenden(wert) : false;
         msg.textContent = gesendet
-          ? "Fast geschafft: Bitte bestätige deine E-Mail-Adresse. Danach schicken wir dir Auswertung und Vorlage."
+          ? "Fast geschafft: Bitte bestätige deine E-Mail-Adresse. Der Link in der Mail bringt dich zurück zu deiner Rechnung – mit Analyse-PDF zum Herunterladen."
           : f.dataset.notiz === "Rechner" ? "Danke! Deine Adresse ist gespeichert – die Auswertung schicken wir dir in Kürze."
           : (r === "schon" ? "Du bist schon vorgemerkt – wir melden uns zum Kursstart." : "Danke! Du bist vorgemerkt. Zum Kursstart am 01.12. bekommst du deinen Zugang zum Beta-Preis.");
         msg.className = "wl-msg ok";

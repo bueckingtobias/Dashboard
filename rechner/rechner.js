@@ -9,6 +9,7 @@
   "use strict";
   const host = document.querySelector("[data-estriq-rechner]");
   if (!host) return;
+  const BASIS = (document.currentScript && document.currentScript.src || "").replace(/[^/]*$/, "");
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 
@@ -271,12 +272,19 @@
       aktiv = m[1];
     }
   } catch (e) { /* ungültiger Link: Vorgaben bleiben */ }
-  function linkFuer(r) {
+  function linkFuer(r, mail) {
     const json = JSON.stringify(werte[r]);
     const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    const basis = location.origin + location.pathname.replace(/academy\/?.*$/, "rechner/");
-    return basis + "#r=" + r + "." + b64;
+    const basis = location.origin + location.pathname.replace(/academy\/?.*$/, "rechner/").replace(/rechner\/.*$/, "rechner/");
+    return basis + (mail ? "?m=1" : "") + "#r=" + r + "." + b64;
   }
+  // Freischaltung: wer seine Adresse bestätigt hat (oder aus der Mail kommt), wird nicht noch einmal gefragt
+  let frei = false;
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get("bestaetigt") === "1" || q.get("m") === "1") localStorage.setItem("estriq_rechner_frei", "1");
+    frei = localStorage.getItem("estriq_rechner_frei") === "1";
+  } catch (e) { const q = new URLSearchParams(location.search); frei = q.get("bestaetigt") === "1" || q.get("m") === "1"; }
 
   function feldHtml(r, f) {
     const id = "rc-" + r + "-" + f.id;
@@ -448,7 +456,7 @@
       <button role="tab" class="on" data-tab="objekt" aria-selected="true"><b>Objekt-Check</b><small>Rechnet sich diese Immobilie?</small></button>
       <button role="tab" data-tab="rahmen" aria-selected="false"><b>Finanzierungsrahmen</b><small>Was kann ich mir leisten?</small></button>
     </div>
-    <div class="rc-tools"><button type="button" data-rc="link">Link zu dieser Rechnung kopieren</button><button type="button" data-rc="pdf">Als PDF sichern</button><span class="rc-hint" aria-live="polite"></span></div>
+    <div class="rc-tools"><button type="button" data-rc="pdf" class="rc-pdfbtn"><b>Analyse-PDF herunterladen</b></button><button type="button" data-rc="link">Link zu dieser Rechnung kopieren</button><span class="rc-hint" aria-live="polite"></span></div>
     <div class="rc-body" data-pane="objekt"><form class="rc-form" novalidate>${formHtml("objekt")}</form><div class="rc-out" id="rcOutObjekt" aria-live="polite"></div></div>
     <div class="rc-body hide" data-pane="rahmen"><form class="rc-form" novalidate>${formHtml("rahmen")}</form><div class="rc-out" id="rcOutRahmen" aria-live="polite"></div></div>
     <p class="rc-fein">Vereinfachte Modellrechnung mit deinen Annahmen. Grunderwerbsteuer Stand 2026 ohne Gewähr. Steuereffekt vereinfacht (Abschreibung, Zinsen, nicht umlagefähige Kosten). Keine Anlage-, Steuer- oder Finanzierungsberatung – Banken und Finanzamt rechnen mit eigenen Werten.</p>`;
@@ -484,12 +492,38 @@
     try { await navigator.clipboard.writeText(l); melden("Link kopiert – damit öffnest du genau diese Rechnung wieder."); }
     catch (e) { window.prompt("Link zu deiner Rechnung:", l); }
   });
-  $('[data-rc="pdf"]', host).addEventListener("click", () => { document.documentElement.classList.add("rc-druck"); setTimeout(() => { window.print(); }, 50); });
-  window.addEventListener("afterprint", () => document.documentElement.classList.remove("rc-druck"));
+  function skript(src) { return new Promise((ok, f) => { if (src.indexOf("rechner-pdf") > -1 && window.estriqPdf) return ok(); const t = document.createElement("script"); t.src = src; t.onload = ok; t.onerror = f; document.head.appendChild(t); }); }
+  async function pdfLaden(knopf) {
+    const alt = knopf ? knopf.innerHTML : "";
+    if (knopf) { knopf.disabled = true; knopf.textContent = "PDF wird erstellt …"; }
+    try {
+      await skript(BASIS + "rechner-pdf.js");
+      await window.estriqPdf(aktiv, BASIS);
+      melden("Fertig – dein Analyse-PDF ist heruntergeladen.");
+    } catch (e) { melden("Das PDF ließ sich gerade nicht erstellen. Bitte lade die Seite neu und versuch es noch einmal."); }
+    finally { if (knopf) { knopf.disabled = false; knopf.innerHTML = alt; } }
+  }
+  function zurMail() {
+    const ziel = document.querySelector(".ac-rcta");
+    if (ziel) { ziel.scrollIntoView({ behavior: "smooth", block: "center" }); const i = ziel.querySelector("input[type=email]"); if (i) setTimeout(() => i.focus(), 500); ziel.classList.add("rc-blink"); setTimeout(() => ziel.classList.remove("rc-blink"), 1600); }
+    melden("Das Analyse-PDF schalten wir mit deiner E-Mail-Adresse frei – einmal bestätigen, dann jederzeit herunterladen.");
+  }
+  $('[data-rc="pdf"]', host).addEventListener("click", e => frei ? pdfLaden(e.currentTarget) : zurMail());
+  // Kasten unter dem Rechner: nach der Freischaltung PDF statt E-Mail-Formular
+  function kastenFreischalten() {
+    const k = document.querySelector(".ac-rcta"); if (!k) return;
+    k.classList.add("rc-frei");
+    k.innerHTML = '<div><b>Deine Analyse ist freigeschaltet</b><span>Lade jederzeit dein Analyse-PDF herunter – mit Ampel, Stresstest, Prognose, Empfehlungen und allen Annahmen. Änderst du oben Werte, passt sich das PDF an.</span></div>' +
+      '<div class="rc-frei-k"><button type="button" class="btn btn-p rc-frei-pdf">Analyse-PDF herunterladen</button><button type="button" class="btn btn-g rc-frei-link">Link zur Rechnung kopieren</button></div>';
+    k.querySelector(".rc-frei-pdf").addEventListener("click", e => pdfLaden(e.currentTarget));
+    k.querySelector(".rc-frei-link").addEventListener("click", () => $('[data-rc="link"]', host).click());
+  }
+  if (frei) kastenFreischalten();
   zeichneObjekt(); zeichneRahmen();
   if (aktiv !== "objekt") tabSetzen(aktiv);
   if (/[#&]r=/.test(location.hash || "")) setTimeout(() => host.scrollIntoView({ block: "start" }), 300);
   window.__acErgebnis = () => window.__estriqErgebnis || "";
-  window.__estriqLink = () => linkFuer(aktiv);
+  window.__estriqLink = () => linkFuer(aktiv, true);
+  window.ESTRIQ_RECHNER = { objektRechnen, rahmenRechnen, werte, FELDER, GREST, AFA };
   window.__estriqTab = () => aktiv;
 })();
