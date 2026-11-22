@@ -3417,6 +3417,7 @@
         <div class="eq-zustand${ohne || !k.stimmt ? " achtung" : ""}"><div class="eq-zustand-tx">
           <div class="eq-zustand-t">${ohne ? mehrzahl(ohne, "Kostenart hat", "Kostenarten haben") + " noch keinen Betrag" : !k.stimmt ? "Die Verteilung geht nicht auf" : esc(b.satz)}</div>
           <div class="eq-zustand-d">${ohne ? "Trag die Beträge ein, dann stimmt das Ergebnis je Einheit." : !k.stimmt ? eur(Math.abs(k.fehlt)) + " sind nicht verteilt. Öffne die Abrechnung und prüfe Schritt 2." : mehrzahl(posten.length, "Kostenart", "Kostenarten") + " erfasst" + (r.summeNicht > 0 ? ", davon " + eur(r.summeNicht) + " nicht umlagefähig" : "") + "."}</div></div></div>
+        ${s.istProjekt ? "" : nkBalkenHtml(r, b)}
         <div class="eq-werte">
           ${wert("Umlagefähig", eur(r.summeUml), "wird auf die Einheiten verteilt")}
           ${wert("Vorauszahlungen", eur(b.vorausMieter), "der Mieter im Jahr")}
@@ -3437,6 +3438,8 @@
 
     async function zeichne() {
       const posten = await ladeNebenkosten(s._id, jahr);
+      const dc = s.istProjekt ? null : await ladeDokumente(s._id);
+      const belege = (id) => dc && !dc.fehlt ? dc.liste.filter(d => d.nebenkosten_id === id).length : 0;
       if (!body.isConnected) return;
       const r = nkVerteilung(s, posten), k = nkKontrolle(r), b = nkBilanz(r);
       const ohne = posten.filter(p => !(Number(p.betrag) || 0));
@@ -3448,7 +3451,7 @@
         const leer = !(Number(p.betrag) || 0);
         return `<div class="nk-p${p.umlagefaehig === false ? " nicht" : ""}" data-p="${p.id}" role="button" tabindex="0">
           <div class="nk-p-tx"><div class="nk-p-n">${esc(p.art)}</div>
-            <div class="nk-p-m">${esc(nkSchText(p.schluessel))}${p.umlagefaehig === false ? " · nicht umlagefähig, trägst du selbst" : ""}</div></div>
+            <div class="nk-p-m">${esc(nkSchText(p.schluessel))}${p.umlagefaehig === false ? " · nicht umlagefähig, trägst du selbst" : ""}${belege(p.id) ? " · " + mehrzahl(belege(p.id), "Beleg", "Belege") : ""}</div></div>
           ${leer ? `<span class="eq-marke achtung">Betrag fehlt</span>` : `<b>${eur(Number(p.betrag) || 0)}</b>`}</div>`;
       }).join("") : `<div class="eq-leer" style="padding:16px">Noch keine Kostenart für ${jahr} erfasst. Die Vorlage legt die üblichen Kostenarten an – du trägst nur noch die Beträge ein.</div>`;
       const s1 = `
@@ -3494,6 +3497,7 @@
         <div class="eq-zustand"><div class="eq-zustand-tx">
           <div class="eq-zustand-t">${esc(b.satz)}</div>
           <div class="eq-zustand-d">Zeile antippen zeigt die Abrechnung der Einheit.${b.frei ? " Für " + (b.frei === 1 ? "eine freie Einheit" : b.frei + " freie Einheiten") + " gibt es keinen Mieter – diesen Anteil (" + eur(b.anteilLeer) + ") trägst du selbst. ESTRIQ kennt nur den Stand von heute: War die Einheit im Abrechnungsjahr zeitweise vermietet, rechne diesen Teil von Hand ab." : ""}</div></div></div>
+        ${s.istProjekt ? "" : nkBalkenHtml(r, b)}
         <div class="eq-nk-tab">
           <div class="eq-nk-kopf eq-nk-vier"><div>Einheit</div><div>Anteil</div><div>Vorauszahlung</div><div>Ergebnis</div></div>
           ${r.zeilen.map((z, i) => {
@@ -3596,8 +3600,20 @@
         [{ v: "1", t: "ja – wird auf die Mieter verteilt" }, { v: "0", t: "nein – trägst du selbst" }],
         { hinweis: "Instandhaltung, Verwaltung und Rücklagen sind nicht umlagefähig." })}
       ${efArea("Notiz", "notiz", p ? (p.notiz || "") : "")}
+      ${p && !s.istProjekt ? `<div id="dokNk"></div>` : ""}
       ${efAktionen({ loeschen: p ? "Kostenart löschen" : null })}`;
     const sheet = openSheet(p ? "Kostenart bearbeiten" : "Kostenart erfassen", jahr + " · " + s.name, body);
+    if (p && !s.istProjekt) ladeDokumente(s._id).then(c => {
+      const host = sheet.querySelector("#dokNk"); if (!host || !host.isConnected) return;
+      if (c.fehlt) { host.remove(); return; }
+      const meine = c.liste.filter(d => d.nebenkosten_id === p.id);
+      const zurueck = () => { const s2 = objektMitId(s._id) || s; openNkPosten(s2, jahr, p); };
+      host.innerHTML = `${efTitel("Rechnungen und Belege")}
+        ${meine.length ? `<div class="eq-dok-liste">${meine.map(d => dokZeile(s, d, c, { ohneKostenart: true })).join("")}</div>` : `<div class="note">Noch kein Beleg zu dieser Kostenart.</div>`}
+        <button type="button" class="add-btn" id="dokNkNeu" style="margin-top:8px">+ Rechnung ablegen</button>`;
+      dokZeilenVerdrahten(host, s, c, zurueck);
+      host.querySelector("#dokNkNeu").onclick = () => openDokument(s, null, { art: "rechnung", jahr, nebenkosten_id: p.id, titel: "Rechnung " + p.art }, zurueck);
+    });
     const bauen = (w) => ({
       art: text(w.art) || "Kostenart",
       betrag: zahl(w.betrag) || 0,
@@ -7455,11 +7471,12 @@
     mieterstrom: (s) => !s.istProjekt && modulAn(s, "mieterstrom") ? mieterstromKarte(s) : null,
     module: (s) => modulLeiste(s),
     mietraster: (s) => eqMietrasterKarte(s),   // FABLE-D4
-    nebenkosten: (s) => nebenkostenKarte(s)
+    nebenkosten: (s) => nebenkostenKarte(s),
+    dokumente: (s) => dokumenteKarte(s)
   };
   // Feste Reihenfolge der Objektseite. Der Baustein „mieten" (Karte Offene Mieten) steht hier nicht:
   // Auf der Objektseite bestätigt man den Eingang direkt in der Einheitenliste.
-  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "mietraster", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "mieterstrom", "nebenkosten", "module"];
+  const OBJEKT_REIHENFOLGE = ["kopf", "kennzahlen", "einheiten", "mietraster", "zusammensetzung", "ruecklage", "finanzierung", "handwerker", "zeiten", "mieterstrom", "nebenkosten", "dokumente", "module"];
 
   // Setzt eine Seite aus Bausteinen zusammen
   function objektSeite(host, s, reihenfolge) {
@@ -10344,6 +10361,9 @@
     </div>`;
   }
   const zahlKwh = (v) => Math.round(Number(v) || 0).toLocaleString(LOC) + " kWh";
+  // Darstellung im Mieterstrom: Stromfluss oder Verbrauch (Ring), im Gerät gemerkt
+  const msAnsicht = () => { try { return localStorage.getItem("estriq_ms_ansicht") === "ring" ? "ring" : "fluss"; } catch (_) { return "fluss"; } };
+  const msAnsichtSetzen = (a) => { try { localStorage.setItem("estriq_ms_ansicht", a); } catch (_) {} };
   // Kurztext einer Ablesung: welche Zähler abgelesen sind
   function msAbText(s, ms, a) {
     const t = [];
@@ -10398,8 +10418,10 @@
       v.innerHTML = `
         <div class="eq-ms-held"><div><span>Ergebnis im Monat</span><b class="${r.monat < 0 ? "minus" : ""}">${r.monat < 0 ? "−" : "+"}${eur(Math.abs(r.monat))}</b><small>fließt in den Cashflow</small></div>
           <div><span>Solaranteil</span><b>${Math.round(r.q * 100)} %</b><small>des Stroms im Haus kommt vom Dach</small></div></div>
-        ${msFlussHtml(s, r)}
-        <div class="eq-fl-leg"><span><i class="solar"></i>Solarstrom</span><span><i class="netz"></i>Netzstrom</span></div>
+        <div class="eq-ms-ansicht"><div class="eq-w2-seg" role="group" aria-label="Darstellung">
+          <button type="button" data-ms-ansicht="fluss" aria-pressed="${msAnsicht() === "fluss"}">Stromfluss</button>
+          <button type="button" data-ms-ansicht="ring" aria-pressed="${msAnsicht() === "ring"}">Verbrauch</button></div></div>
+        ${msAnsicht() === "ring" ? msRingHtml(s, r) : msFlussHtml(s, r) + `<div class="eq-fl-leg"><span><i class="solar"></i>Solarstrom</span><span><i class="netz"></i>Netzstrom</span></div>`}
         <div class="card-t eq-zwischen">Kennzahlen</div>
         <div class="eq-werte">
           ${wert("Mischpreis Beschaffung", ct(r.misch), "je kWh: Netz und Solar gemischt")}
@@ -10430,6 +10452,8 @@
         ${r.stellen.some(y => y.umlegen) && r.z.ist ? `<button type="button" class="eq-btn zweit" id="msNk" style="margin-top:10px;width:100%">In die Nebenkostenabrechnung übernehmen</button>` : ""}` : ""}
         ${(ms.ablesungen || []).length ? `<div class="card-t eq-zwischen">Ablesungen</div><div class="eq-ms-ab">${(ms.ablesungen || []).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(a => `<button type="button" class="eq-ms-abz" data-ms-ab="${esc(a.id)}"><b>${esc(datumKurz(a.datum))}</b><span>${msAbText(s, ms, a).split(" · ").map(t => `<i class="eq-ms-abt">${esc(t)}</i>`).join(" · ")}</span></button>`).join("")}</div>` : ""}`;
       const nk = v.querySelector("#msNk"); if (nk) nk.onclick = () => openMsNebenkosten(s);
+      v.querySelectorAll("[data-ms-ansicht]").forEach(b => b.onclick = () => { msAnsichtSetzen(b.dataset.msAnsicht); zeichne(); });
+      eqRingVerdrahten(v);
       v.querySelectorAll("[data-ms-ab]").forEach(b => b.onclick = () => openAblesung(s, (ms.ablesungen || []).find(a => a.id === b.dataset.msAb)));
       v.querySelectorAll(".eq-fl-lab[data-fl]").forEach(b => b.onclick = () => {
         const z = v.querySelector(`[data-ms-wg="${CSS.escape(b.dataset.fl)}"]`); if (z) { z.scrollIntoView({ block: "center", behavior: "smooth" }); z.classList.add("blink"); setTimeout(() => z.classList.remove("blink"), 1200); }
@@ -10750,6 +10774,339 @@
   }
   IC.sun = '<circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
   IC.clock = '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  /* ================= DOKUMENTE (v=89) ================= */
+  // Rechnungen, Mietverträge und andere Belege je Objekt. Die Datei liegt im privaten Speicherordner „dokumente“
+  // unter <Objekt-Kennung>/<Zufall>-<Dateiname>, die Angaben dazu in der Tabelle dokumente (16-dokumente.txt).
+  // Geöffnet wird über einen zeitlich begrenzten Link (eine Stunde) – die Dateien sind nie öffentlich.
+  const DOK_ARTEN = [["rechnung", "Rechnung", "Rechnungen"], ["mietvertrag", "Mietvertrag", "Mietverträge"], ["sonstiges", "Sonstiges", "Sonstiges"]];
+  const DOK_MAX = 15 * 1024 * 1024;
+  const DOK_FEHLT = "Für Dokumente fehlt noch die Datenbank. Führ dafür 16-dokumente.txt im SQL-Editor aus.";
+  const DOK_LINK_S = 3600;
+  const dokCache = {};
+  const dokArt = (k) => (DOK_ARTEN.find(a => a[0] === k) || DOK_ARTEN[2]);
+  const dokGroesse = (b) => !(b > 0) ? "" : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)).toLocaleString(LOC) + " KB" : (Math.round(b / 1024 / 1024 * 10) / 10).toLocaleString(LOC) + " MB";
+  const dokFehltTabelle = (e) => /dokumente|schema cache|does not exist|PGRST205|42P01/i.test(((e && e.message) || "") + " " + ((e && e.code) || ""));
+  function dokTyp(d) {
+    const m = String(d.mime || ""), n = String(d.dateiname || d.pfad || "").toLowerCase();
+    if (m === "application/pdf" || /\.pdf$/.test(n)) return "PDF";
+    if (/^image\//.test(m) || /\.(jpe?g|png|heic|heif|webp)$/.test(n)) return "Bild";
+    if (/word|\.docx?$/.test(m + n)) return "Word";
+    if (/excel|sheet|\.xlsx?$/.test(m + n)) return "Excel";
+    return "Datei";
+  }
+  // Dateiname für den Speicherpfad: nur Buchstaben, Ziffern, Punkt, Minus
+  function dokSicher(name) {
+    const n = String(name || "datei").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss")
+      .replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+    return (n || "datei").slice(-80);
+  }
+  const dokZufall = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
+  async function ladeDokumente(objektId, neu) {
+    const c = dokCache[objektId];
+    if (!neu && c && Date.now() - c.zeit < 50 * 60e3) return c;
+    try {
+      const { data, error } = await window.sb.from("dokumente").select("*").eq("objekt_id", objektId).order("erstellt_am", { ascending: false });
+      if (error) return (dokCache[objektId] = { liste: [], urls: {}, nk: {}, zeit: Date.now(), fehlt: dokFehltTabelle(error), fehler: dokFehltTabelle(error) ? null : error });
+      const liste = data || [], urls = {}, nk = {};
+      if (liste.length) {
+        try {
+          const { data: su } = await window.sb.storage.from("dokumente").createSignedUrls(liste.map(d => d.pfad), DOK_LINK_S);
+          (su || []).forEach(x => { if (x && x.signedUrl && x.path) urls[x.path] = x.signedUrl; });
+        } catch (_) {}
+        const ids = [...new Set(liste.map(d => d.nebenkosten_id).filter(Boolean))];
+        if (ids.length) {
+          try {
+            const { data: nkD } = await window.sb.from("nebenkosten").select("id, art, jahr").in("id", ids);
+            (nkD || []).forEach(n => { nk[n.id] = n; });
+          } catch (_) {}
+        }
+      }
+      return (dokCache[objektId] = { liste, urls, nk, zeit: Date.now() });
+    } catch (e) { return { liste: [], urls: {}, nk: {}, zeit: 0, fehler: e }; }
+  }
+  const dokNeuLaden = (objektId) => { delete dokCache[objektId]; };
+
+  // Öffnen: mit frischem Link sofort, sonst erst Link holen. Das leere Fenster entsteht vorher,
+  // damit Safari am iPhone es nicht als Werbefenster blockiert.
+  function dokOeffnen(objektId, d) {
+    const c = dokCache[objektId];
+    const url = c && Date.now() - c.zeit < 50 * 60e3 ? c.urls[d.pfad] : null;
+    if (url) { window.open(url, "_blank", "noopener"); return; }
+    const w = window.open("", "_blank");
+    window.sb.storage.from("dokumente").createSignedUrl(d.pfad, DOK_LINK_S).then(({ data, error }) => {
+      if (error || !data || !data.signedUrl) { if (w) w.close(); showToast("Die Datei ließ sich nicht öffnen. Bitte versuch es noch einmal."); return; }
+      if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
+    }).catch(() => { if (w) w.close(); showToast("Die Datei ließ sich nicht öffnen. Bitte versuch es noch einmal."); });
+  }
+
+  // Zeile einer Liste: Typ, Titel, Angaben, Knopf „Öffnen“; die Zeile selbst öffnet die Angaben
+  function dokZeile(s, d, c, opt) {
+    opt = opt || {};
+    const u = d.einheit_id ? (s.einheiten || []).find(x => x._id === d.einheit_id) : null;
+    const nk = d.nebenkosten_id && c.nk ? c.nk[d.nebenkosten_id] : null;
+    const teile = [opt.ohneArt ? "" : dokArt(d.art)[1],
+      d.art === "rechnung" && d.jahr && !(d.datum && String(d.datum).slice(0, 4) === String(d.jahr)) ? "für " + d.jahr : "",
+      d.datum ? datumKurz(d.datum) : "", d.betrag != null && d.betrag !== "" ? eur(Number(d.betrag)) : "",
+      u ? (u.wohnung || "Einheit") + (u.mieter ? " · " + u.mieter : "") : "", nk && !opt.ohneKostenart ? nk.art : ""].filter(Boolean);
+    const url = c.urls && c.urls[d.pfad];
+    return `<div class="eq-dok-z" data-dok="${esc(d.id)}" role="button" tabindex="0">
+      <span class="eq-dok-typ" data-typ="${esc(dokTyp(d))}">${esc(dokTyp(d))}</span>
+      <span class="eq-dok-tx"><b>${esc(d.titel)}</b><small>${esc(teile.join(" · ") || dokGroesse(d.groesse))}</small></span>
+      <a class="eq-dok-auf" ${url ? `href="${esc(url)}" target="_blank" rel="noopener"` : `href="#"`} data-dok-auf="${esc(d.id)}" aria-label="${esc(d.titel + " öffnen")}">Öffnen</a>
+    </div>`;
+  }
+  function dokZeilenVerdrahten(host, s, c, nachher) {
+    host.querySelectorAll("[data-dok-auf]").forEach(a => a.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const d = c.liste.find(x => x.id === a.dataset.dokAuf); if (!d) return;
+      if (a.getAttribute("href") === "#" || Date.now() - c.zeit > 50 * 60e3) { e.preventDefault(); dokOeffnen(s._id, d); }
+    }));
+    host.querySelectorAll("[data-dok]").forEach(z => {
+      const tun = () => { const d = c.liste.find(x => x.id === z.dataset.dok); if (d) openDokument(s, d, null, nachher); };
+      z.onclick = (e) => { if (!e.target.closest("a")) tun(); };
+      z.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === z && !e.repeat) { e.preventDefault(); tun(); } };
+    });
+  }
+
+  // Karte auf der Objektseite
+  function dokumenteKarte(s) {
+    if (s.istProjekt) return null;
+    const karte = el(`<div class="card eq-dok">
+      <div class="card-h"><div><div class="card-t">Dokumente</div><div class="card-s">Rechnungen, Mietverträge und andere Belege</div></div>
+        <button type="button" class="add-btn" id="dokNeu">+ Dokument</button></div>
+      <div class="card-b" id="dokInhalt"><div class="note">Wird geladen…</div></div></div>`);
+    let filter = "alle", alle = false;
+    karte.querySelector("#dokNeu").onclick = () => openDokument(s, null, {});
+    const zeichne = (c) => {
+      const v = karte.querySelector("#dokInhalt"); if (!v) return;
+      if (c.fehlt) { v.innerHTML = `<div class="note">${esc(DOK_FEHLT)}</div>`; karte.querySelector("#dokNeu").hidden = true; return; }
+      if (c.fehler) { v.innerHTML = `<div class="note">Die Dokumente ließen sich gerade nicht laden. Lade die Seite neu.</div>`; return; }
+      if (!c.liste.length) {
+        v.innerHTML = `<div class="eq-leer"><div>Noch keine Dokumente. Leg Rechnungen und Mietverträge hier ab – sie liegen geschützt, nur deine Firma sieht sie.</div>
+          <div><button type="button" class="eq-btn" id="dokErstes">Dokument hochladen</button></div></div>`;
+        v.querySelector("#dokErstes").onclick = () => openDokument(s, null, {});
+        return;
+      }
+      const zahl = (k) => c.liste.filter(d => d.art === k).length;
+      const gefiltert = c.liste.filter(d => filter === "alle" || d.art === filter);
+      const zeigen = alle ? gefiltert : gefiltert.slice(0, 6);
+      v.innerHTML = `
+        <div class="eq-w2-chips eq-dok-f" role="group" aria-label="Dokumente filtern">
+          <button type="button" class="eq-wl-chip" data-dok-f="alle" aria-pressed="${filter === "alle"}">Alle ${c.liste.length}</button>
+          ${DOK_ARTEN.filter(a => zahl(a[0])).map(a => `<button type="button" class="eq-wl-chip" data-dok-f="${a[0]}" aria-pressed="${filter === a[0]}">${esc(a[2])} ${zahl(a[0])}</button>`).join("")}
+        </div>
+        <div class="eq-dok-liste">${zeigen.map(d => dokZeile(s, d, c, { ohneArt: filter !== "alle" })).join("") || `<div class="note">Keine Dokumente in dieser Auswahl.</div>`}</div>
+        ${gefiltert.length > zeigen.length ? `<button type="button" class="eq-btn zweit eq-breit" id="dokAlle">Alle ${gefiltert.length} zeigen</button>` : ""}`;
+      v.querySelectorAll("[data-dok-f]").forEach(b => b.onclick = () => { filter = b.dataset.dokF; alle = false; zeichne(c); });
+      const a = v.querySelector("#dokAlle"); if (a) a.onclick = () => { alle = true; zeichne(c); };
+      dokZeilenVerdrahten(v, s, c);
+    };
+    ladeDokumente(s._id).then(zeichne);
+    return karte;
+  }
+
+  // Dokument hochladen (d = null) oder seine Angaben ändern. vor = Vorbelegung { art, einheit_id, nebenkosten_id, jahr }.
+  // nachher: Funktion, die nach dem Speichern oder Löschen läuft (z. B. zurück ins Fenster der Einheit).
+  function openDokument(s, d, vor, nachher) {
+    vor = vor || {};
+    const art0 = d ? d.art : (vor.art || "rechnung");
+    const jahr0 = d ? d.jahr : (vor.jahr || (art0 === "rechnung" ? new Date().getFullYear() : null));
+    const einheiten = s.einheiten || [];
+    const body = `
+      ${d ? `<div class="eq-dok-datei"><span class="eq-dok-typ" data-typ="${esc(dokTyp(d))}">${esc(dokTyp(d))}</span><span class="eq-dok-tx"><b>${esc(d.dateiname || "Datei")}</b><small>${esc([dokGroesse(d.groesse), "hochgeladen am " + datumKurz(String(d.erstellt_am).slice(0, 10))].filter(Boolean).join(" · "))}</small></span>
+        <button type="button" class="add-btn" id="dokAuf">Öffnen</button></div>`
+      : `<div class="ef-row eq-dok-wahl">
+          <span class="ef-l">Datei <span class="ef-req">*</span></span>
+          <label class="eq-btn zweit eq-dok-knopf" for="dokDatei">Datei auswählen</label>
+          <input type="file" id="dokDatei" class="eq-dok-input" accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,.xls,.xlsx,.txt">
+          <div class="ef-h" id="dokGewaehlt">PDF, Foto, Word oder Excel – höchstens 15 MB. Am iPhone geht auch „Dokumente scannen“.</div>
+        </div>`}
+      ${efSel("Art", "art", art0, DOK_ARTEN.map(a => ({ v: a[0], t: a[1] })))}
+      ${ef("Titel", "titel", d ? d.titel : (vor.titel || ""), "text", { platzhalter: "z. B. Rechnung Heizungswartung", hinweis: "Leer lassen: Dann gilt der Dateiname." })}
+      ${efSel("Einheit", "einheit_id", d ? (d.einheit_id || "") : (vor.einheit_id || ""), [{ v: "", t: "ganzes Objekt" }].concat(einheiten.map(u => ({ v: u._id, t: (u.wohnung || "Einheit") + (u.mieter ? " · " + u.mieter : "") }))),
+        { hinweis: "Beim Mietvertrag die Wohnung wählen – dann steht er auch im Fenster der Einheit." })}
+      ${ef("Datum", "datum", d ? (d.datum || "") : "", "date", { hinweis: "Rechnungsdatum oder Datum der Unterschrift" })}
+      <div data-dok-nur="rechnung">
+        ${ef("Betrag", "betrag", d && d.betrag != null ? d.betrag : "", "number", { minus: true, einheit: "€" })}
+        ${ef("Für das Jahr", "jahr", jahr0 || "", "number", { step: "1", min: 1900, max: 2200, hinweis: "Abrechnungsjahr der Nebenkosten" })}
+        <div id="dokNkHost"></div>
+      </div>
+      ${efArea("Notiz", "notiz", d ? (d.notiz || "") : "")}
+      <div class="note">Die Datei liegt in einem geschützten Speicher. Nur Personen deiner Firma können sie öffnen.</div>
+      ${efAktionen({ loeschen: d ? "Dokument löschen" : null })}`;
+    const sheet = openSheet(d ? "Dokument" : "Dokument hochladen", nameOhneBruch(s.name), body);
+    const artFeld = sheet.querySelector('[data-f="art"]'), jahrFeld = sheet.querySelector('[data-f="jahr"]'), titelFeld = sheet.querySelector('[data-f="titel"]');
+    const nurRechnung = () => { sheet.querySelectorAll("[data-dok-nur]").forEach(x => { x.hidden = artFeld.value !== x.dataset.dokNur; }); };
+    artFeld.addEventListener("change", () => { nurRechnung(); if (artFeld.value === "rechnung" && !jahrFeld.value) jahrFeld.value = new Date().getFullYear(); });
+    nurRechnung();
+    // Kostenart der Nebenkosten des gewählten Jahres (freiwillig)
+    let nkWahl = d ? (d.nebenkosten_id || "") : (vor.nebenkosten_id || "");
+    const nkZeichnen = async () => {
+      const host = sheet.querySelector("#dokNkHost"); if (!host) return;
+      const j = Math.round(Number(jahrFeld.value));
+      if (!(j > 1900) || s.istProjekt || istUS()) { host.innerHTML = ""; return; }
+      const posten = await ladeNebenkosten(s._id, j);
+      if (!host.isConnected) return;
+      const alt = host.querySelector("select"); if (alt) nkWahl = alt.value;
+      host.innerHTML = posten.length ? efSel("Kostenart der Nebenkosten", "nebenkosten_id", nkWahl, [{ v: "", t: "keine" }].concat(posten.map(p => ({ v: p.id, t: p.art }))),
+        { hinweis: "Dann steht die Rechnung auch bei dieser Kostenart in der Abrechnung " + j + "." })
+        : `<div class="ef-h">Für ${j} gibt es noch keine Kostenarten in den Nebenkosten.</div>`;
+    };
+    jahrFeld.addEventListener("change", nkZeichnen); nkZeichnen();
+    const datei = sheet.querySelector("#dokDatei");
+    if (datei) datei.addEventListener("change", () => {
+      const f = datei.files && datei.files[0], h = sheet.querySelector("#dokGewaehlt");
+      if (!f) return;
+      h.textContent = f.name + " · " + dokGroesse(f.size) + (f.size > DOK_MAX ? " – zu groß, höchstens 15 MB" : "");
+      h.classList.toggle("bad", f.size > DOK_MAX);
+      sheet.querySelector(".eq-dok-knopf").textContent = "Andere Datei wählen";
+      if (!titelFeld.value.trim()) titelFeld.value = f.name.replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/[_]+/g, " ").slice(0, 200);
+    });
+    const auf = sheet.querySelector("#dokAuf"); if (auf) auf.onclick = () => dokOeffnen(s._id, d);
+    const fertig = (meldung) => () => { showToast(meldung); if (nachher) nachher(); };
+    efBind(sheet, async (w) => {
+      const art = w.art, rechnung = art === "rechnung";
+      const felder = {
+        art, titel: (text(w.titel) || (d ? d.titel : "") || (datei && datei.files && datei.files[0] ? datei.files[0].name.replace(/\.[A-Za-z0-9]{1,5}$/, "") : "") || "Dokument").slice(0, 200),
+        einheit_id: w.einheit_id || null, datum: w.datum || null,
+        betrag: rechnung ? zahl(w.betrag) : null,
+        jahr: rechnung && Math.round(Number(w.jahr)) > 1900 ? Math.round(Number(w.jahr)) : (w.datum && rechnung ? Number(String(w.datum).slice(0, 4)) : null),
+        nebenkosten_id: rechnung && w.nebenkosten_id ? w.nebenkosten_id : null,
+        notiz: text(w.notiz) || null
+      };
+      if (d) {
+        const { error } = await window.sb.from("dokumente").update(felder).eq("id", d.id);
+        if (error) throw dokFehltTabelle(error) ? Object.assign(new Error("fehlt"), { eqText: DOK_FEHLT }) : error;
+      } else {
+        const f = datei && datei.files && datei.files[0];
+        if (!f) throw Object.assign(new Error("datei"), { eqText: "Bitte wähl eine Datei aus." });
+        if (f.size > DOK_MAX) throw Object.assign(new Error("gross"), { eqText: "Die Datei ist größer als 15 MB. Verkleinere sie (z. B. als PDF speichern) und versuch es noch einmal." });
+        const pfad = s._id + "/" + dokZufall() + "-" + dokSicher(f.name);
+        const { error: e1 } = await window.sb.storage.from("dokumente").upload(pfad, f, { contentType: f.type || "application/octet-stream", upsert: false });
+        if (e1) {
+          const m = String(e1.message || e1.error || "");
+          if (/bucket.*not.*found|not found/i.test(m)) throw Object.assign(new Error("fehlt"), { eqText: DOK_FEHLT });
+          if (/mime|type/i.test(m)) throw Object.assign(new Error("typ"), { eqText: "Diese Dateiart geht nicht. Erlaubt sind PDF, Fotos, Word, Excel und Text." });
+          if (/size|large|exceed/i.test(m)) throw Object.assign(new Error("gross"), { eqText: "Die Datei ist zu groß (höchstens 15 MB)." });
+          throw e1;
+        }
+        const { error: e2 } = await window.sb.from("dokumente").insert({ ...felder, objekt_id: s._id, pfad, dateiname: f.name, mime: f.type || null, groesse: f.size });
+        if (e2) {
+          try { await window.sb.storage.from("dokumente").remove([pfad]); } catch (_) {}
+          throw dokFehltTabelle(e2) ? Object.assign(new Error("fehlt"), { eqText: DOK_FEHLT }) : e2;
+        }
+      }
+      dokNeuLaden(s._id);
+    }, d ? async () => {
+      const { error } = await window.sb.from("dokumente").delete().eq("id", d.id);
+      if (error) throw error;
+      try { await window.sb.storage.from("dokumente").remove([d.pfad]); } catch (_) {}
+      dokNeuLaden(s._id);
+    } : null, "Dokument wirklich löschen?", nachher ? fertig("Gespeichert.") : null, nachher ? fertig("Gelöscht.") : null);
+  }
+
+  // Block im Fenster der Einheit: Mietvertrag und andere Dokumente dieser Wohnung
+  function dokEinheitFuellen(sh, s, u) {
+    const host = sh.querySelector("#dokEinheit"); if (!host || s.istProjekt) return;
+    const zurueck = () => { const s2 = objektMitId(s._id) || s; const u2 = (s2.einheiten || []).find(x => x._id === u._id) || u; openUnitSheet(s2, u2, {}); };
+    ladeDokumente(s._id).then(c => {
+      if (!host.isConnected || c.fehlt) { if (host.isConnected) host.remove(); return; }
+      const meine = c.liste.filter(d => d.einheit_id === u._id);
+      const mv = meine.filter(d => d.art === "mietvertrag");
+      host.innerHTML = `<div class="card-t" style="font-size:14px;margin:20px 0 6px">Dokumente</div>
+        ${meine.length ? `<div class="eq-dok-liste">${meine.map(d => dokZeile(s, d, c, { ohneArt: false })).join("")}</div>` : `<div class="note">${mv.length ? "" : "Noch kein Mietvertrag abgelegt."}</div>`}
+        <button type="button" class="add-btn" id="dokEinheitNeu" style="margin-top:8px">${mv.length ? "+ Dokument" : "+ Mietvertrag ablegen"}</button>`;
+      dokZeilenVerdrahten(host, s, c, zurueck);
+      host.querySelector("#dokEinheitNeu").onclick = () => openDokument(s, null, { art: mv.length ? "sonstiges" : "mietvertrag", einheit_id: u._id }, zurueck);
+    });
+  }
+
+  /* ================= GRAFIKEN (v=89) ================= */
+  // Ring (ohne Mitte) mit Legende. segs: [{ id, l, v, sub, farbe, gruppe }]. Antippen hebt Teil und Zeile hervor.
+  function eqRingHtml(segs, opt) {
+    opt = opt || {};
+    const summe = segs.reduce((a, x) => a + Math.max(0, x.v), 0);
+    if (!(summe > 0)) return `<div class="note">${esc(opt.leer || "Noch keine Werte.")}</div>`;
+    const R = 80, U = 2 * Math.PI * R, luecke = segs.length > 1 ? 2.2 : 0;
+    let pos = 0;
+    const boegen = segs.map((x, i) => {
+      const l = Math.max(0, x.v) / summe * U, lang = Math.max(0.6, l - luecke);
+      const t = `<circle class="eq-ring-s" data-ring="${i}" cx="100" cy="100" r="${R}" style="stroke:${x.farbe}" stroke-dasharray="${lang.toFixed(2)} ${(U - lang).toFixed(2)}" stroke-dashoffset="${(-pos).toFixed(2)}"><title>${esc(x.l + ": " + (opt.wert ? opt.wert(x.v) : x.v) + " · " + Math.round(x.v / summe * 100) + " %")}</title></circle>`;
+      pos += l; return t;
+    }).join("");
+    const gruppen = [];
+    segs.forEach((x, i) => { const g = x.gruppe || ""; let gr = gruppen.find(y => y.g === g); if (!gr) gruppen.push(gr = { g, z: [] }); gr.z.push(i); });
+    const pr = (v) => { const p = v / summe * 100; return (p > 0 && p < 1 ? "< 1" : Math.round(p)) + " %"; };
+    return `<div class="eq-ring">
+      <svg class="eq-ring-svg" viewBox="0 0 200 200" role="img" aria-label="${esc(opt.titel || "Anteile")}"><g transform="rotate(-90 100 100)">${boegen}</g></svg>
+      <div class="eq-ring-leg">${gruppen.map(gr => `${gr.g ? `<div class="eq-ring-g">${esc(gr.g)}</div>` : ""}${gr.z.map(i => { const x = segs[i];
+        return `<button type="button" class="eq-ring-z" data-ring-z="${i}" aria-pressed="false"><i style="background:${x.farbe}"></i><span><b>${esc(x.l)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span><span class="eq-ring-w"><b>${pr(x.v)}</b><small>${esc(opt.wert ? opt.wert(x.v) : String(x.v))}</small></span></button>`; }).join("")}`).join("")}</div>
+    </div>`;
+  }
+  function eqRingVerdrahten(host) {
+    host.querySelectorAll(".eq-ring").forEach(ring => {
+      const setze = (i) => {
+        const an = ring.dataset.an === String(i) ? "" : String(i);
+        ring.dataset.an = an;
+        ring.classList.toggle("eq-ring-fokus", an !== "");
+        ring.querySelectorAll("[data-ring]").forEach(c => c.classList.toggle("an", c.dataset.ring === an));
+        ring.querySelectorAll("[data-ring-z]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.ringZ === an)));
+      };
+      ring.querySelectorAll("[data-ring-z]").forEach(b => b.onclick = () => setze(b.dataset.ringZ));
+      ring.querySelectorAll("[data-ring]").forEach(c => c.addEventListener("click", () => setze(c.dataset.ring)));
+    });
+  }
+  const EQ_KAT = 8;
+  const eqKat = (i) => `var(--eq-kat-${(i % EQ_KAT) + 1})`;
+
+  // Mieterstrom: Wohin der Strom im Haus geht (Wohnungen, Allgemeinstromstellen, nicht gemessen)
+  function msRingHtml(s, r) {
+    const segs = [];
+    r.wohnungen.filter(w => w.w > 0.05).forEach((w, i) => segs.push({ id: w.u._id, l: w.u.wohnung || "Einheit", sub: w.u.mieter || "", v: w.w, farbe: eqKat(i), gruppe: "Wohnungen" }));
+    const nw = segs.length;
+    r.stellen.filter(y => y.kwh > 0.05).forEach((y, i) => segs.push({ id: "st_" + y.x.id, l: y.x.name || msStelleArt(y.x.art), sub: msStelleArt(y.x.art), v: y.kwh, farbe: eqKat(nw + i), gruppe: "Allgemeinstrom" }));
+    if (r.haus > Math.max(1, (r.S + r.N) * 0.01)) segs.push({ id: "haus", l: r.stellen.length ? "Nicht gemessen" : "Allgemeinstrom", sub: r.stellen.length ? "Verluste, Stellen ohne Zähler" : "Haus minus Wohnungen", v: r.haus, farbe: "var(--eq-grau-0)", gruppe: "Allgemeinstrom" });
+    return eqRingHtml(segs, { titel: "Verbrauch im Haus nach Wohnungen und Allgemeinstrom", wert: zahlKwh, leer: "Noch kein Verbrauch – erfasse Zählerstände oder Planwerte." });
+  }
+
+  // Nebenkosten: großer Balken = Vorauszahlungen der Mieter, darin die Kostenarten (Anteil der Mieter) farbig.
+  // Reicht die Vorauszahlung nicht, ragen die Kosten über den Balken hinaus (Nachzahlung); sonst bleibt Guthaben.
+  function nkBalkenHtml(r, b) {
+    const vermietet = r.zeilen.filter(z => z.u.status === "vermietet");
+    const jeArt = [];
+    vermietet.forEach(z => z.detail.forEach(d => {
+      let x = jeArt.find(y => y.art === d.art); if (!x) jeArt.push(x = { art: d.art, v: 0 });
+      x.v += d.betrag;
+    }));
+    const teile = jeArt.filter(x => x.v > 0.005).sort((a, c) => c.v - a.v);
+    const V = b.vorausMieter, K = teile.reduce((a, x) => a + x.v, 0);
+    if (!(V > 0) && !(K > 0)) return "";
+    const skala = Math.max(V, K) || 1;
+    const p = (v) => (v / skala * 100).toFixed(3) + "%";
+    const diff = V - K;
+    const satz = !(V > 0) ? "Keine Vorauszahlungen hinterlegt – die Mieter zahlen alles nach."
+      : Math.abs(diff) < 0.5 ? "Die Vorauszahlungen decken die Kosten genau."
+      : diff > 0 ? "Die Vorauszahlungen decken die Kosten. " + eur(diff) + " bekommen die Mieter zurück."
+      : "Die Vorauszahlungen reichen nicht. " + eur(-diff) + " zahlen die Mieter nach.";
+    let x0 = 0;
+    const segs = teile.map((t, i) => { const h = `<i class="eq-nkb-s" data-nkb="${i}" style="left:${p(x0)};width:${p(t.v)};background:${eqKat(i)}" title="${esc(t.art + ": " + eur(t.v))}"></i>`; x0 += t.v; return h; }).join("");
+    return `<div class="eq-nkb" role="img" aria-label="${esc("Vorauszahlungen " + eur(V) + ", Kosten der Mieter " + eur(K) + ". " + satz)}">
+      <div class="eq-nkb-kopf"><span>Kosten der Mieter <b>${eur(K)}</b></span><span>Vorauszahlungen <b>${eur(V)}</b></span></div>
+      <div class="eq-nkb-feld">
+        <div class="eq-nkb-voraus" style="width:${p(V)}"></div>
+        <div class="eq-nkb-kosten">${segs}</div>
+        ${diff < -0.5 && V > 0 ? `<div class="eq-nkb-nach" style="left:${p(V)};width:${p(-diff)}"></div>` : ""}
+        ${V > 0 ? `<div class="eq-nkb-grenze" style="left:${p(V)}"></div>` : ""}
+      </div>
+      <div class="eq-nkb-fuss"><span class="eq-nkb-erg ${diff < -0.5 ? "nach" : diff > 0.5 ? "zurueck" : ""}">${esc(satz)}</span></div>
+      <div class="eq-nkb-leg">${teile.map((t, i) => `<div><i style="background:${eqKat(i)}"></i><span>${esc(t.art)}</span><b>${eur(t.v)}</b><small>${V > 0 ? Math.round(t.v / V * 100) + " %" : ""}</small></div>`).join("")}
+        <div class="eq-nkb-lz"><i class="voraus"></i><span>Vorauszahlungen (Rahmen)</span></div>
+        ${diff < -0.5 && V > 0 ? `<div class="eq-nkb-lz"><i class="nach"></i><span>über der Vorauszahlung = Nachzahlung</span></div>` : ""}</div>
+      ${b.anteilLeer > 0.5 ? `<div class="note">Ohne den Anteil freier Einheiten (${eur(b.anteilLeer)}), den du selbst trägst.</div>` : ""}
+    </div>`;
+  }
 
   /* ================= PROJEKTE ================= */
   // Ein Projekt ist ein Objekt, das man prüft, bevor man es kauft. Es steht in D.projekte, nie in D.streams.
@@ -12373,12 +12730,14 @@
       ${kv("Laufzeit", v.laufzeit ? esc(v.laufzeit) : "—", !v.laufzeit)}
       ${kv("Kündigungsfrist", v.kuendigungsfrist ? esc(v.kuendigungsfrist) : "—", !v.kuendigungsfrist)}
       ${v.notiz ? `<div class="note" style="margin-top:14px">${esc(v.notiz)}</div>` : ""}
+      <div id="dokEinheit"></div>
       <div class="note" style="margin-top:16px">Vergleich: ${proM2 >= schnitt ? "über" : "unter"} dem Objektschnitt von ${schnitt.toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/m².</div>
       <button class="ef-open" id="efEdit">Bearbeiten</button>`;
     const sh = openSheet((u.wohnung || "Einheit") + (u.flaeche ? " · " + qm(u.flaeche) : ""), s.name, body);
     const usH = usKautionHinweis(s);
     if (usH) { const b = sh.querySelector(".sheet-b") || sh; b.insertBefore(usH, b.querySelector(".eq-fuss")); }
     sh.querySelector("#efEdit").onclick = () => openUnitEdit(s, u, false);
+    dokEinheitFuellen(sh, s, u);
     // Mieteingang in einem Schritt bestätigen oder zurücknehmen; danach zeigt das Fenster den neuen Stand
     const mb = sh.querySelector("[data-miete]");
     if (mb && opt.geradeGeaendert) {

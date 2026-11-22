@@ -2814,6 +2814,73 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
   .rc-felder{grid-template-columns:minmax(0,1fr)}
 }
 
+/* ---------- v=89: Kategorienfarben, Ring, Nebenkosten-Balken, Dokumente ---------- */
+:root{--eq-kat-1:#3CC6B4;--eq-kat-2:#F2A65A;--eq-kat-3:#A98BF0;--eq-kat-4:#5DA9F0;--eq-kat-5:#EE7FB0;--eq-kat-6:#8BD06A;--eq-kat-7:#E8CC4F;--eq-kat-8:#F07F6E;
+  --eq-grau-0:#5D6673;--eq-grau-1:#9AA4B2;--eq-grau-2:#7F8996;--eq-grau-3:#B9C1CC;--eq-grau-4:#6B7480}
+:root:not(.pre-login)[data-theme="hell"]{--eq-kat-1:#0F8F80;--eq-kat-2:#D2751C;--eq-kat-3:#7A4FD6;--eq-kat-4:#2A74C4;--eq-kat-5:#C93A7A;--eq-kat-6:#3E8F2C;--eq-kat-7:#B08A00;--eq-kat-8:#C9472F;
+  --eq-grau-0:#9AA1AB;--eq-grau-1:#5F6875;--eq-grau-2:#7A838F;--eq-grau-3:#4A525D;--eq-grau-4:#8C949F}
+/* Ring */
+#app .eq-ms-ansicht,.sheet .eq-ms-ansicht{display:flex;justify-content:flex-end;margin:4px 0 10px}
+#app .eq-ring,.sheet .eq-ring{display:grid;grid-template-columns:1fr;gap:16px;align-items:center;margin:4px 0 8px}
+#app .eq-ring-svg{width:min(240px,70%);height:auto;justify-self:center;overflow:visible}
+#app .eq-ring-s{fill:none;stroke-width:26;transition:stroke-width var(--eq-kurz) ease,opacity var(--eq-kurz) ease;cursor:pointer}
+#app .eq-ring.eq-ring-fokus .eq-ring-s{opacity:.28}
+#app .eq-ring.eq-ring-fokus .eq-ring-s.an{opacity:1;stroke-width:34}
+#app .eq-ring-leg{display:flex;flex-direction:column;gap:2px;min-width:0;max-width:560px}
+#app .eq-ring-g{font-size:var(--eq-t-1);color:var(--soft);font-weight:600;margin:8px 0 2px}
+#app .eq-ring-g:first-child{margin-top:0}
+#app .eq-ring-z{display:grid;grid-template-columns:12px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--text);text-align:left;font-family:var(--fbody);cursor:pointer}
+#app .eq-ring-z i{width:12px;height:12px;border-radius:4px}
+#app .eq-ring-z span{display:flex;flex-direction:column;min-width:0}
+#app .eq-ring-z b{font-size:var(--eq-t-2);font-weight:600;overflow-wrap:anywhere}
+#app .eq-ring-z small{font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-ring-w{text-align:right;align-items:flex-end}
+#app .eq-ring-w b{font-family:var(--fdisp);font-variant-numeric:tabular-nums}
+#app .eq-ring-z[aria-pressed="true"]{background:var(--surface-2);border-color:var(--stroke-2)}
+@media(min-width:600px){#app .eq-ring{grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:28px}#app .eq-ring-svg{width:100%}}
+/* Nebenkosten-Balken */
+#app .eq-nkb,.sheet .eq-nkb{margin:14px 0 16px}
+#app .eq-nkb-kopf,.sheet .eq-nkb-kopf{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 16px;font-size:var(--eq-t-1);color:var(--soft);margin-bottom:8px}
+#app .eq-nkb-kopf b,.sheet .eq-nkb-kopf b{color:var(--text);font-family:var(--fdisp);font-variant-numeric:tabular-nums;font-size:var(--eq-t-2)}
+#app .eq-nkb-feld,.sheet .eq-nkb-feld{position:relative;height:46px}
+#app .eq-nkb-voraus,.sheet .eq-nkb-voraus{position:absolute;left:0;top:0;bottom:0;border-radius:12px;background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--stroke-2)}
+#app .eq-nkb-kosten,.sheet .eq-nkb-kosten{position:absolute;left:0;right:0;top:9px;bottom:9px}
+#app .eq-nkb-s,.sheet .eq-nkb-s{position:absolute;top:0;bottom:0;border-right:2px solid var(--panel-solid)}
+#app .eq-nkb-s:first-child,.sheet .eq-nkb-s:first-child{border-radius:7px 0 0 7px}
+#app .eq-nkb-nach,.sheet .eq-nkb-nach{position:absolute;top:4px;bottom:4px;border-radius:0 9px 9px 0;background:repeating-linear-gradient(135deg,transparent 0 5px,color-mix(in srgb,var(--danger) 55%,transparent) 5px 8px);box-shadow:inset 0 0 0 1.5px var(--danger)}
+#app .eq-nkb-grenze,.sheet .eq-nkb-grenze{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--text);border-radius:1px}
+#app .eq-nkb-fuss,.sheet .eq-nkb-fuss{margin-top:8px;font-size:var(--eq-t-2)}
+#app .eq-nkb-erg.nach,.sheet .eq-nkb-erg.nach{color:var(--danger)}
+#app .eq-nkb-erg.zurueck,.sheet .eq-nkb-erg.zurueck{color:var(--ok)}
+#app .eq-nkb-leg,.sheet .eq-nkb-leg{display:grid;grid-template-columns:1fr;gap:2px 20px;margin-top:10px}
+#app .eq-nkb-leg>div,.sheet .eq-nkb-leg>div{display:grid;grid-template-columns:12px minmax(0,1fr) auto 44px;gap:8px;align-items:center;min-height:30px;font-size:var(--eq-t-2)}
+#app .eq-nkb-leg i,.sheet .eq-nkb-leg i{width:12px;height:12px;border-radius:4px}
+#app .eq-nkb-leg span,.sheet .eq-nkb-leg span{overflow-wrap:anywhere}
+#app .eq-nkb-leg b,.sheet .eq-nkb-leg b{font-family:var(--fdisp);font-variant-numeric:tabular-nums;font-weight:600}
+#app .eq-nkb-leg small,.sheet .eq-nkb-leg small{font-size:var(--eq-t-1);color:var(--soft);text-align:right}
+#app .eq-nkb-leg .eq-nkb-lz,.sheet .eq-nkb-leg .eq-nkb-lz{grid-template-columns:12px minmax(0,1fr);color:var(--soft);font-size:var(--eq-t-1)}
+#app .eq-nkb-leg i.voraus,.sheet .eq-nkb-leg i.voraus{background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--stroke-2)}
+#app .eq-nkb-leg i.nach,.sheet .eq-nkb-leg i.nach{background:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--danger) 55%,transparent) 3px 5px);box-shadow:inset 0 0 0 1.5px var(--danger)}
+@media(min-width:900px){#app .eq-nkb-leg{grid-template-columns:1fr 1fr}#app .eq-nkb-leg .eq-nkb-lz{grid-column:1/-1}}
+/* Dokumente */
+#app .eq-dok-f,.sheet .eq-dok-f{margin-bottom:10px}
+#app .eq-dok-liste,.sheet .eq-dok-liste{display:flex;flex-direction:column}
+#app .eq-dok-z,.sheet .eq-dok-z{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:6px 0;border-bottom:1px solid var(--stroke);cursor:pointer}
+#app .eq-dok-z:last-child,.sheet .eq-dok-z:last-child{border-bottom:0}
+#app .eq-dok-typ,.sheet .eq-dok-typ{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:var(--surface-2);color:var(--soft);font:700 var(--eq-t-1) var(--fbody)}
+#app .eq-dok-typ[data-typ="PDF"],.sheet .eq-dok-typ[data-typ="PDF"]{color:var(--danger)}
+#app .eq-dok-typ[data-typ="Bild"],.sheet .eq-dok-typ[data-typ="Bild"]{color:var(--mint-2)}
+#app .eq-dok-tx,.sheet .eq-dok-tx{display:flex;flex-direction:column;min-width:0}
+#app .eq-dok-tx b,.sheet .eq-dok-tx b{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+#app .eq-dok-tx small,.sheet .eq-dok-tx small{font-size:var(--eq-t-1);color:var(--soft);overflow-wrap:anywhere}
+#app .eq-dok-auf,.sheet .eq-dok-auf{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 14px;border-radius:12px;border:1px solid var(--stroke-2);color:var(--text);font:600 var(--eq-t-2) var(--fbody);text-decoration:none}
+.sheet .eq-dok-datei{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;padding:4px 0 14px;margin-bottom:6px;border-bottom:1px solid var(--stroke)}
+.sheet .eq-dok-wahl{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.sheet .eq-dok-knopf{display:inline-flex;align-items:center;justify-content:center;min-height:48px;cursor:pointer}
+.sheet .eq-dok-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.sheet .eq-dok-input:focus-visible + .ef-h,.sheet .eq-dok-wahl:focus-within .eq-dok-knopf{outline:2px solid var(--mint-2);outline-offset:2px}
+.sheet .ef-h.bad{color:var(--danger)}
+
 /* ---------- 6. Raster für große Bildschirme (v=87) ----------
    iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
    Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben
@@ -3795,10 +3862,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=88"></script>
-<script src="./data-save.js?v=88"></script>
-<script src="./finance-engine.js?v=88"></script>
-<script src="./app.js?v=88"></script>
+<script src="./data-loader.js?v=89"></script>
+<script src="./data-save.js?v=89"></script>
+<script src="./finance-engine.js?v=89"></script>
+<script src="./app.js?v=89"></script>
 
 <script>
 /* =====================================================================
