@@ -2944,6 +2944,47 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 #app .eq-nkc-liste + .note{margin-top:10px}
 #app .eq-nkc-bal{grid-template-columns:minmax(0,1fr) minmax(0,15em)}
 #app .eq-nkc-bal small{overflow-wrap:anywhere}
+/* ---------- Kompakte Module (v=91) ---------- */
+#app .eq-kmp{cursor:pointer}
+#app .eq-kmp-zustand{font-size:var(--eq-t-2);font-weight:600;margin:0 0 10px;padding-left:10px;border-left:3px solid var(--stroke-2)}
+#app .eq-kmp-zustand.gut{border-left-color:var(--ok)}
+#app .eq-kmp-zustand.achtung{border-left-color:var(--warn)}
+#app .eq-kmp-zustand.kritisch{border-left-color:var(--danger)}
+#app .eq-kmp-reihe{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+#app .eq-kmp-werte{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#app .eq-kmp-werte span{display:block;font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-kmp-werte b{display:block;font:700 var(--eq-t-4) var(--fdisp);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#app .eq-kmp-werte small{display:block;font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-kmp-g{min-width:0}
+#app .eq-kmp-fig{position:relative;margin:0}
+#app .eq-kmp-fig svg{display:block;width:100%;height:64px}
+#app .eq-kmp-fl{fill:color-mix(in srgb,var(--eq-reihe-1) 22%,transparent)}
+#app .eq-kmp-li{fill:none;stroke:var(--eq-reihe-1);stroke-width:2}
+#app .eq-kmp-heute{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--text);box-shadow:0 0 0 3px var(--panel-solid)}
+#app .eq-kmp-fig figcaption{display:flex;justify-content:space-between;font-size:var(--eq-t-1);color:var(--soft);margin-top:4px}
+#app .eq-kmp-bal{display:flex;flex-direction:column;gap:8px}
+#app .eq-kmp-bz{display:grid;grid-template-columns:5.5em minmax(0,1fr) 3.5em;gap:8px;align-items:center;font-size:var(--eq-t-1)}
+#app .eq-kmp-bz b{text-align:right;font-variant-numeric:tabular-nums}
+#app .eq-kmp-bt{position:relative;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+#app .eq-kmp-bt i{position:absolute;inset:0 auto 0 0;border-radius:6px;background:var(--eq-reihe-1)}
+#app .eq-kmp-bt i.g{background:var(--eq-reihe-2)}
+#app .eq-kmp-sl-f{display:flex;align-items:flex-end;gap:3px;height:56px}
+#app .eq-kmp-sl-f i{flex:1;background:var(--eq-reihe-2);border-radius:3px 3px 0 0;min-width:0}
+#app .eq-kmp-sl-f i.an{background:var(--eq-reihe-1)}
+#app .eq-kmp-sl-x{display:flex;justify-content:space-between;font-size:var(--eq-t-1);color:var(--soft);margin-top:4px}
+#app .eq-kmp-tl-f{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--surface-2)}
+#app .eq-kmp-tl-f i.solar,#app .eq-kmp-tl-l i.solar{background:var(--warn)}
+#app .eq-kmp-tl-f i.netz,#app .eq-kmp-tl-l i.netz{background:var(--eq-reihe-2)}
+#app .eq-kmp-tl-l{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--eq-t-1);color:var(--soft);margin-top:6px}
+#app .eq-kmp-tl-l i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+#app .eq-kmp-leiste{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 4px 0;color:var(--soft);font-size:var(--eq-t-2)}
+@media (max-width:599px){#app .eq-kmp-werte{grid-template-columns:repeat(2,minmax(0,1fr))}#app .eq-kmp-werte>div:nth-child(3){grid-column:1 / -1}}
+@media (min-width:900px){
+  #views.wrap>.eq-kmp{grid-column:span 6}
+  #app .eq-kmp-werte{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (min-width:1600px){#app .eq-kmp-reihe{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:center}}
+#views.wrap>[hidden],#app .eq-kmp[hidden],#app .eq-kmp-leiste[hidden]{display:none!important}
 /* ---------- 6. Raster für große Bildschirme (v=87) ----------
    iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
    Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben

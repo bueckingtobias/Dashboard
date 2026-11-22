@@ -8099,10 +8099,10 @@
     einheiten: einheitenKarte,
     zusammensetzung: zusammensetzungKarte,
     ruecklage: nkPufferKarte,
-    finanzierung: finanzierungBereich,
-    handwerker: (s) => modulAn(s, "handwerker") ? modulMitAus(gewerkeKarte(s), s, "handwerker") : null,
-    zeiten: (s) => { zeitenModulPruefen(s); return modulAn(s, "zeiten") ? modulMitAus(zeitenKarte(s), s, "zeiten") : null; },
-    mieterstrom: (s) => !s.istProjekt && modulAn(s, "mieterstrom") ? mieterstromKarte(s) : null,
+    finanzierung: (s) => kompaktModul(s, "finanzierung", finanzierungBereich(s), s.istProjekt ? null : kmpFinanzierung(s)),
+    handwerker: (s) => modulAn(s, "handwerker") ? kompaktModul(s, "handwerker", modulMitAus(gewerkeKarte(s), s, "handwerker"), s.istProjekt ? null : kmpHandwerker(s)) : null,
+    zeiten: (s) => { zeitenModulPruefen(s); return modulAn(s, "zeiten") ? kompaktModul(s, "zeiten", modulMitAus(zeitenKarte(s), s, "zeiten"), null, kmpZeitenFuellen(s)) : null; },
+    mieterstrom: (s) => !s.istProjekt && modulAn(s, "mieterstrom") ? kompaktModul(s, "mieterstrom", mieterstromKarte(s), kmpMieterstrom(s)) : null,
     module: (s) => modulLeiste(s),
     mietraster: (s) => eqMietrasterKarte(s),   // FABLE-D4
     nebenkosten: (s) => nebenkostenKarte(s),
@@ -12141,6 +12141,168 @@
     const sh = openSheet(d.titel || "Rechnung", nameOhneBruch(s.name), body);
     sh.querySelector("#dokAuf").onclick = () => dokOeffnen(s._id, d);
     const z = sh.querySelector("#dokZurNk"); if (z) z.onclick = () => openNkPosten(s, Number(nk.jahr), { id: nk.id });
+  }
+
+  /* ================= KOMPAKTE MODULE (v=91) ================= */
+  // Finanzierung, Handwerker, Zeiterfassung und Mieterstrom zeigen auf der Objektseite zuerst eine kompakte Karte:
+  // die wichtigsten Zahlen und eine kleine Grafik. „Details einblenden“ zeigt das komplette Modul (wie bisher).
+  // Die Wahl gilt je Modul und wird im Gerät gemerkt (estriq_details_<modul>).
+  const KMP_SCHLUESSEL = (name) => "estriq_details_" + name;
+  const kmpOffen = (name) => { try { return localStorage.getItem(KMP_SCHLUESSEL(name)) === "1"; } catch (_) { return false; } };
+  const kmpSetzen = (name, an) => { try { localStorage.setItem(KMP_SCHLUESSEL(name), an ? "1" : "0"); } catch (_) {} };
+
+  // voll: Element oder Liste (das bisherige Modul) · daten: { titel, unter, werte: [[Bezeichnung, Wert, Zeile]], grafik, zustand } oder null
+  // fuellen(karte): für Module, die ihre Zahlen erst laden (Zeiterfassung)
+  function kompaktModul(s, name, voll, daten, fuellen) {
+    const teile = (Array.isArray(voll) ? voll : [voll]).filter(Boolean);
+    if (s.istProjekt || !teile.length || (!daten && !fuellen)) return voll;
+    const d = daten || { titel: "", werte: [] };
+    const karte = el(`<div class="card eq-kmp" data-kmp="${name}">
+      <div class="card-h"><div><div class="card-t">${esc(d.titel)}</div>${d.unter ? `<div class="card-s">${esc(d.unter)}</div>` : ""}</div>
+        <button type="button" class="add-btn eq-kmp-auf" aria-expanded="false">Details einblenden</button></div>
+      <div class="card-b eq-kmp-b">${kmpInhalt(d)}</div></div>`);
+    const leiste = el(`<div class="eq-kmp-leiste" data-kmp-leiste="${name}"><span>${esc(d.titel)} · alle Details</span>
+      <button type="button" class="add-btn eq-kmp-zu" aria-expanded="true">Details ausblenden</button></div>`);
+    const zeige = (offen, fokus) => {
+      karte.hidden = offen; leiste.hidden = !offen;
+      teile.forEach(t => { t.hidden = !offen; });
+      kmpSetzen(name, offen);
+      if (fokus) { const z = offen ? leiste.querySelector("button") : karte.querySelector(".eq-kmp-auf"); try { z.focus({ preventScroll: true }); } catch (_) {} (offen ? leiste : karte).scrollIntoView({ block: "nearest" }); }
+    };
+    karte.querySelector(".eq-kmp-auf").onclick = (e) => { e.stopPropagation(); zeige(true, true); };
+    karte.addEventListener("click", (e) => { if (!e.target.closest("button, a, input, select")) zeige(true, true); });
+    leiste.querySelector(".eq-kmp-zu").onclick = () => zeige(false, true);
+    zeige(kmpOffen(name), false);
+    if (fuellen) fuellen(karte, (neu) => {
+      karte.querySelector(".card-t").textContent = neu.titel;
+      const u = karte.querySelector(".card-s"); if (u) u.textContent = neu.unter || ""; else if (neu.unter) karte.querySelector(".card-t").insertAdjacentHTML("afterend", `<div class="card-s">${esc(neu.unter)}</div>`);
+      karte.querySelector(".eq-kmp-b").innerHTML = kmpInhalt(neu);
+      leiste.querySelector("span").textContent = neu.titel + " · alle Details";
+    });
+    return [karte, leiste].concat(teile);
+  }
+  function kmpInhalt(d) {
+    return `${d.zustand ? `<div class="eq-kmp-zustand ${d.zustand.k || ""}">${esc(d.zustand.t)}</div>` : ""}
+      <div class="eq-kmp-reihe">
+        <div class="eq-kmp-werte">${(d.werte || []).map(w => `<div><span>${esc(w[0])}</span><b>${w[1]}</b>${w[2] ? `<small>${esc(w[2])}</small>` : ""}</div>`).join("")}</div>
+        ${d.grafik ? `<div class="eq-kmp-g">${d.grafik}</div>` : ""}
+      </div>`;
+  }
+
+  // --- Kleine Grafiken ---
+  // Linie mit Fläche (Restschuld über die Zeit), „heute“ als Punkt
+  function kmpLinie(werte, heuteIdx, beschreibung, untenL, untenR) {
+    if (werte.length < 2) return "";
+    const W = 240, H = 64, max = Math.max(...werte) || 1;
+    const pt = werte.map((v, i) => [i / (werte.length - 1) * W, H - 4 - (v / max) * (H - 10)]);
+    const linie = pt.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const h = heuteIdx != null && heuteIdx >= 0 && heuteIdx < pt.length ? pt[heuteIdx] : null;
+    return `<figure class="eq-kmp-fig" role="img" aria-label="${esc(beschreibung)}">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${linie} L${W} ${H} L0 ${H} Z" class="eq-kmp-fl"/><path d="${linie}" class="eq-kmp-li" vector-effect="non-scaling-stroke"/></svg>
+      ${h ? `<i class="eq-kmp-heute" style="left:${(h[0] / W * 100).toFixed(2)}%;top:${(h[1] / H * 100).toFixed(2)}%"></i>` : ""}
+      <figcaption><span>${esc(untenL || "")}</span><span>${esc(untenR || "")}</span></figcaption></figure>`;
+  }
+  // Zwei Balken im selben Maßstab (z. B. Bezahlt gegen Gebaut)
+  function kmpBalken(zeilen, beschreibung) {
+    return `<div class="eq-kmp-bal" role="img" aria-label="${esc(beschreibung)}">${zeilen.map(z => `<div class="eq-kmp-bz">
+      <span>${esc(z.l)}</span><span class="eq-kmp-bt"><i class="${z.k || ""}" style="width:${Math.max(0, Math.min(100, z.p)).toFixed(1)}%"></i></span><b>${esc(z.w)}</b></div>`).join("")}</div>`;
+  }
+  // Säulen je Monat
+  function kmpSaeulen(werte, beschriftung, beschreibung, aktiv) {
+    const max = Math.max(...werte, 0.0001);
+    return `<div class="eq-kmp-sl" role="img" aria-label="${esc(beschreibung)}">
+      <div class="eq-kmp-sl-f">${werte.map((v, i) => `<i class="${i === aktiv ? "an" : ""}" style="height:${v > 0 ? Math.max(4, v / max * 100).toFixed(1) : 0}%"></i>`).join("")}</div>
+      <div class="eq-kmp-sl-x"><span>${esc(beschriftung[0])}</span><span>${esc(beschriftung[1])}</span></div></div>`;
+  }
+  // Ein Balken aus zwei Teilen (Solar / Netz)
+  function kmpTeile(teile, beschreibung) {
+    const summe = teile.reduce((a, t) => a + Math.max(0, t.v), 0) || 1;
+    return `<div class="eq-kmp-tl" role="img" aria-label="${esc(beschreibung)}">
+      <div class="eq-kmp-tl-f">${teile.map(t => `<i class="${t.k}" style="width:${(Math.max(0, t.v) / summe * 100).toFixed(1)}%"></i>`).join("")}</div>
+      <div class="eq-kmp-tl-l">${teile.map(t => `<span><i class="${t.k}"></i>${esc(t.l)} ${Math.round(Math.max(0, t.v) / summe * 100)} %</span>`).join("")}</div></div>`;
+  }
+
+  // --- Daten je Modul ---
+  function kmpFinanzierung(s) {
+    const kredite = FE.creditsOf(s);
+    if (!kredite.length) return null;
+    const f = finanzStand(kredite);
+    // Restschuld aller Kredite je Monat (aus den Ratenplänen), höchstens 60 Punkte
+    let grafik = "";
+    const reihen = kredite.map(kr => ({ kr, l: kzRaten(kr) })).filter(x => x.l.length);
+    if (reihen.length) {
+      const nrs = reihen.flatMap(x => x.l.map(e => e.nr));
+      const von = Math.min(...nrs), bis = Math.max(...nrs);
+      const jetzt = new Date(), heute = jetzt.getFullYear() * 12 + jetzt.getMonth();
+      const werte = [], keys = [];
+      for (let nr = von; nr <= bis; nr++) {
+        werte.push(reihen.reduce((a, x) => { const e = x.l.find(y => y.nr === nr); if (e) return a + e.rest; return a + (nr < x.l[0].nr ? Number(x.kr.summe) || 0 : 0); }, 0)
+          + kredite.filter(kr => !reihen.some(x => x.kr === kr)).reduce((a, kr) => a + kreditStand(kr).rest, 0));
+        keys.push(nr);
+      }
+      const schritt = Math.max(1, Math.ceil(werte.length / 60));
+      const w2 = werte.filter((_, i) => i % schritt === 0 || i === werte.length - 1);
+      const k2 = keys.filter((_, i) => i % schritt === 0 || i === keys.length - 1);
+      let hi = k2.findIndex(k => k >= heute); if (hi < 0) hi = k2.length - 1;
+      grafik = kmpLinie(w2, hi, "Restschuld über die Laufzeit, heute " + eur(f.rest), String(Math.floor(von / 12)), String(Math.floor(bis / 12)));
+    }
+    if (!grafik) grafik = kmpBalken([{ l: "getilgt", p: f.anteil, w: Math.round(f.anteil) + " %" }], Math.round(f.anteil) + " % getilgt");
+    return {
+      titel: "Finanzierung", unter: mehrzahl(kredite.length, "Kredit", "Kredite") + " · " + Math.round(f.anteil) + " % getilgt",
+      werte: [["Restschuld", eur(f.rest), "von " + eur(f.summe)], ["Rate im Monat", eur(f.rate), "davon " + eur(f.tilgung) + " Tilgung"],
+        ["Schuldenfrei", f.tilgtNie ? "nie" : f.ende ? esc(monatLang(f.ende)) : "—", f.tilgtNie ? "eine Rate deckt die Zinsen nicht" : f.restMonate != null ? "noch " + rcDauer(f.restMonate) : ""]],
+      grafik, zustand: f.tilgtNie ? { t: "Mindestens ein Kredit wird mit dieser Rate nicht abbezahlt.", k: "achtung" } : null
+    };
+  }
+  function kmpHandwerker(s) {
+    const gw = gewerkeVon(s);
+    if (!gw.length) return null;
+    const soll = gw.reduce((a, g) => a + g.soll, 0), gezahlt = gw.reduce((a, g) => a + g.gezahlt, 0);
+    const offen = gw.reduce((a, g) => a + g.offenRn, 0);
+    const fortschritt = soll ? gw.reduce((a, g) => a + g.soll * g.fortschritt, 0) / soll : 0;
+    const z = hwGesamtZustand(gw);
+    return {
+      titel: "Handwerker", unter: mehrzahl(gw.length, "Auftrag", "Aufträge") + " · Angebote " + eur(soll),
+      werte: [["Bezahlt", eur(gezahlt), soll ? Math.round(gezahlt / soll * 100) + " % der Angebote" : ""], ["Gebaut", Math.round(fortschritt) + " %", "Baufortschritt, nach Auftragswert"],
+        ["Rechnungen offen", eur(offen), offen > 0.5 ? "noch nicht bezahlt" : "nichts offen"]],
+      grafik: kmpBalken([{ l: "Bezahlt", p: soll ? gezahlt / soll * 100 : 0, w: soll ? Math.round(gezahlt / soll * 100) + " %" : "—", k: "b" }, { l: "Gebaut", p: fortschritt, w: Math.round(fortschritt) + " %", k: "g" }],
+        "Bezahlt " + (soll ? Math.round(gezahlt / soll * 100) : 0) + " % der Angebote, gebaut " + Math.round(fortschritt) + " %"),
+      zustand: { t: z.titel, k: String(z.klasse || "").trim() }
+    };
+  }
+  function kmpZeitenFuellen(s) {
+    return (karte, setze) => {
+      const jahr = new Date().getFullYear(), mon = new Date().getMonth();
+      setze({ titel: "Zeiterfassung", unter: "Wird geladen…", werte: [] });
+      ladeZeiten(s._id).then(d => {
+        if (!karte.isConnected) return;
+        if (d.fehlt || d.fehler) { setze({ titel: "Zeiterfassung", unter: d.fehlt ? "noch nicht eingerichtet" : "ließ sich nicht laden", werte: [] }); return; }
+        const imJahr = d.eintraege.filter(e => String(e.tag).slice(0, 4) === String(jahr));
+        const std = imJahr.reduce((a, e) => a + zeitStd(e), 0), kosten = imJahr.reduce((a, e) => a + zeitKosten(e), 0);
+        const konten = zeitKonten(d), offenStd = konten.reduce((a, k) => a + k.offenStd, 0), offenK = konten.reduce((a, k) => a + k.offenKosten, 0);
+        const jeMonat = Array.from({ length: 12 }, (_, m) => imJahr.filter(e => Number(String(e.tag).slice(5, 7)) === m + 1).reduce((a, e) => a + zeitStd(e), 0));
+        const h = (n) => (Math.round(n * 10) / 10).toLocaleString(LOC) + " Std.";
+        setze({
+          titel: "Zeiterfassung", unter: mehrzahl(d.links.length, "Person", "Personen") + " mit Link · " + jahr,
+          werte: [["Stunden " + jahr, h(std), eur(kosten)], ["Noch nicht bezahlt", h(offenStd), eur(offenK)], ["Einsätze " + jahr, String(imJahr.length), ""]],
+          grafik: kmpSaeulen(jeMonat, ["Jan", "Dez"], "Stunden je Monat " + jahr + ", zusammen " + h(std), mon)
+        });
+      });
+    };
+  }
+  function kmpMieterstrom(s) {
+    if (!s.mieterstrom) return null;
+    const Z = msZeitraeume(s);
+    const r = Z.length ? msRechnen(s, Z[Z.length - 1]) : (msPlan(s) ? msRechnen(s, msPlan(s)) : null);
+    if (!r) return null;
+    const solar = Math.round(r.q * 100);
+    return {
+      titel: "Mieterstrom", unter: r.z.ist ? "Ist · " + datumKurz(r.z.von) + " bis " + datumKurz(r.z.bis) : "Plan · ein Jahr",
+      werte: [["Ergebnis im Monat", (r.monat < 0 ? "−" : "+") + eur(Math.abs(r.monat)), "fließt in den Cashflow"], ["Solaranteil", solar + " %", "des Stroms im Haus"],
+        ["Eigenverbrauch", r.eigen == null ? "—" : Math.round(r.eigen * 100) + " %", "des Solarstroms bleibt im Haus"]],
+      grafik: kmpTeile([{ l: "Solar", v: r.q, k: "solar" }, { l: "Netz", v: 1 - r.q, k: "netz" }], "Strom im Haus: " + solar + " % Solar, " + (100 - solar) + " % aus dem Netz")
+    };
   }
 
   /* ================= PROJEKTE ================= */
