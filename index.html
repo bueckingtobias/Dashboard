@@ -2900,6 +2900,50 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sheet .eq-bk-logo-bild img{max-width:100%;max-height:100%;object-fit:contain}
 .sheet .eq-bk-logo-bild span{color:#555;font-size:var(--eq-t-1)}
 .sheet .eq-bk-logo-k{display:flex;gap:8px;align-items:center}
+/* ---------- Nebenkosten-Center (v=91): Jahre auf der Karte, Jahreswahl, Versand und Zahlung ---------- */
+#app .eq-nkc-liste{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+#app .eq-nkc-z{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;width:100%;min-height:44px;padding:12px 14px;border:1px solid var(--stroke);border-radius:var(--r-sm);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+#app .eq-nkc-z.jetzt{border-color:var(--mint);box-shadow:inset 3px 0 0 var(--mint)}
+#app .eq-nkc-z:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+#app .eq-nkc-j{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+#app .eq-nkc-j b{font:700 var(--eq-t-5) var(--fdisp);font-variant-numeric:tabular-nums}
+#app .eq-nkc-bal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
+#app .eq-nkc-bal small,#app .eq-nkc-e small{font-size:var(--eq-t-1);color:var(--soft)}
+#app .eq-nkc-b{position:relative;display:block;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+#app .eq-nkc-b i{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+#app .eq-nkc-b i.k{background:var(--eq-reihe-1)}
+#app .eq-nkc-b i.v{background:transparent;border:2px solid var(--soft);box-sizing:border-box}
+#app .eq-nkc-e{display:flex;flex-direction:column;gap:2px}
+#app .eq-nkc-e b{font-size:var(--eq-t-3);font-variant-numeric:tabular-nums}
+@media (min-width:900px){
+  #app .eq-nkc-z{grid-template-columns:minmax(180px,1fr) minmax(0,1.4fr) minmax(170px,1fr);align-items:center;gap:16px}
+  #app .eq-nkc-e{text-align:right}
+}
+.sheet .eq-nk-jahre{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin:0 0 12px;scrollbar-width:thin}
+.sheet .eq-nk-jc{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-width:84px;min-height:52px;padding:6px 12px;border:1px solid var(--stroke-2);border-radius:var(--eq-r-feld);background:none;color:var(--text);font:inherit;cursor:pointer;text-align:left}
+.sheet .eq-nk-jc b{font:700 var(--eq-t-3) var(--fdisp);font-variant-numeric:tabular-nums}
+.sheet .eq-nk-jc small{font-size:var(--eq-t-1);color:var(--soft);white-space:nowrap}
+.sheet .eq-nk-jc.achtung small{color:var(--warn)}
+.sheet .eq-nk-jc.kritisch small{color:var(--danger)}
+.sheet .eq-nk-jc.gut small{color:var(--ok)}
+.sheet .eq-nk-jc.on{border-color:var(--mint);background:var(--surface-2);box-shadow:inset 0 -3px 0 var(--mint)}
+.sheet .eq-nk-jc.frueh{border-style:dashed}
+.sheet .eq-nk-jc:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.sheet .eq-schritte.eq-vier{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:600px){.sheet .eq-schritte.eq-vier{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.sheet .eq-nk-versand{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:end}
+@media (min-width:600px){.sheet .eq-nk-versand{grid-template-columns:minmax(0,1fr) auto}.sheet .eq-nk-versand .eq-btn{margin-bottom:var(--eq-a4)}}
+.sheet .eq-nk-zl-liste{display:flex;flex-direction:column}
+.sheet .eq-nk-zl{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--stroke)}
+.sheet .eq-nk-zl:last-child{border-bottom:0}
+.sheet .eq-nk-zl-tx{display:flex;flex-direction:column;min-width:0}
+.sheet .eq-nk-zl-tx b{font-size:var(--eq-t-3);font-weight:600;overflow-wrap:anywhere}
+.sheet .eq-nk-zl-tx small{font-size:var(--eq-t-1);color:var(--soft)}
+.sheet .eq-nk-zl-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+@media (min-width:600px){.sheet .eq-nk-zl{grid-template-columns:minmax(0,1fr) auto;align-items:center}.sheet .eq-nk-zl-a{justify-content:flex-end}}
+#app .eq-nkc-liste + .note{margin-top:10px}
+#app .eq-nkc-bal{grid-template-columns:minmax(0,1fr) minmax(0,15em)}
+#app .eq-nkc-bal small{overflow-wrap:anywhere}
 /* ---------- 6. Raster für große Bildschirme (v=87) ----------
    iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
    Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben
@@ -3881,10 +3925,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=90"></script>
-<script src="./data-save.js?v=90"></script>
-<script src="./finance-engine.js?v=90"></script>
-<script src="./app.js?v=90"></script>
+<script src="./data-loader.js?v=91"></script>
+<script src="./data-save.js?v=91"></script>
+<script src="./finance-engine.js?v=91"></script>
+<script src="./app.js?v=91"></script>
 
 <script>
 /* =====================================================================

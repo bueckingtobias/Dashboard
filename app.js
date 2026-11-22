@@ -3280,7 +3280,7 @@
       const { data, error } = await window.sb.from("nebenkosten")
         .select("*").eq("objekt_id", objektId).eq("jahr", jahr).order("art");
       if (error) { console.error("Nebenkosten:", error.message || error); return []; }
-      nkCache[key] = data || [];
+      nkCache[key] = (data || []).slice().sort((a, b) => String(a.art || "").localeCompare(String(b.art || ""), "de"));
       return nkCache[key];
     } catch (e) { console.error("Nebenkosten:", e); return []; }
   }
@@ -3536,9 +3536,129 @@
     if (error) throw nkTabFehlt(error) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : error;
   }
 
+  /* ---------- Nebenkosten-Center (v=91): alle Jahre im Blick, Versand und Zahlungen ---------- */
+  const nkJahrPlus = (iso) => { const t = String(iso).slice(0, 10).split("-").map(Number); return nkIso(Date.UTC(t[0] + 1, t[1] - 1, t[2])); };
+  const nkHeute = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const nkSort = (l) => l.slice().sort((a, b) => String(a.art || "").localeCompare(String(b.art || ""), "de"));
+  const NK_KURZ = { laeuft: "läuft", leer: "leer", offen: "offen", frist: "Frist vorbei", zahlung: "Zahlung offen", fertig: "erledigt" };
+
+  // Wer zahlt nach, wer bekommt Geld – mit Stand aus dem Versand. Schlüssel <Einheit>:m (Mieter) bzw. :v (Vormieter)
+  function nkZahlungen(r, cfg) {
+    const st = (cfg && cfg.daten && cfg.daten.status) || {};
+    const zl = st.zahlungen || {}, stand = st.stand || {};
+    const out = [];
+    r.zeilen.forEach(z => [["v", z.vormieter], ["m", z.mieter]].forEach(([k, p]) => {
+      if (!p) return;
+      const key = z.u._id + ":" + k;
+      out.push({ key, z, p, saldo: p.saldo, noetig: Math.abs(p.saldo) >= 0.005, bezahlt: zl[key] || null, vorher: stand[key] != null ? Number(stand[key]) : null });
+    }));
+    return out;
+  }
+  function nkJahrStatus(s, jahr, posten, cfg) {
+    const r = nkVerteilung(s, posten, cfg), b = nkBilanz(r);
+    const st = (cfg && cfg.daten && cfg.daten.status) || {};
+    const zahl = nkZahlungen(r, cfg);
+    const offen = zahl.filter(x => x.noetig && !x.bezahlt);
+    const vonMietern = offen.filter(x => x.saldo < 0).reduce((a, x) => a - x.saldo, 0);
+    const anMieter = offen.filter(x => x.saldo > 0).reduce((a, x) => a + x.saldo, 0);
+    const frist = nkJahrPlus(r.bis), heute = nkHeute();
+    const ohne = posten.filter(p => !(Number(p.betrag) || 0)).length;
+    const geaendert = !!st.versendet_am && zahl.some(x => x.vorher != null && Math.abs(x.vorher - x.saldo) > 0.5);
+    let art, wort, klasse = "";
+    if (r.bis >= heute) { art = "laeuft"; wort = "läuft bis " + datumKurz(r.bis); }
+    else if (!posten.length) { art = "leer"; wort = "keine Kosten erfasst"; klasse = "achtung"; }
+    else if (!st.versendet_am) {
+      if (heute > frist) { art = "frist"; wort = "Frist abgelaufen"; klasse = "kritisch"; }
+      else { art = "offen"; wort = "abrechnen bis " + datumKurz(frist); klasse = "achtung"; }
+    } else if (offen.length) { art = "zahlung"; wort = mehrzahl(offen.length, "Zahlung offen", "Zahlungen offen"); klasse = "achtung"; }
+    else { art = "fertig"; wort = "erledigt"; klasse = "gut"; }
+    return { jahr, posten, cfg, r, b, zahl, offen, vonMietern, anMieter, frist, ohne, art, wort, klasse, versendet: st.versendet_am || null, geaendert };
+  }
+  // Alle Jahre eines Objekts mit Kosten oder Angaben, dazu Vorjahr und laufendes Jahr (und ein gewähltes)
+  async function ladeNkJahre(s, extra) {
+    const C = new Date().getFullYear();
+    let alle = [], abr = [];
+    try { const { data, error } = await window.sb.from("nebenkosten").select("*").eq("objekt_id", s._id); if (!error) alle = data || []; } catch (_) {}
+    try {
+      const { data, error } = await window.sb.from("nk_abrechnungen").select("*").eq("objekt_id", s._id);
+      if (!error) abr = data || []; else if (nkTabFehlt(error)) nkFehlt17 = true;
+    } catch (_) {}
+    const jahre = new Set([C, C - 1]);
+    if (extra) jahre.add(Number(extra));
+    alle.forEach(p => jahre.add(Number(p.jahr))); abr.forEach(a => jahre.add(Number(a.jahr)));
+    return [...jahre].filter(j => j > 1900 && j <= C + 1).sort((a, b) => b - a).slice(0, 12).map(j => {
+      const posten = nkSort(alle.filter(p => Number(p.jahr) === j));
+      nkCache[s._id + ":" + j] = posten;
+      const da = abr.find(a => Number(a.jahr) === j);
+      const cfg = da ? { ...da, jahr: j, von: da.von || j + "-01-01", bis: da.bis || j + "-12-31", daten: Object.assign({ einheiten: {} }, da.daten || {}) }
+        : { jahr: j, von: j + "-01-01", bis: j + "-12-31", daten: { einheiten: {} }, neu: true };
+      return nkJahrStatus(s, j, posten, cfg);
+    });
+  }
+  // Welches Jahr braucht dich gerade? Das älteste mit offener Abrechnung oder Zahlung, sonst das Vorjahr.
+  function nkAktionsJahr(liste) {
+    const C = new Date().getFullYear();
+    const auf = liste.slice().sort((a, b) => a.jahr - b.jahr);
+    const x = auf.find(j => j.art === "frist" || j.art === "offen" || j.art === "zahlung") || auf.find(j => j.art === "leer" && j.jahr === C - 1);
+    return x ? x.jahr : C - 1;
+  }
+  function nkAktionSatz(a, C) {
+    if (!a) return { t: "Noch keine Nebenkosten erfasst", d: "Leg für ein Jahr die Kostenarten an und erfass die Rechnungen.", k: "" };
+    const geld = [a.vonMietern > 0.005 ? "Mieter schulden dir " + eur(a.vonMietern) : "", a.anMieter > 0.005 ? "du schuldest Mietern " + eur(a.anMieter) : ""].filter(Boolean).join(", ");
+    if (a.art === "frist") return { t: "Abrechnung " + a.jahr + ": Frist abgelaufen", d: "Sie hätte den Mietern bis " + datumKurz(a.frist) + " zugehen müssen. Eine Nachzahlung kannst du dann in der Regel nicht mehr verlangen, ein Guthaben musst du trotzdem auszahlen. Orientierung, keine Rechtsberatung.", k: "kritisch" };
+    if (a.art === "offen") return { t: "Abrechnung " + a.jahr + " ist offen", d: "Sie muss den Mietern bis " + datumKurz(a.frist) + " zugehen." + (a.ohne ? " " + mehrzahl(a.ohne, "Kostenart hat", "Kostenarten haben") + " noch keinen Betrag." : ""), k: "achtung" };
+    if (a.art === "zahlung") return { t: a.jahr + ": " + mehrzahl(a.offen.length, "Zahlung ist offen", "Zahlungen sind offen"), d: geld ? geld.charAt(0).toUpperCase() + geld.slice(1) + "." : "", k: "achtung" };
+    if (a.art === "leer") return { t: a.jahr + ": Noch keine Kosten erfasst", d: "Leg die Kostenarten an und erfass die Rechnungen – dann kannst du abrechnen.", k: "achtung" };
+    return { t: "Alles abgerechnet", d: "Alle abgeschlossenen Jahre sind verschickt und bezahlt. " + C + " läuft noch – erfass die Rechnungen, sobald sie kommen.", k: "gut" };
+  }
+
+  // Karte auf der Objektseite: Zustand, dann jedes Jahr mit Kosten, Vorauszahlungen, Ergebnis und Stand
+  function nkCenterKarte(s) {
+    const C = new Date().getFullYear();
+    const karte = el(`<div class="card nk-card eq-nkc">
+      <div class="card-h"><div><div class="card-t">Nebenkosten</div><div class="card-s">Alle Jahre im Blick: abrechnen, verschicken, Zahlungen verfolgen</div></div>
+        <button type="button" class="add-btn" id="nkOeffnen">Öffnen</button></div>
+      <div class="card-b" id="nkVorschau"><div class="note">Wird geladen…</div></div></div>`);
+    let aktion = C - 1;
+    karte.querySelector("#nkOeffnen").onclick = () => openNkAbrechnung(s, aktion);
+    ladeNkJahre(s).then(liste => {
+      const v = karte.querySelector("#nkVorschau"); if (!v || !v.isConnected) return;
+      aktion = nkAktionsJahr(liste);
+      karte.querySelector("#nkOeffnen").textContent = aktion + " öffnen";
+      const a = liste.find(x => x.jahr === aktion && x.art !== "laeuft" && x.art !== "fertig") || null;
+      const satz = nkAktionSatz(a, C);
+      const skala = Math.max(1, ...liste.map(x => Math.max(x.r.summeUml, x.b.vorausMieter)));
+      const w = (n) => (Math.max(0, n) / skala * 100).toFixed(2) + "%";
+      v.innerHTML = `
+        <div class="eq-zustand${satz.k ? " " + satz.k : ""}"><div class="eq-zustand-tx">
+          <div class="eq-zustand-t">${esc(satz.t)}</div>${satz.d ? `<div class="eq-zustand-d">${esc(satz.d)}</div>` : ""}</div></div>
+        <div class="eq-nkc-liste">
+          ${liste.map(x => {
+            const K = x.r.summeUml, V = x.b.vorausMieter, leer = !x.posten.length;
+            const erg = leer ? "—" : (x.b.saldoMieter >= 0 ? "Guthaben " : "Nachzahlung ") + eur(Math.abs(x.b.saldoMieter));
+            const zusatz = leer ? "noch nichts erfasst" : x.art === "laeuft" ? "Stand heute, Jahr läuft"
+              : !x.versendet ? "noch nicht verschickt"
+              : x.offen.length ? "offen: " + [x.vonMietern > 0.005 ? eur(x.vonMietern) + " von Mietern" : "", x.anMieter > 0.005 ? eur(x.anMieter) + " an Mieter" : ""].filter(Boolean).join(", ")
+              : "verschickt am " + datumKurz(x.versendet) + ", alles bezahlt";
+            return `<button type="button" class="eq-nkc-z${x.jahr === aktion ? " jetzt" : ""}" data-jahr="${x.jahr}">
+              <span class="eq-nkc-j"><b>${x.jahr}</b><span class="eq-marke ${x.klasse}">${esc(x.wort)}</span></span>
+              <span class="eq-nkc-bal">
+                <span class="eq-nkc-b"><i class="k" style="width:${w(K)}"></i></span><small>Kosten ${eur(K)}</small>
+                <span class="eq-nkc-b"><i class="v" style="width:${w(V)}"></i></span><small>${x.art === "laeuft" ? "Vorauszahlungen im ganzen Jahr" : "Vorauszahlungen"} ${eur(V)}</small>
+              </span>
+              <span class="eq-nkc-e"><b>${esc(erg)}</b><small>${esc(zusatz)}</small></span>
+            </button>`; }).join("")}
+        </div>
+        <div class="note">Jahr antippen, um es abzurechnen. Gefüllter Balken = umlagefähige Kosten, Rahmen = Vorauszahlungen der Mieter.</div>`;
+      v.querySelectorAll("[data-jahr]").forEach(b => b.onclick = () => openNkAbrechnung(s, Number(b.dataset.jahr)));
+    });
+    return karte;
+  }
+
   // Karte in der Objektansicht
   function nebenkostenKarte(s) {
     if (!hatModul()) return nebenkostenGesperrt(s);
+    if (!s.istProjekt) return nkCenterKarte(s);
     // Abrechnung betrifft das Vorjahr. Im Projekt geht es um die erwarteten Kosten des laufenden Jahres.
     const jahr = new Date().getFullYear() - (s.istProjekt ? 0 : 1);
     const karte = el(`<div class="card nk-card clickable" role="button" tabindex="0">
@@ -3584,16 +3704,20 @@
     const sheet = openSheet(s.istProjekt ? "Erwartete Nebenkosten" : "Nebenkostenabrechnung", s.name, `<div id="nkBody"><div class="note">Wird geladen…</div></div>`);
     const body = sheet.querySelector("#nkBody");
     let schritt = startSchritt || 0;   // 0 = beim ersten Zeichnen selbst wählen
-    const SCHRITTE = ["Kosten erfassen", "Verteilung prüfen", "Ergebnis je Einheit"];
+    const SCHRITTE = s.istProjekt ? ["Kosten erfassen", "Verteilung prüfen", "Ergebnis je Einheit"] : ["Kosten erfassen", "Verteilung prüfen", "Ergebnis und PDF", "Versand und Zahlung"];
+    const N = SCHRITTE.length;
 
     async function zeichne() {
+      const jahre = s.istProjekt ? null : await ladeNkJahre(s, jahr);
+      if (jahr == null) jahr = jahre ? nkAktionsJahr(jahre) : new Date().getFullYear();
       const posten = await ladeNebenkosten(s._id, jahr);
       const [cfg, ausg] = s.istProjekt ? [null, {}] : await Promise.all([ladeNkAbrechnung(s._id, jahr), ladeNkAusgaben(s._id, posten)]);
       if (!body.isConnected) return;
       const r = nkVerteilung(s, posten, cfg), k = nkKontrolle(r), b = nkBilanz(r);
       const ohne = posten.filter(p => !(Number(p.betrag) || 0));
       // Alles erfasst → gleich zum Ergebnis; sonst beginnt der Ablauf vorn
-      if (!schritt) schritt = posten.length && !ohne.length ? 3 : 1;
+      const js = s.istProjekt ? null : nkJahrStatus(s, jahr, posten, cfg);
+      if (!schritt) schritt = js && (js.art === "zahlung" || js.art === "fertig") ? 4 : posten.some(p => Number(p.betrag) || 0) ? 3 : 1;
 
       // --- Schritt 1: Kosten ---
       const liste = posten.length ? posten.map(p => {
@@ -3613,7 +3737,7 @@
           <button type="button" class="add-btn" id="nkAdd">+ Kostenart</button>
           ${posten.length ? "" : `<button type="button" class="add-btn" id="nkVorlage">Vorlage übernehmen</button>`}
         </div>
-        ${posten.length && !s.istProjekt ? `<div class="note" style="margin-top:10px">Kostenart antippen, um Rechnungen mit Beleg zu erfassen. Die Summe der Rechnungen ist dann der Betrag der Kostenart.</div>` : ""}
+        ${posten.length && !s.istProjekt ? `<div class="note" style="margin-top:10px">Kostenart antippen, um Rechnungen mit Beleg zu erfassen. Die Summe der Rechnungen ist dann der Betrag der Kostenart.${ohne.length ? " Kostenarten ohne Betrag erscheinen nicht auf der Abrechnung." : ""}</div>` : ""}
         ${posten.length ? `<div class="eq-werte" style="margin-top:20px">
           ${wert("Umlagefähig", eur(r.summeUml), "wird verteilt")}
           ${wert("Nicht umlagefähig", eur(r.summeNicht), "trägst du selbst")}
@@ -3701,6 +3825,36 @@
         <div class="wi-hinweis">Die Vorauszahlung ist die bei der Einheit hinterlegte monatliche Nebenkosten-Zahlung${r.hatStrom ? " plus Stromabschlag" : ""} mal die Monate im Abrechnungszeitraum – oder der tatsächlich gezahlte Betrag, wenn du ihn bei der Einheit einträgst. Die Abrechnung muss dem Mieter innerhalb von zwölf Monaten nach Ende des Abrechnungszeitraums zugehen. Orientierung, keine Rechtsberatung.</div>`
         : `<div class="eq-leer" style="padding:16px">Dieses Objekt hat noch keine Einheit.</div>`;
 
+      // --- Schritt 4: Versand und Zahlung ---
+      let s4 = "";
+      if (js) {
+        const zl = js.zahl;
+        s4 = nkFehlt17 ? `<div class="gw-hinweis">${esc(NK17_FEHLT)}</div>` : `
+        ${efTitel("Abrechnung verschickt")}
+        ${js.versendet ? `<div class="nk-p eq-nk-fest">
+            <div class="nk-p-tx"><div class="nk-p-n">Verschickt am ${esc(datumKurz(js.versendet))}</div>
+              <div class="nk-p-m">${js.versendet <= js.frist ? "rechtzeitig vor dem " + esc(datumKurz(js.frist)) : "nach dem " + esc(datumKurz(js.frist)) + " – eine Nachzahlung kannst du in der Regel nicht mehr verlangen"}</div></div>
+            <button type="button" class="add-btn" id="nkVersandWeg">Zurücknehmen</button></div>
+          ${js.geaendert ? `<div class="eq-zustand achtung"><div class="eq-zustand-tx"><div class="eq-zustand-t">Seit dem Versand hat sich etwas geändert</div><div class="eq-zustand-d">Bei mindestens einem Mieter weicht das Ergebnis vom verschickten ab. Prüf, ob du eine korrigierte Abrechnung schicken musst.</div></div></div>` : ""}`
+        : `<div class="note">${js.art === "laeuft" ? "Der Abrechnungszeitraum läuft noch bis " + esc(datumKurz(js.r.bis)) + ". " : ""}Hast du die Abrechnungen verschickt? Markier es hier – ab dann verfolgt ESTRIQ, wer bezahlt hat. Zugehen muss sie den Mietern bis ${esc(datumKurz(js.frist))}.</div>
+          <div class="eq-nk-versand">${ef("Verschickt am", "versendet_am", nkHeute(), "date")}
+            <button type="button" class="eq-btn" id="nkVersand">Als verschickt markieren</button></div>`}
+        ${efTitel("Zahlungen")}
+        ${zl.length ? `<div class="eq-nk-zl-liste">${zl.map(x => {
+          const nach = x.saldo < 0;
+          const bez = x.bezahlt;
+          return `<div class="eq-nk-zl">
+            <div class="eq-nk-zl-tx"><b>${esc(x.z.u.wohnung || "Einheit")} · ${esc(x.p.name || (x.p.typ === "vormieter" ? "Vormieter" : "Mieter"))}</b>
+              <small>${x.p.typ === "vormieter" ? "Vormieter · " : ""}${esc(nkErgebnis(x.saldo))}${x.vorher != null && Math.abs(x.vorher - x.saldo) > 0.5 ? " · verschickt: " + esc(nkErgebnis(x.vorher)) : ""}</small></div>
+            <div class="eq-nk-zl-a">${!x.noetig ? `<span class="eq-marke">nichts zu zahlen</span>`
+              : bez ? `<span class="eq-marke gut">${nach ? "erhalten" : "erstattet"} am ${esc(datumKurz(bez.am))}</span><button type="button" class="add-btn" data-zl-weg="${esc(x.key)}">Zurücknehmen</button>`
+              : js.versendet ? `<button type="button" class="eq-btn zweit" data-zl="${esc(x.key)}">${nach ? "Zahlung erhalten" : "Guthaben erstattet"}</button>`
+              : `<span class="eq-marke">noch nicht verschickt</span>`}</div>
+          </div>`; }).join("")}</div>
+          <div class="note">${js.versendet ? (js.offen.length ? "Noch offen: " + esc([js.vonMietern > 0.005 ? eur(js.vonMietern) + " von Mietern" : "", js.anMieter > 0.005 ? eur(js.anMieter) + " an Mieter" : ""].filter(Boolean).join(", ")) + "." : "Alle Zahlungen sind erledigt.") : "Sobald du verschickt hast, hakst du hier ab, wer bezahlt hat oder sein Guthaben bekommen hat."}</div>`
+          : `<div class="note">Für dieses Jahr gibt es keinen Mieter mit Ergebnis.</div>`}`;
+      }
+
       // --- Kontrollzeile ---
       const kontrolle = !uml.length
         ? `<div class="eq-kontrolle"><span>Noch keine umlagefähigen Kosten erfasst</span></div>`
@@ -3711,12 +3865,15 @@
           </div>`;
 
       body.innerHTML = `
-        <div class="nk-jahr">
+        ${s.istProjekt ? `<div class="nk-jahr">
           <button type="button" class="cal-btn" id="nkPrev" aria-label="Jahr zurück">‹</button>
-          <span>${s.istProjekt ? "Jahr" : "Abrechnungsjahr"} <b>${jahr}</b></span>
+          <span>Jahr <b>${jahr}</b></span>
           <button type="button" class="cal-btn" id="nkNext" aria-label="Jahr vor">›</button>
-        </div>
-        <div class="eq-schritte" role="tablist" aria-label="Ablauf der Abrechnung">
+        </div>` : `<div class="eq-nk-jahre" role="group" aria-label="Abrechnungsjahr wählen">
+          <button type="button" class="eq-nk-jc frueh" data-jahr="${Math.min(...jahre.map(x => x.jahr)) - 1}"><b>‹ ${Math.min(...jahre.map(x => x.jahr)) - 1}</b><small>früher</small></button>
+          ${jahre.slice().reverse().map(x => `<button type="button" class="eq-nk-jc${x.jahr === jahr ? " on" : ""} ${x.klasse}" data-jahr="${x.jahr}" aria-pressed="${x.jahr === jahr}"><b>${x.jahr}</b><small>${esc(NK_KURZ[x.art] || "")}</small></button>`).join("")}
+        </div>`}
+        <div class="eq-schritte${N === 4 ? " eq-vier" : ""}" role="tablist" aria-label="Ablauf der Abrechnung">
           ${SCHRITTE.map((t, i) => `<button type="button" class="eq-schritt${schritt === i + 1 ? " on" : ""}" role="tab" aria-selected="${schritt === i + 1}" data-schritt="${i + 1}"><b>${i + 1}</b><span>${t}</span></button>`).join("")}
         </div>
         ${kontrolle}
@@ -3725,6 +3882,7 @@
         <div class="eq-schritt-feld" data-feld="1"${schritt === 1 ? "" : " hidden"}>${s1}</div>
         <div class="eq-schritt-feld" data-feld="2"${schritt === 2 ? "" : " hidden"}>${s2}</div>
         <div class="eq-schritt-feld" data-feld="3"${schritt === 3 ? "" : " hidden"}>${s3}</div>
+        ${js ? `<div class="eq-schritt-feld" data-feld="4"${schritt === 4 ? "" : " hidden"}>${s4}</div>` : ""}
         <div class="ef-actions eq-fest">
           <div class="ef-knoepfe">
             <button type="button" class="eq-btn" id="nkWeiter"></button>
@@ -3736,16 +3894,49 @@
         schritt = n;
         body.querySelectorAll("[data-feld]").forEach(f => { f.hidden = Number(f.dataset.feld) !== n; });
         body.querySelectorAll("[data-schritt]").forEach(t => { const an = Number(t.dataset.schritt) === n; t.classList.toggle("on", an); t.setAttribute("aria-selected", an); });
-        body.querySelector("#nkWeiter").textContent = n === 1 ? "Weiter: Verteilung prüfen" : n === 2 ? "Weiter: Ergebnis je Einheit" : "Fertig";
+        body.querySelector("#nkWeiter").textContent = n === 1 ? "Weiter: Verteilung prüfen" : n === 2 ? (N === 4 ? "Weiter: Ergebnis und PDF" : "Weiter: Ergebnis je Einheit") : n === 3 && N === 4 ? "Weiter: Versand und Zahlung" : "Fertig";
         body.querySelector("#nkZurueck").hidden = n === 1;
         const sb = sheet.querySelector(".sheet-b"); if (sb) sb.scrollTop = 0;
       };
       zeige(schritt);
       body.querySelectorAll("[data-schritt]").forEach(t => t.onclick = () => zeige(Number(t.dataset.schritt)));
-      body.querySelector("#nkWeiter").onclick = () => { if (schritt < 3) zeige(schritt + 1); else closeSheet(); };
+      body.querySelector("#nkWeiter").onclick = () => { if (schritt < N) zeige(schritt + 1); else closeSheet(); };
       body.querySelector("#nkZurueck").onclick = () => zeige(Math.max(1, schritt - 1));
-      body.querySelector("#nkPrev").onclick = () => { jahr--; zeichne(); };
-      body.querySelector("#nkNext").onclick = () => { jahr++; zeichne(); };
+      if (s.istProjekt) {
+        body.querySelector("#nkPrev").onclick = () => { jahr--; zeichne(); };
+        body.querySelector("#nkNext").onclick = () => { jahr++; zeichne(); };
+      } else {
+        body.querySelectorAll("[data-jahr]").forEach(b => b.onclick = () => { jahr = Number(b.dataset.jahr); schritt = 0; zeichne(); });
+        const an = body.querySelector(".eq-nk-jc.on"); if (an && an.scrollIntoView) { try { an.scrollIntoView({ block: "nearest", inline: "center" }); } catch (_) {} }
+        // Versand und Zahlungen speichern (in nk_abrechnungen.daten.status)
+        const st0 = (cfg && cfg.daten && cfg.daten.status) || {};
+        const setze = async (neu, knopf, meldung) => {
+          if (istGesperrt()) { openUpgradeSheet("gesperrt"); return; }
+          if (!pruefeModul("nebenkosten")) return;
+          if (knopf) knopf.disabled = true;
+          try { await speichereNkAbrechnung(s._id, cfg, { daten: { status: neu } }); await zeichne(); showToast(meldung || "Gespeichert."); }
+          catch (e) { if (knopf) knopf.disabled = false; showToast((e && e.eqText) || window.fehlerText(e)); }
+        };
+        const vs = body.querySelector("#nkVersand");
+        if (vs) vs.onclick = () => {
+          const am = (body.querySelector('[data-f="versendet_am"]') || {}).value || nkHeute();
+          const stand = {}; js.zahl.forEach(x => { stand[x.key] = Math.round(x.saldo * 100) / 100; });
+          setze({ ...st0, versendet_am: am, stand }, vs, "Als verschickt markiert.");
+        };
+        const vw = body.querySelector("#nkVersandWeg");
+        if (vw) vw.onclick = () => {
+          if (vw.dataset.sicher !== "1") { vw.dataset.sicher = "1"; vw.textContent = "Wirklich zurücknehmen?"; setTimeout(() => { if (vw.isConnected) { vw.dataset.sicher = ""; vw.textContent = "Zurücknehmen"; } }, 4000); return; }
+          setze({ ...st0, versendet_am: null, stand: null }, vw);
+        };
+        body.querySelectorAll("[data-zl]").forEach(b => b.onclick = () => {
+          const x = js.zahl.find(y => y.key === b.dataset.zl); if (!x) return;
+          setze({ ...st0, zahlungen: { ...(st0.zahlungen || {}), [x.key]: { am: nkHeute(), betrag: Math.round(x.saldo * 100) / 100 } } }, b, x.saldo < 0 ? "Zahlung vermerkt." : "Erstattung vermerkt.");
+        });
+        body.querySelectorAll("[data-zl-weg]").forEach(b => b.onclick = () => {
+          const z = { ...(st0.zahlungen || {}) }; delete z[b.dataset.zlWeg];
+          setze({ ...st0, zahlungen: z }, b);
+        });
+      }
       body.querySelector("#nkAdd").onclick = () => openNkPosten(s, jahr, null);
       const vb = body.querySelector("#nkVorlage");
       if (vb) vb.onclick = async () => {
@@ -11557,7 +11748,7 @@
     if (nkPdfLib) return nkPdfLib;
     nkPdfLib = new Promise((res, rej) => {
       const sc = document.createElement("script");
-      sc.src = "./pdf-lib.min.js?v=90";
+      sc.src = "./pdf-lib.min.js?v=91";
       sc.onload = () => window.PDFLib ? res(window.PDFLib) : rej(new Error("pdf-lib"));
       sc.onerror = () => { nkPdfLib = null; rej(Object.assign(new Error("pdf-lib"), { eqText: "Das PDF-Werkzeug ließ sich nicht laden. Prüf die Internetverbindung." })); };
       document.head.appendChild(sc);
@@ -11886,7 +12077,8 @@
     };
     const kopfzeile = () => zeile(["Bezeichnung", "verteilt nach", "Gesamt", "Anteil", "Einheit", "Betrag", "Anteil"], true);
     kopfzeile();
-    pt.detail.forEach(d => zeile([d.art, d.verteilt || "", nkDeZahl(d.basisGes), nkDeZahl(d.basis), d.einheit || "", nkDeEur(d.gesamtBetrag), nkDeEur(d.betrag)]));
+    // Nur Kostenarten mit Betrag, alphabetisch – so bleibt das Deckblatt einseitig
+    pt.detail.filter(d => Math.abs(Number(d.gesamtBetrag) || 0) > 0.005).sort((a, b) => String(a.art).localeCompare(String(b.art), "de")).forEach(d => zeile([d.art, d.verteilt || "", nkDeZahl(d.basisGes), nkDeZahl(d.basis), d.einheit || "", nkDeEur(d.gesamtBetrag), nkDeEur(d.betrag)]));
 
     // --- Summen und Ergebnis ---
     const stromAnteil = pt.detail.filter(d => d.strom).reduce((a, d) => a + d.betrag, 0);
