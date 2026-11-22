@@ -2985,6 +2985,29 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 }
 @media (min-width:1600px){#app .eq-kmp-reihe{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:center}}
 #views.wrap>[hidden],#app .eq-kmp[hidden],#app .eq-kmp-leiste[hidden]{display:none!important}
+/* ---------- Schema Hellblau (v=93): Weiß mit hellblauen Flächen und blauem Akzent ---------- */
+:root:not(.pre-login)[data-theme="eisblau"]{
+  --bg:#EEF4FB;--bg2:#FFFFFF;--panel-solid:#FFFFFF;--surface-2:#E3EDF9;
+  --text:#0F1B2D;--soft:#45546A;--softer:#56647A;
+  --mint:#1F64C0;--mint-2:#164E99;--deep:#0F3E7E;--on-accent:#FFFFFF;
+  --ok:#1A7147;--warn:#8A5A00;--danger:#B42318;--eq-auf-kritisch:#FFFFFF;
+  --eq-skala-rot:#D63C2F;--eq-skala-gelb:#F0BC1A;--eq-skala-gruen:#23985F;
+  --eq-linie-feld:#7A8698;
+  --stroke:rgba(15,27,45,.11);--stroke-2:rgba(15,27,45,.2);
+  --eq-reihe-3:#4F8FE0;
+  --eq-schatten-1:0 1px 2px rgba(20,60,120,.06),0 10px 26px -14px rgba(20,60,120,.18);
+  --eq-schatten-2:0 14px 34px -14px rgba(20,60,120,.26);
+  --eq-schatten-3:0 30px 80px -24px rgba(20,60,120,.36);
+  --eq-schleier:rgba(15,27,45,.4);
+  --eq-kat-1:#1F64C0;--eq-kat-2:#D2751C;--eq-kat-3:#7A4FD6;--eq-kat-4:#0F8F80;--eq-kat-5:#C93A7A;--eq-kat-6:#3E8F2C;--eq-kat-7:#B08A00;--eq-kat-8:#C9472F;
+  --eq-grau-0:#9AA6B6;--eq-grau-1:#5D6B80;--eq-grau-2:#77859A;--eq-grau-3:#46546A;--eq-grau-4:#8A97A9;
+}
+:root:not(.pre-login)[data-theme="eisblau"] .eq-logo{filter:invert(1)}
+.eq-schema[data-theme="eisblau"]{--s-bg:#EEF4FB;--s-fl:#FFFFFF;--s-tx:#0F1B2D;--s-ak:#1F64C0;--s-auf:#FFFFFF}
+:root:not(.pre-login)[data-theme="eisblau"] #app .eq-vg-w{color:var(--mint)}
+:root:not(.pre-login)[data-theme="eisblau"] #app .eq-mr-z.ein{color:var(--on-accent);background:var(--ok)}
+:root:not(.pre-login)[data-theme="eisblau"] #app .eq-mr-z.offen{color:#3A2600;background:#F6D97A}
+:root:not(.pre-login)[data-theme="eisblau"] #app .eq-wf-b.bleibt .eq-wf-bar{background:color-mix(in srgb,var(--mint) 38%,var(--bg2));box-shadow:inset 0 0 0 1.5px var(--mint)}
 /* ---------- 6. Raster für große Bildschirme (v=87) ----------
    iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
    Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben
@@ -3114,7 +3137,7 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
     var d = document.documentElement, angemeldet = false;
     try{
       var t = localStorage.getItem("estriq_theme");
-      if(t === "hell" || t === "marine" || t === "smaragd" || t === "violett") d.setAttribute("data-theme", t);
+      if(t === "hell" || t === "marine" || t === "smaragd" || t === "violett" || t === "eisblau") d.setAttribute("data-theme", t);
       for(var i = 0; i < localStorage.length; i++){
         if(/^sb-.+-auth-token$/.test(localStorage.key(i) || "")){ angemeldet = true; break; }
       }
@@ -3966,10 +3989,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=92"></script>
-<script src="./data-save.js?v=92"></script>
-<script src="./finance-engine.js?v=92"></script>
-<script src="./app.js?v=92"></script>
+<script src="./data-loader.js?v=93"></script>
+<script src="./data-save.js?v=93"></script>
+<script src="./finance-engine.js?v=93"></script>
+<script src="./app.js?v=93"></script>
 
 <script>
 /* =====================================================================
