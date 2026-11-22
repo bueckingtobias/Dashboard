@@ -2881,6 +2881,25 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 .sheet .eq-dok-input:focus-visible + .ef-h,.sheet .eq-dok-wahl:focus-within .eq-dok-knopf{outline:2px solid var(--mint-2);outline-offset:2px}
 .sheet .ef-h.bad{color:var(--danger)}
 
+/* ---------- Nebenkosten als PDF (v=90): Formularspalten, Verbrauch je Einheit, PDF-Liste, Briefkopf ---------- */
+.sheet .eq-ef2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.sheet .eq-ef2 .ef-row{min-width:0}
+.sheet .eq-nk-vb{padding:4px 0;border-bottom:1px solid var(--stroke)}
+.sheet .eq-nk-vb:last-of-type{border-bottom:0}
+.sheet .eq-nk-vb-n{font-size:var(--eq-t-2);font-weight:600;padding-top:10px}
+.sheet .eq-nk-vb-n small{display:block;font-weight:400;color:var(--soft);font-size:var(--eq-t-1)}
+.sheet .eq-nk-pdf{display:flex;flex-direction:column}
+.sheet .eq-nk-pdf-z{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:6px 0;border:0;border-bottom:1px solid var(--stroke);background:none;color:var(--text);text-align:left;font:inherit;cursor:pointer;width:100%}
+.sheet .eq-nk-pdf-z:last-child{border-bottom:0}
+.sheet .eq-nk-pdf-z[disabled]{opacity:.6;cursor:progress}
+.sheet .eq-nk-pdf-z:focus-visible{outline:2px solid var(--mint);outline-offset:2px;border-radius:12px}
+.sheet .eq-dok-typ[data-typ="ohne"]{color:var(--soft)}
+.sheet #nkPdfMsg.bad{color:var(--danger)}
+.sheet .eq-bk-logo{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.sheet .eq-bk-logo-bild{display:flex;align-items:center;justify-content:center;width:180px;height:64px;padding:6px;border-radius:12px;background:#fff;border:1px solid var(--stroke)}
+.sheet .eq-bk-logo-bild img{max-width:100%;max-height:100%;object-fit:contain}
+.sheet .eq-bk-logo-bild span{color:#555;font-size:var(--eq-t-1)}
+.sheet .eq-bk-logo-k{display:flex;gap:8px;align-items:center}
 /* ---------- 6. Raster für große Bildschirme (v=87) ----------
    iPad quer, MacBook, großer Monitor: Die Seite ist ein Raster aus 12 Spalten.
    Breite Bausteine (Hauptkarte, Wasserfall, Vermögen, Tabellen, Kredite) bleiben
@@ -3862,10 +3881,10 @@ select.ef-i option{background:var(--panel-solid);color:var(--text)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./data-loader.js?v=89"></script>
-<script src="./data-save.js?v=89"></script>
-<script src="./finance-engine.js?v=89"></script>
-<script src="./app.js?v=89"></script>
+<script src="./data-loader.js?v=90"></script>
+<script src="./data-save.js?v=90"></script>
+<script src="./finance-engine.js?v=90"></script>
+<script src="./app.js?v=90"></script>
 
 <script>
 /* =====================================================================

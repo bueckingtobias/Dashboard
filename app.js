@@ -3285,44 +3285,142 @@
     } catch (e) { console.error("Nebenkosten:", e); return []; }
   }
 
-  // Rechnet die Anteile je Einheit aus
-  function nkVerteilung(s, posten) {
+  // Rechnet die Anteile je Einheit aus (v=90, Rechenweg wie die Excel-Vorlage):
+  // · Zeitraum tagesgenau: Ein Mieter trägt nur die Tage ab Einzug. Die Tage davor trägt der Vormieter (wenn erfasst) oder der Vermieter.
+  // · Verbrauch nach Werten je Einheit (m³, kWh, €), wahlweise nur zum Teil nach Verbrauch und der Rest nach Fläche.
+  // · Personen zeitgewichtet; ein Leerstand zählt wie eine Person (das Leerstandsrisiko trägt der Vermieter).
+  // · Vorauszahlung = monatlicher Betrag × Monate im Zeitraum (oder der tatsächlich gezahlte Betrag, wenn erfasst).
+  // cfg: Angaben der Abrechnung (nk_abrechnungen) – { jahr, von, bis, daten: { einheiten: { <id>: { vor, voraus_ist, zaehler } } } }
+  const NK_TAG = 864e5;
+  const nkUtc = (iso) => { const t = String(iso || "").slice(0, 10).split("-").map(Number); return Date.UTC(t[0], (t[1] || 1) - 1, t[2] || 1); };
+  const nkIso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const nkTage = (a, b) => Math.round((nkUtc(b) - nkUtc(a)) / NK_TAG) + 1;
+  // Monate im Zeitraum, angebrochene Monate anteilig nach Tagen (01.05.–31.12. = 8)
+  function nkMonate(von, bis) {
+    let m = 0, t = nkUtc(von); const ende = nkUtc(bis);
+    while (t <= ende) {
+      const d = new Date(t), y = d.getUTCFullYear(), mo = d.getUTCMonth();
+      const tageImMonat = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+      const monEnde = Math.min(ende, Date.UTC(y, mo, tageImMonat));
+      m += (Math.round((monEnde - t) / NK_TAG) + 1) / tageImMonat;
+      t = Date.UTC(y, mo + 1, 1);
+    }
+    return Math.round(m * 1000) / 1000;
+  }
+  const nkZahlOk = (v) => v !== null && v !== undefined && v !== "" && isFinite(Number(v));
+  // Verbrauchswert einer Einheit: Zahl (ganzer Zeitraum) oder { v: bis Einzug, m: ab Einzug }
+  const nkWertGesamt = (w) => w == null ? null : typeof w === "object" ? (Number(w.v) || 0) + (Number(w.m) || 0) : Number(w);
+  const nkMass = (p) => p.mass || "m³";
+
+  function nkVerteilung(s, posten, cfg) {
+    cfg = cfg || {};
     const einheiten = (s.einheiten || []);
+    const jahr = Number(cfg.jahr) || Number(posten[0] && posten[0].jahr) || new Date().getFullYear() - 1;
+    const von = cfg.von || jahr + "-01-01", bis = cfg.bis || jahr + "-12-31";
+    const T = Math.max(1, nkTage(von, bis));
+    const ec = (cfg.daten && cfg.daten.einheiten) || {};
     const flaecheGes = einheiten.reduce((a, u) => a + (Number(u.flaeche) || 0), 0);
-    const personenGes = einheiten.reduce((a, u) => a + (Number(u.personen) || 1), 0);
     const anzahl = einheiten.length || 1;
 
     const umlagefaehig = posten.filter(p => p.umlagefaehig !== false);
     const nichtUmlage = posten.filter(p => p.umlagefaehig === false);
     const summeUml = umlagefaehig.reduce((a, p) => a + (Number(p.betrag) || 0), 0);
     const summeNicht = nichtUmlage.reduce((a, p) => a + (Number(p.betrag) || 0), 0);
+    const hatStrom = umlagefaehig.some(p => p.strom);
 
-    const zeilen = einheiten.map(u => {
-      const flaeche = Number(u.flaeche) || 0;
-      const personen = Number(u.personen) || 1;
-      let anteil = 0;
-      const detail = [];
-      umlagefaehig.forEach(p => {
-        const b = Number(p.betrag) || 0;
-        let x = 0;
-        if (p.schluessel === "direkt" && p.anteile) { const sum = Object.values(p.anteile).reduce((a, v) => a + (Number(v) || 0), 0); x = sum ? b * (Number(p.anteile[u._id]) || 0) / sum : 0; }
-        else if (p.schluessel === "einheiten") x = b / anzahl;
-        else if (p.schluessel === "personen") x = personenGes ? b * personen / personenGes : 0;
-        else if (p.schluessel === "verbrauch") x = flaecheGes ? b * flaeche / flaecheGes : 0; // ersatzweise nach Fläche
-        else x = flaecheGes ? b * flaeche / flaecheGes : 0;
-        anteil += x;
-        detail.push({ art: p.art, betrag: x, schluessel: p.schluessel });
-      });
+    // Wer trägt welche Tage einer Einheit?
+    const plan = einheiten.map(u => {
+      const c = ec[u._id] || {};
       const inc = FE.unitIncome(u);
-      const voraus = (Number(inc.nk) || 0) * 12;
-      return { u, anteil, voraus, saldo: voraus - anteil, detail };
+      const vorausMonat = (Number(inc.nk) || 0) + (hatStrom ? (Number(inc.strom) || 0) : 0);
+      const parteien = [];
+      const einzug = u.einzug ? String(u.einzug).slice(0, 10) : "";
+      if (u.status === "vermietet" && !(einzug && einzug > bis)) {
+        const ab = einzug && einzug > von ? einzug : von;
+        if (ab > von) {
+          const vorBis = nkIso(nkUtc(ab) - NK_TAG);
+          const vm = c.vor && c.vor.typ === "mieter" ? c.vor : null;
+          parteien.push(vm ? { typ: "vormieter", name: vm.name || "Vormieter", anschrift: vm.anschrift || "", von, bis: vorBis,
+              personen: Number(vm.personen) > 0 ? Number(vm.personen) : 1,
+              vorausMonat: nkZahlOk(vm.voraus_monat) ? Number(vm.voraus_monat) : vorausMonat, vorausIst: vm.voraus_ist }
+            : { typ: "leer", von, bis: vorBis, personen: 1 });
+        }
+        parteien.push({ typ: "mieter", name: u.mieter || "", von: ab, bis, personen: Number(u.personen) > 0 ? Number(u.personen) : 1, personenFehlt: !(Number(u.personen) > 0), vorausMonat, vorausIst: c.voraus_ist });
+      } else parteien.push({ typ: "leer", von, bis, personen: 1 });
+      parteien.forEach(p => { p.tage = nkTage(p.von, p.bis); p.f = p.tage / T; p.monate = nkMonate(p.von, p.bis); p.anteil = 0; p.detail = []; });
+      return { u, c, inc, parteien, persSchnitt: parteien.reduce((a, p) => a + p.personen * p.f, 0) };
+    });
+    const personenGes = plan.reduce((a, e) => a + e.persSchnitt, 0);
+
+    let hatVerbrauch = false;
+    umlagefaehig.forEach(p => {
+      const b = Number(p.betrag) || 0;
+      const werte = p.schluessel === "verbrauch" && p.anteile && typeof p.anteile === "object" ? p.anteile : null;
+      const mitWerten = !!werte && einheiten.some(u => nkWertGesamt(werte[u._id]) > 0);
+      if (p.schluessel === "verbrauch" && !mitWerten) hatVerbrauch = true;
+      const summeWerte = mitWerten ? einheiten.reduce((a, u) => a + (nkWertGesamt(werte[u._id]) || 0), 0) : 0;
+      const G = mitWerten ? (Number(p.menge_gesamt) > 0 ? Number(p.menge_gesamt) : summeWerte) : 0;
+      const vp = mitWerten ? Math.max(0, Math.min(100, nkZahlOk(p.verbrauch_prozent) ? Number(p.verbrauch_prozent) : 100)) / 100 : 1;
+      const direktSumme = p.schluessel === "direkt" && p.anteile ? Object.values(p.anteile).reduce((a, v) => a + (Number(v) || 0), 0) : 0;
+      plan.forEach(e => {
+        const fl = Number(e.u.flaeche) || 0;
+        const flAnteil = flaecheGes ? b * fl / flaecheGes : 0;
+        e.parteien.forEach(pt => {
+          let x = 0, d = { id: p.id, art: p.art, schluessel: p.schluessel, strom: !!p.strom, gesamtBetrag: b };
+          if (p.schluessel === "direkt" && p.anteile) {
+            const w = Number(p.anteile[e.u._id]) || 0;
+            x = (direktSumme ? b * w / direktSumme : 0) * pt.f;
+            Object.assign(d, { verteilt: "Wärmemenge", basisGes: direktSumme, basis: w * pt.f, einheit: "kWh" });
+          } else if (p.schluessel === "einheiten") {
+            x = b / anzahl * pt.f;
+            Object.assign(d, { verteilt: "Einheiten", basisGes: anzahl, basis: 1, einheit: "Whg." });
+          } else if (p.schluessel === "personen") {
+            x = personenGes ? b * pt.personen * pt.f / personenGes : 0;
+            Object.assign(d, { verteilt: "Personen", basisGes: personenGes, basis: pt.personen, einheit: "Personen" });
+          } else if (mitWerten) {
+            const w = werte[e.u._id];
+            const menge = w != null && typeof w === "object"
+              ? (pt.typ === "mieter" ? Number(w.m) || 0 : Number(w.v) || 0)
+              : (Number(w) || 0) * pt.f;
+            x = (G ? vp * b * menge / G : 0) + (1 - vp) * flAnteil * pt.f;
+            const euro = nkMass(p) === "€";
+            Object.assign(d, { verteilt: euro ? "Wohneinheit" : "Verbrauch" + (vp < 1 ? " " + Math.round(vp * 100) + " %" : ""), basisGes: G, basis: menge, einheit: euro ? "Euro" : nkMass(p), menge, vp });
+          } else {
+            x = flAnteil * pt.f;
+            Object.assign(d, { verteilt: "Wohnfläche", basisGes: flaecheGes, basis: fl, einheit: "m²", ersatz: p.schluessel === "verbrauch" });
+          }
+          d.betrag = x;
+          pt.anteil += x;
+          pt.detail.push(d);
+        });
+      });
     });
 
+    const zeilen = plan.map(e => {
+      e.parteien.forEach(p => {
+        if (p.typ === "leer") { p.voraus = 0; p.saldo = 0; return; }
+        p.voraus = nkZahlOk(p.vorausIst) ? Number(p.vorausIst) : Math.round(p.vorausMonat * p.monate * 100) / 100;
+        p.saldo = p.voraus - p.anteil;
+      });
+      const M = e.parteien.find(p => p.typ === "mieter") || null;
+      const V = e.parteien.find(p => p.typ === "vormieter") || null;
+      const leer = e.parteien.filter(p => p.typ === "leer").reduce((a, p) => a + p.anteil, 0);
+      const gesamt = e.parteien.reduce((a, p) => a + p.anteil, 0);
+      if (!M) {
+        // Ohne Mieter im Zeitraum: Den ganzen Anteil trägt der Vermieter (Detail = Summe der Teile)
+        const detail = e.parteien[0].detail.map((d, i) => ({ ...d, betrag: e.parteien.reduce((a, p) => a + p.detail[i].betrag, 0) }));
+        return { u: e.u, inc: e.inc, c: e.c, parteien: e.parteien, mieter: null, vormieter: V, leer, gesamt, anteil: gesamt, voraus: 0, saldo: -gesamt, detail };
+      }
+      return { u: e.u, inc: e.inc, c: e.c, parteien: e.parteien, mieter: M, vormieter: V, leer, gesamt, anteil: M.anteil, voraus: M.voraus, saldo: M.saldo, detail: M.detail };
+    });
+
+    const zahlende = [];
+    zeilen.forEach(z => { if (z.vormieter) zahlende.push(z.vormieter); if (z.mieter) zahlende.push(z.mieter); });
     return {
-      zeilen, summeUml, summeNicht, flaecheGes, personenGes, anzahl,
-      vorausGes: zeilen.reduce((a, z) => a + z.voraus, 0),
-      saldoGes: zeilen.reduce((a, z) => a + z.saldo, 0),
-      hatVerbrauch: umlagefaehig.some(p => p.schluessel === "verbrauch")
+      zeilen, summeUml, summeNicht, flaecheGes, personenGes, anzahl, jahr, von, bis, tage: T, hatStrom,
+      vorausGes: zahlende.reduce((a, p) => a + p.voraus, 0),
+      saldoGes: zahlende.reduce((a, p) => a + p.saldo, 0),
+      hatVerbrauch
     };
   }
 
@@ -3364,26 +3462,78 @@
   const nkErgebnis = (saldo) => Math.abs(saldo) < 0.005 ? "ausgeglichen" : (saldo >= 0 ? "Guthaben " : "Nachzahlung ") + eur(Math.abs(saldo));
   const NK_SCH_TEXT = { flaeche: "nach Wohnfläche", einheiten: "gleich je Einheit", personen: "nach Personen", verbrauch: "nach Verbrauch", direkt: "nach Wärmemengenzähler und Fläche" };
   const nkSchText = (k) => NK_SCH_TEXT[k] || NK_SCH_TEXT.flaeche;
+  const nkTagMonat = (iso) => { const t = String(iso).slice(0, 10).split("-"); return t[2] + "." + t[1] + "."; };
 
-  // Was die Abrechnung für die Mieter bedeutet: wer nachzahlt, wer Geld zurückbekommt. Zählt nur vermietete Einheiten.
+  // Was die Abrechnung für die Mieter bedeutet: wer nachzahlt, wer Geld zurückbekommt. Zählt Mieter und erfasste Vormieter.
   function nkBilanz(r) {
     const b = { nach: 0, nachSumme: 0, zurueck: 0, zurueckSumme: 0, frei: 0, anteilLeer: 0, vorausMieter: 0, saldoMieter: 0 };
     r.zeilen.forEach(z => {
-      // Für eine freie Einheit zahlt niemand voraus: Ihr Anteil bleibt beim Vermieter
-      if (z.u.status !== "vermietet") { b.frei++; b.anteilLeer += z.anteil; return; }
-      b.vorausMieter += z.voraus; b.saldoMieter += z.saldo;
-      if (z.saldo < -0.005) { b.nach++; b.nachSumme += -z.saldo; }
-      else if (z.saldo > 0.005) { b.zurueck++; b.zurueckSumme += z.saldo; }
+      // Für Leerstand zahlt niemand voraus: Dieser Anteil bleibt beim Vermieter
+      b.anteilLeer += z.leer || 0;
+      if (!z.mieter) b.frei++;
+      [z.vormieter, z.mieter].filter(Boolean).forEach(p => {
+        b.vorausMieter += p.voraus; b.saldoMieter += p.saldo;
+        if (p.saldo < -0.005) { b.nach++; b.nachSumme += -p.saldo; }
+        else if (p.saldo > 0.005) { b.zurueck++; b.zurueckSumme += p.saldo; }
+      });
     });
     b.satz = !b.nach && !b.zurueck ? "Vorauszahlungen und Kosten gleichen sich aus."
       : [b.nach ? mehrzahl(b.nach, "Mieter zahlt", "Mieter zahlen") + " nach (zusammen " + eur(b.nachSumme) + ")" : "",
          b.zurueck ? mehrzahl(b.zurueck, "Mieter bekommt", "Mieter bekommen") + " Geld zurück (zusammen " + eur(b.zurueckSumme) + ")" : ""].filter(Boolean).join(", ") + ".";
     return b;
   }
-  // Kontrolle: Die Summe der Anteile muss der umlagefähigen Summe entsprechen
+  // Kontrolle: Die Summe aller Anteile (Mieter, Vormieter, Leerstand) muss der umlagefähigen Summe entsprechen
   function nkKontrolle(r) {
-    const verteilt = r.zeilen.reduce((a, z) => a + z.anteil, 0);
+    const verteilt = r.zeilen.reduce((a, z) => a + z.gesamt, 0);
     return { verteilt, fehlt: r.summeUml - verteilt, stimmt: Math.abs(r.summeUml - verteilt) < 0.01 };
+  }
+
+  /* ---------- Daten für die Abrechnung (17-nk-abrechnung.txt) ---------- */
+  const NK17_FEHLT = "Für Rechnungen und die PDF-Abrechnung fehlt noch die Datenbank. Führ dafür 17-nk-abrechnung.txt im SQL-Editor aus.";
+  let nkFehlt17 = false;
+  const nkTabFehlt = (e) => /nk_ausgaben|nk_abrechnungen|briefkopf|schema cache|does not exist|PGRST205|42P01|42703|column/i.test(((e && e.message) || "") + " " + ((e && e.code) || ""));
+  const nkAusgCache = {};
+  // Rechnungen (Ausgaben) zu den Kostenarten eines Jahres, je Kostenart
+  async function ladeNkAusgaben(objektId, posten) {
+    const ids = posten.map(p => p.id);
+    const out = {}; ids.forEach(id => { out[id] = []; });
+    if (!ids.length) return out;
+    try {
+      const { data, error } = await window.sb.from("nk_ausgaben").select("*").eq("objekt_id", objektId).in("nebenkosten_id", ids).order("datum");
+      if (error) { if (nkTabFehlt(error)) nkFehlt17 = true; return out; }
+      nkFehlt17 = false;
+      (data || []).forEach(a => { (out[a.nebenkosten_id] = out[a.nebenkosten_id] || []).push(a); });
+      nkAusgCache[objektId] = out;
+    } catch (_) {}
+    return out;
+  }
+  // Angaben je Objekt und Jahr. Fehlen sie, gelten Kalenderjahr und die Anschrift/Zähler des letzten Jahres.
+  async function ladeNkAbrechnung(objektId, jahr) {
+    const leer = { jahr, von: jahr + "-01-01", bis: jahr + "-12-31", briefdatum: null, daten: { einheiten: {} }, neu: true };
+    try {
+      const { data, error } = await window.sb.from("nk_abrechnungen").select("*").eq("objekt_id", objektId).order("jahr", { ascending: false });
+      if (error) { if (nkTabFehlt(error)) nkFehlt17 = true; return leer; }
+      const liste = data || [];
+      const da = liste.find(x => Number(x.jahr) === Number(jahr));
+      if (da) return { ...da, jahr: Number(da.jahr), von: da.von || leer.von, bis: da.bis || leer.bis, daten: Object.assign({ einheiten: {} }, da.daten || {}) };
+      const vor = liste.find(x => Number(x.jahr) < Number(jahr));
+      if (vor && vor.daten) {
+        const e = {};
+        Object.keys(vor.daten.einheiten || {}).forEach(id => { const z = (vor.daten.einheiten[id] || {}).zaehler; if (z) e[id] = { zaehler: z }; });
+        leer.daten = { anschrift: vor.daten.anschrift, einheiten: e };
+      }
+      return leer;
+    } catch (_) { return leer; }
+  }
+  async function speichereNkAbrechnung(objektId, cfg, aenderung) {
+    const neu = { von: aenderung.von || cfg.von, bis: aenderung.bis || cfg.bis, briefdatum: aenderung.briefdatum !== undefined ? aenderung.briefdatum : cfg.briefdatum,
+      daten: Object.assign({}, cfg.daten || {}, aenderung.daten || {}), geaendert: new Date().toISOString() };
+    const { data: alt, error: e0 } = await window.sb.from("nk_abrechnungen").select("id").eq("objekt_id", objektId).eq("jahr", cfg.jahr).maybeSingle();
+    if (e0) throw nkTabFehlt(e0) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : e0;
+    const { error } = alt && alt.id
+      ? await window.sb.from("nk_abrechnungen").update(neu).eq("id", alt.id)
+      : await window.sb.from("nk_abrechnungen").insert({ ...neu, objekt_id: objektId, jahr: cfg.jahr });
+    if (error) throw nkTabFehlt(error) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : error;
   }
 
   // Karte in der Objektansicht
@@ -3403,7 +3553,7 @@
     karte.onclick = (e) => { if (!e.target.closest("button")) oeffnen(); };
     karte.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === karte && !e.repeat) { e.preventDefault(); oeffnen(); } };
 
-    ladeNebenkosten(s._id, jahr).then(posten => {
+    Promise.all([ladeNebenkosten(s._id, jahr), s.istProjekt ? null : ladeNkAbrechnung(s._id, jahr)]).then(([posten, cfg]) => {
       const v = karte.querySelector("#nkVorschau");
       if (!v) return;
       if (!posten.length) {
@@ -3411,7 +3561,7 @@
         karte.querySelector("#nkOeffnen").textContent = s.istProjekt ? "Kosten erfassen" : "Abrechnung starten";
         return;
       }
-      const r = nkVerteilung(s, posten), b = nkBilanz(r), k = nkKontrolle(r);
+      const r = nkVerteilung(s, posten, cfg), b = nkBilanz(r), k = nkKontrolle(r);
       const ohne = posten.filter(p => !(Number(p.betrag) || 0)).length;
       v.innerHTML = `
         <div class="eq-zustand${ohne || !k.stimmt ? " achtung" : ""}"><div class="eq-zustand-tx">
@@ -3420,9 +3570,9 @@
         ${s.istProjekt ? "" : nkBalkenHtml(r, b)}
         <div class="eq-werte">
           ${wert("Umlagefähig", eur(r.summeUml), "wird auf die Einheiten verteilt")}
-          ${wert("Vorauszahlungen", eur(b.vorausMieter), "der Mieter im Jahr")}
+          ${wert("Vorauszahlungen", eur(b.vorausMieter), "der Mieter im Zeitraum")}
           ${wert(b.saldoMieter >= 0 ? "Guthaben gesamt" : "Nachzahlung gesamt", eur(Math.abs(b.saldoMieter)), b.saldoMieter >= 0 ? "bekommen die Mieter zurück" : "zahlen die Mieter nach")}
-          ${b.anteilLeer > 0 ? wert("Leerstand", eur(b.anteilLeer), "trägst du selbst") : ""}
+          ${b.anteilLeer > 0.5 ? wert("Leerstand", eur(b.anteilLeer), "trägst du selbst") : ""}
         </div>`;
     });
     return karte;
@@ -3438,10 +3588,9 @@
 
     async function zeichne() {
       const posten = await ladeNebenkosten(s._id, jahr);
-      const dc = s.istProjekt ? null : await ladeDokumente(s._id);
-      const belege = (id) => dc && !dc.fehlt ? dc.liste.filter(d => d.nebenkosten_id === id).length : 0;
+      const [cfg, ausg] = s.istProjekt ? [null, {}] : await Promise.all([ladeNkAbrechnung(s._id, jahr), ladeNkAusgaben(s._id, posten)]);
       if (!body.isConnected) return;
-      const r = nkVerteilung(s, posten), k = nkKontrolle(r), b = nkBilanz(r);
+      const r = nkVerteilung(s, posten, cfg), k = nkKontrolle(r), b = nkBilanz(r);
       const ohne = posten.filter(p => !(Number(p.betrag) || 0));
       // Alles erfasst → gleich zum Ergebnis; sonst beginnt der Ablauf vorn
       if (!schritt) schritt = posten.length && !ohne.length ? 3 : 1;
@@ -3449,17 +3598,22 @@
       // --- Schritt 1: Kosten ---
       const liste = posten.length ? posten.map(p => {
         const leer = !(Number(p.betrag) || 0);
+        const rn = ausg[p.id] || [], ohneBeleg = rn.filter(a => !a.dokument_id).length;
+        const meta = [nkSchText(p.schluessel), p.umlagefaehig === false ? "nicht umlagefähig, trägst du selbst" : "",
+          rn.length ? mehrzahl(rn.length, "Rechnung", "Rechnungen") + (ohneBeleg ? ", " + (ohneBeleg === 1 ? "eine ohne Beleg" : ohneBeleg + " ohne Beleg") : "") : "",
+          p.schluessel === "verbrauch" && r.hatVerbrauch && !(p.anteile && Object.keys(p.anteile).length) ? "Verbrauchswerte fehlen" : ""].filter(Boolean).join(" · ");
         return `<div class="nk-p${p.umlagefaehig === false ? " nicht" : ""}" data-p="${p.id}" role="button" tabindex="0">
           <div class="nk-p-tx"><div class="nk-p-n">${esc(p.art)}</div>
-            <div class="nk-p-m">${esc(nkSchText(p.schluessel))}${p.umlagefaehig === false ? " · nicht umlagefähig, trägst du selbst" : ""}${belege(p.id) ? " · " + mehrzahl(belege(p.id), "Beleg", "Belege") : ""}</div></div>
+            <div class="nk-p-m">${esc(meta)}</div></div>
           ${leer ? `<span class="eq-marke achtung">Betrag fehlt</span>` : `<b>${eur(Number(p.betrag) || 0)}</b>`}</div>`;
-      }).join("") : `<div class="eq-leer" style="padding:16px">Noch keine Kostenart für ${jahr} erfasst. Die Vorlage legt die üblichen Kostenarten an – du trägst nur noch die Beträge ein.</div>`;
+      }).join("") : `<div class="eq-leer" style="padding:16px">Noch keine Kostenart für ${jahr} erfasst. Die Vorlage legt die üblichen Kostenarten an – du trägst nur noch die Rechnungen oder Beträge ein.</div>`;
       const s1 = `
         <div class="nk-liste">${liste}</div>
         <div class="nk-btns">
           <button type="button" class="add-btn" id="nkAdd">+ Kostenart</button>
           ${posten.length ? "" : `<button type="button" class="add-btn" id="nkVorlage">Vorlage übernehmen</button>`}
         </div>
+        ${posten.length && !s.istProjekt ? `<div class="note" style="margin-top:10px">Kostenart antippen, um Rechnungen mit Beleg zu erfassen. Die Summe der Rechnungen ist dann der Betrag der Kostenart.</div>` : ""}
         ${posten.length ? `<div class="eq-werte" style="margin-top:20px">
           ${wert("Umlagefähig", eur(r.summeUml), "wird verteilt")}
           ${wert("Nicht umlagefähig", eur(r.summeNicht), "trägst du selbst")}
@@ -3469,41 +3623,57 @@
       const einheiten = s.einheiten || [];
       const uml = posten.filter(p => p.umlagefaehig !== false);
       const jeSch = {}; uml.forEach(p => { const key = NK_SCH_TEXT[p.schluessel] ? p.schluessel : "flaeche"; jeSch[key] = (jeSch[key] || 0) + (Number(p.betrag) || 0); });
-      const basis = { flaeche: qm(r.flaecheGes) + " gesamt", einheiten: mehrzahl(einheiten.length, "Einheit", "Einheiten"), personen: mehrzahl(r.personenGes, "Person", "Personen") + " gesamt", verbrauch: "hier ersatzweise nach Wohnfläche", direkt: "Anteile aus dem Mieterstrom" };
+      const basis = { flaeche: qm(r.flaecheGes) + " gesamt", einheiten: mehrzahl(einheiten.length, "Einheit", "Einheiten"), personen: zahlKurz(r.personenGes) + " Personen im Schnitt", verbrauch: r.hatVerbrauch ? "zum Teil ersatzweise nach Wohnfläche" : "nach Werten je Einheit", direkt: "Anteile aus dem Mieterstrom" };
       const ohneFlaeche = einheiten.filter(u => !(Number(u.flaeche) > 0));
-      const ohnePersonen = einheiten.filter(u => !(Number(u.personen) > 0));
+      const ohnePersonen = einheiten.filter(u => u.status === "vermietet" && !(Number(u.personen) > 0));
       const warn = [];
       if (!einheiten.length) warn.push("Dieses Objekt hat noch keine Einheit. Ohne Einheiten lässt sich nichts verteilen.");
-      else if (!k.stimmt && uml.length) warn.push(eur(Math.abs(k.fehlt)) + " sind nicht verteilt. " + (r.flaecheGes ? "Prüfe die Angaben der Einheiten." : "Keine Einheit hat eine Fläche – Kosten nach Wohnfläche lassen sich so nicht verteilen."));
+      else if (!k.stimmt && uml.length) warn.push(eur(Math.abs(k.fehlt)) + " sind nicht verteilt. " + (r.flaecheGes ? "Prüfe die Angaben der Einheiten und bei Kosten nach Verbrauch die Gesamtmenge." : "Keine Einheit hat eine Fläche – Kosten nach Wohnfläche lassen sich so nicht verteilen."));
       if (einheiten.length && ohneFlaeche.length && r.flaecheGes && (jeSch.flaeche || jeSch.verbrauch)) warn.push("Bei " + (ohneFlaeche.length === 1 ? "einer Einheit" : ohneFlaeche.length + " Einheiten") + " fehlt die Fläche (" + ohneFlaeche.map(u => u.wohnung || "Einheit").join(", ") + "). Sie bekommen von Kosten nach Wohnfläche keinen Anteil.");
       if (einheiten.length && ohnePersonen.length && jeSch.personen) warn.push("Bei " + (ohnePersonen.length === 1 ? "einer Einheit" : ohnePersonen.length + " Einheiten") + " ist keine Personenzahl eingetragen. ESTRIQ rechnet dort mit einer Person. Du trägst sie bei der Einheit unter „Personen im Haushalt“ ein.");
+      const heiz = uml.filter(p => p.schluessel === "verbrauch" && /heiz|wärme|warmwasser/i.test(p.art) && (p.anteile && Object.keys(p.anteile).length) && !(Number(p.verbrauch_prozent) >= 50 && Number(p.verbrauch_prozent) <= 70));
+      const a0 = (cfg && cfg.daten && cfg.daten.anschrift) || {};
       const s2 = `
         ${warn.map(w => `<div class="eq-zustand achtung"><div class="eq-zustand-tx"><div class="eq-zustand-d" style="margin:0;font-size:var(--eq-t-2);color:var(--text)">${esc(w)}</div></div></div>`).join("")}
+        ${s.istProjekt ? "" : `${efTitel("Abrechnungszeitraum")}
+        <div class="nk-p eq-nk-fest" id="nkAngaben" role="button" tabindex="0">
+          <div class="nk-p-tx"><div class="nk-p-n">${datumKurz(r.von)} – ${datumKurz(r.bis)}</div>
+            <div class="nk-p-m">${esc([mehrzahl(r.tage, "Tag", "Tage"), a0.strasse ? a0.strasse + ", " + (a0.ort || "") : "Anschrift des Objekts fehlt noch"].join(" · "))}</div></div>
+          <span class="add-btn">Ändern</span></div>`}
         ${efTitel("So werden die Kosten verteilt")}
         ${Object.keys(jeSch).length ? Object.keys(NK_SCH_TEXT).filter(key => jeSch[key] != null).map(key => `<div class="kv"><span>${NK_SCH_TEXT[key]}<small class="eq-kv-u">${esc(basis[key])}</small></span><b>${eur(jeSch[key])}</b></div>`).join("")
           : `<div class="note">Noch keine umlagefähigen Kosten erfasst.</div>`}
-        ${r.hatVerbrauch ? `<div class="gw-hinweis" style="margin-top:12px">Heizung und Warmwasser verteilt ESTRIQ ersatzweise nach Wohnfläche. Die Heizkostenverordnung verlangt eine Abrechnung nach Verbrauch – nimm dafür die Werte deines Ablesedienstes.</div>` : ""}
+        ${r.hatVerbrauch ? `<div class="gw-hinweis" style="margin-top:12px">Bei mindestens einer Kostenart nach Verbrauch fehlen die Werte je Einheit. Bis du sie bei der Kostenart einträgst, verteilt ESTRIQ dort nach Wohnfläche.</div>` : ""}
+        ${heiz.length ? `<div class="gw-hinweis" style="margin-top:12px">${esc(heiz.map(p => p.art).join(", "))}: Die Heizkostenverordnung verlangt 50 bis 70 % nach Verbrauch und den Rest nach Fläche. Stell den Anteil bei der Kostenart ein.</div>` : ""}
         ${efTitel("Grundlage je Einheit")}
         ${einheiten.length ? `<div class="eq-nk-tab">
-          <div class="eq-nk-kopf eq-nk-drei"><div>Einheit</div><div>Fläche</div><div>Personen</div></div>
-          ${einheiten.map(u => `<div class="eq-nk-z eq-nk-drei">
+          <div class="eq-nk-kopf eq-nk-vier"><div>Einheit</div><div>Fläche</div><div>Personen</div><div>Mietzeit</div></div>
+          ${r.zeilen.map((z, i) => {
+            const u = z.u, M = z.mieter;
+            const zeit = !M ? "frei" : M.von > r.von ? "ab " + nkTagMonat(M.von) + (z.vormieter ? ", davor " + (z.vormieter.name || "Vormieter") : ", davor leer") : "ganzer Zeitraum";
+            return `<div class="eq-nk-z eq-nk-vier${s.istProjekt ? "" : " nk-t-row"}" data-nk-eh="${i}"${s.istProjekt ? "" : ` role="button" tabindex="0"`}>
             <div class="eq-nk-n">${esc(u.wohnung || "Einheit")}<small>${u.status === "vermietet" ? esc(u.mieter || "ohne Namen") : "frei"}</small></div>
-            <div class="eq-nk-c">${Number(u.flaeche) > 0 ? qm(u.flaeche) : `<span class="eq-marke achtung">fehlt</span>`}</div>
-            <div class="eq-nk-c">${Number(u.personen) > 0 ? Number(u.personen) : `1 <small>angenommen</small>`}</div>
-          </div>`).join("")}</div>` : `<div class="note">Noch keine Einheit angelegt.</div>`}`;
+            <div class="eq-nk-c" data-l="Fläche">${Number(u.flaeche) > 0 ? qm(u.flaeche) : `<span class="eq-marke achtung">fehlt</span>`}</div>
+            <div class="eq-nk-c" data-l="Personen">${Number(u.personen) > 0 ? Number(u.personen) : u.status === "vermietet" ? `1 <small>angenommen</small>` : "—"}</div>
+            <div class="eq-nk-c" data-l="Mietzeit">${esc(zeit)}</div>
+          </div>`; }).join("")}</div>
+          ${s.istProjekt ? "" : `<div class="note" style="margin-top:8px">Einheit antippen für Vormieter, Zählernummern und tatsächlich gezahlte Vorauszahlungen.</div>`}` : `<div class="note">Noch keine Einheit angelegt.</div>`}`;
 
       // --- Schritt 3: Ergebnis ---
+      const briefe = [];
+      r.zeilen.forEach((z, i) => { if (z.mieter) briefe.push({ i, p: z.mieter, z }); if (z.vormieter) briefe.push({ i, p: z.vormieter, z }); });
       const s3 = r.zeilen.length ? `
         <div class="eq-zustand"><div class="eq-zustand-tx">
           <div class="eq-zustand-t">${esc(b.satz)}</div>
-          <div class="eq-zustand-d">Zeile antippen zeigt die Abrechnung der Einheit.${b.frei ? " Für " + (b.frei === 1 ? "eine freie Einheit" : b.frei + " freie Einheiten") + " gibt es keinen Mieter – diesen Anteil (" + eur(b.anteilLeer) + ") trägst du selbst. ESTRIQ kennt nur den Stand von heute: War die Einheit im Abrechnungsjahr zeitweise vermietet, rechne diesen Teil von Hand ab." : ""}</div></div></div>
+          <div class="eq-zustand-d">Zeile antippen zeigt die Abrechnung der Einheit.${b.anteilLeer > 0.005 ? " Für Leerstand gibt es keinen Mieter – diesen Anteil (" + eur(b.anteilLeer) + ") trägst du selbst." : ""}</div></div></div>
         ${s.istProjekt ? "" : nkBalkenHtml(r, b)}
         <div class="eq-nk-tab">
           <div class="eq-nk-kopf eq-nk-vier"><div>Einheit</div><div>Anteil</div><div>Vorauszahlung</div><div>Ergebnis</div></div>
           ${r.zeilen.map((z, i) => {
-            const frei = z.u.status !== "vermietet";
+            const frei = !z.mieter;
+            const extra = [z.vormieter ? (z.vormieter.name || "Vormieter") + ": " + nkErgebnis(z.vormieter.saldo) : "", !frei && z.leer > 0.005 ? "Leerstand " + eur(z.leer) + " trägst du" : ""].filter(Boolean).join(" · ");
             return `<div class="eq-nk-z eq-nk-vier nk-t-row" data-einheit="${i}" role="button" tabindex="0">
-              <div class="eq-nk-n">${esc(z.u.wohnung || "Einheit")}<small>${frei ? "frei" : esc(z.u.mieter || "ohne Namen")}</small></div>
+              <div class="eq-nk-n">${esc(z.u.wohnung || "Einheit")}<small>${frei ? "frei" : esc(z.u.mieter || "ohne Namen")}${extra ? "<br>" + esc(extra) : ""}</small></div>
               <div class="eq-nk-c" data-l="Anteil">${eur(z.anteil)}</div>
               <div class="eq-nk-c" data-l="Vorauszahlung">${frei ? "—" : eur(z.voraus)}</div>
               <div class="eq-nk-c eq-nk-e ${frei ? "" : z.saldo < -0.005 ? "nach" : z.saldo > 0.005 ? "zurueck" : ""}">${frei ? "trägst du selbst" : nkErgebnis(z.saldo)}</div>
@@ -3515,7 +3685,20 @@
             <div class="eq-nk-c eq-nk-e">${nkErgebnis(b.saldoMieter)}</div>
           </div>
         </div>
-        <div class="wi-hinweis">Die Vorauszahlung ist die bei der Einheit hinterlegte monatliche Nebenkosten-Zahlung mal zwölf. Die Abrechnung muss dem Mieter innerhalb von zwölf Monaten nach Ende des Abrechnungszeitraums zugehen. Orientierung, keine Rechtsberatung.</div>`
+        ${s.istProjekt || !briefe.length ? "" : `
+        ${efTitel("Abrechnungen als PDF")}
+        <div class="eq-nk-pdf">
+          ${briefe.map((x, n) => `<button type="button" class="eq-nk-pdf-z" data-pdf="${n}">
+            <span class="eq-dok-typ" data-typ="PDF">PDF</span>
+            <span class="eq-dok-tx"><b>${esc(x.z.u.wohnung || "Einheit")} · ${esc(x.p.name || (x.p.typ === "vormieter" ? "Vormieter" : "Mieter"))}</b><small>${esc((x.p.typ === "vormieter" ? "Vormieter · " : "") + datumKurz(x.p.von) + " – " + datumKurz(x.p.bis) + " · " + nkErgebnis(x.p.saldo))}</small></span>
+            <span class="eq-dok-auf">Erstellen</span></button>`).join("")}
+        </div>
+        <div class="nk-btns">
+          ${briefe.length > 1 ? `<button type="button" class="eq-btn zweit" id="nkPdfAlle">Alle in einer PDF</button>` : ""}
+          <button type="button" class="add-btn" id="nkBriefkopf">Briefkopf und Fußzeile</button>
+        </div>
+        <div class="note" id="nkPdfMsg" role="status">Jede PDF enthält die Abrechnung im Design deines Briefkopfs und dahinter die Rechnungen der Kostenarten, an denen die Einheit beteiligt ist.</div>`}
+        <div class="wi-hinweis">Die Vorauszahlung ist die bei der Einheit hinterlegte monatliche Nebenkosten-Zahlung${r.hatStrom ? " plus Stromabschlag" : ""} mal die Monate im Abrechnungszeitraum – oder der tatsächlich gezahlte Betrag, wenn du ihn bei der Einheit einträgst. Die Abrechnung muss dem Mieter innerhalb von zwölf Monaten nach Ende des Abrechnungszeitraums zugehen. Orientierung, keine Rechtsberatung.</div>`
         : `<div class="eq-leer" style="padding:16px">Dieses Objekt hat noch keine Einheit.</div>`;
 
       // --- Kontrollzeile ---
@@ -3538,6 +3721,7 @@
         </div>
         ${kontrolle}
         ${hatModul() ? "" : `<div class="gw-hinweis" style="margin-bottom:14px">${NUR_LESEN}</div>`}
+        ${nkFehlt17 && !s.istProjekt ? `<div class="gw-hinweis" style="margin-bottom:14px">${esc(NK17_FEHLT)}</div>` : ""}
         <div class="eq-schritt-feld" data-feld="1"${schritt === 1 ? "" : " hidden"}>${s1}</div>
         <div class="eq-schritt-feld" data-feld="2"${schritt === 2 ? "" : " hidden"}>${s2}</div>
         <div class="eq-schritt-feld" data-feld="3"${schritt === 3 ? "" : " hidden"}>${s3}</div>
@@ -3574,107 +3758,366 @@
           const { error } = await window.sb.from("nebenkosten").insert(rows);
           if (error) throw error;
           await zeichne();
-          showToast("Vorlage übernommen. Trag jetzt die Beträge ein.");
+          showToast("Vorlage übernommen. Trag jetzt die Rechnungen oder Beträge ein.");
         } catch (e) { vb.disabled = false; vb.textContent = "Vorlage übernehmen"; showToast(window.fehlerText(e)); }
       };
       const taste = (n, tun) => { n.onclick = tun; n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); tun(); } }; };
       body.querySelectorAll("[data-p]").forEach(n => taste(n, () => openNkPosten(s, jahr, posten.find(x => x.id === n.dataset.p))));
-      body.querySelectorAll("[data-einheit]").forEach(n => taste(n, () => openNkEinheit(r.zeilen[Number(n.dataset.einheit)], jahr, { r, s })));
+      body.querySelectorAll("[data-einheit]").forEach(n => taste(n, () => openNkEinheit(r.zeilen[Number(n.dataset.einheit)], jahr, { r, s, cfg })));
+      if (!s.istProjekt) {
+        const ang = body.querySelector("#nkAngaben"); if (ang) taste(ang, () => openNkAngaben(s, jahr, cfg));
+        body.querySelectorAll("[data-nk-eh]").forEach(n => taste(n, () => openNkEinheitAngaben(s, jahr, r.zeilen[Number(n.dataset.nkEh)].u, cfg)));
+        const ctx = () => ({ s, jahr, r, cfg, posten, ausg });
+        body.querySelectorAll("[data-pdf]").forEach(n => n.onclick = () => { const x = briefe[Number(n.dataset.pdf)]; nkPdfStarten(ctx(), [{ z: x.z, p: x.p }], n); });
+        const alle = body.querySelector("#nkPdfAlle"); if (alle) alle.onclick = () => nkPdfStarten(ctx(), briefe.map(x => ({ z: x.z, p: x.p })), alle);
+        const bk = body.querySelector("#nkBriefkopf"); if (bk) bk.onclick = () => openBriefkopf(() => openNkAbrechnung(objektMitId(s._id) || s, jahr, 3));
+      }
     }
     zeichne();
   }
 
-  // Eine Kostenart anlegen oder bearbeiten. Danach geht es zurück in Schritt 1 der Abrechnung.
-  function openNkPosten(s, jahr, p) {
+  // Zeitraum, Briefdatum und Anschrift des Objekts für die Abrechnung
+  function openNkAngaben(s, jahr, cfg) {
     if (!pruefeModul("nebenkosten")) return;
+    const a = (cfg.daten && cfg.daten.anschrift) || {};
+    const body = `
+      <div class="eq-ef2">
+        ${ef("Zeitraum von", "von", cfg.von, "date", { pflicht: true })}
+        ${ef("bis", "bis", cfg.bis, "date", { pflicht: true })}
+      </div>
+      ${ef("Datum der Abrechnung", "briefdatum", cfg.briefdatum || "", "date", { hinweis: "Steht oben rechts im Brief. Leer lassen: Dann gilt der Tag, an dem du die PDF erstellst." })}
+      ${efTitel("Anschrift des Objekts")}
+      ${ef("Straße und Hausnummer", "strasse", a.strasse || "", "text", { platzhalter: "z. B. Baumstraße 35", hinweis: "Steht in der Überschrift und als Anschrift der Mieter." })}
+      ${ef("PLZ und Ort", "ort", a.ort || "", "text", { platzhalter: "z. B. 27777 Ganderkesee" })}
+      ${efAktionen({})}`;
+    const sheet = openSheet("Angaben zur Abrechnung", jahr + " · " + s.name, body);
+    efBind(sheet, async (w) => {
+      if (w.von > w.bis) throw Object.assign(new Error("zeit"), { eqText: "Der Zeitraum endet vor seinem Beginn. Bitte prüf die Daten." });
+      await speichereNkAbrechnung(s._id, cfg, { von: w.von, bis: w.bis, briefdatum: w.briefdatum || null,
+        daten: { anschrift: { strasse: text(w.strasse) || "", ort: text(w.ort) || "" } } });
+    }, null, null, () => { showToast("Gespeichert."); openNkAbrechnung(objektMitId(s._id) || s, jahr, 2); });
+  }
+
+  // Angaben einer Einheit für die Abrechnung: Vormieter, Zähler, tatsächlich gezahlte Vorauszahlungen
+  function openNkEinheitAngaben(s, jahr, u, cfg) {
+    if (!pruefeModul("nebenkosten")) return;
+    const c = (cfg.daten.einheiten || {})[u._id] || {};
+    const z = c.zaehler || [];
+    const einzug = u.einzug ? String(u.einzug).slice(0, 10) : "";
+    const mitVor = u.status === "vermietet" && einzug > cfg.von && einzug <= cfg.bis;
+    const vor = c.vor || {};
+    const body = `
+      ${efTitel("Zähler im Brief")}
+      <div class="eq-ef2">
+        ${ef("Zähler 1", "z1n", z[0] ? z[0].n : "Wasserzähler", "text")}
+        ${ef("Nummer", "z1", z[0] ? z[0].nr : "", "text", { platzhalter: "z. B. 12345" })}
+        ${ef("Zähler 2", "z2n", z[1] ? z[1].n : "Gaszähler", "text")}
+        ${ef("Nummer", "z2", z[1] ? z[1].nr : "", "text")}
+      </div>
+      ${u.status === "vermietet" ? `${efTitel("Vorauszahlungen " + (u.mieter || "des Mieters"))}
+      ${ef("Tatsächlich gezahlt im Zeitraum", "voraus_ist", nkZahlOk(c.voraus_ist) ? c.voraus_ist : "", "number", { einheit: "€", hinweis: "Leer lassen: Dann rechnet ESTRIQ mit dem monatlichen Betrag der Einheit mal die Monate der Mietzeit." })}` : ""}
+      ${mitVor ? `${efTitel("Vor dem Einzug am " + datumKurz(einzug))}
+      ${efSel("Wer hat die Wohnung davor genutzt?", "vor_typ", vor.typ === "mieter" ? "mieter" : "leer",
+        [{ v: "leer", t: "niemand – Leerstand, trägst du" }, { v: "mieter", t: "ein Vormieter – bekommt eine eigene Abrechnung" }])}
+      <div data-nk-vor>
+        ${ef("Name", "vor_name", vor.name || "", "text", { platzhalter: "z. B. Herr Max Muster" })}
+        ${efArea("Neue Anschrift", "vor_anschrift", vor.anschrift || "", { hinweis: "Zwei Zeilen: Straße und Hausnummer, dann PLZ und Ort." })}
+        ${ef("Personen im Haushalt", "vor_personen", vor.personen || "", "number", { step: "1", min: 1, max: 20 })}
+        ${ef("Monatliche Vorauszahlung", "vor_voraus_monat", nkZahlOk(vor.voraus_monat) ? vor.voraus_monat : "", "number", { einheit: "€", hinweis: "Leer lassen: gleicher Betrag wie heute bei der Einheit." })}
+        ${ef("Tatsächlich gezahlt", "vor_voraus_ist", nkZahlOk(vor.voraus_ist) ? vor.voraus_ist : "", "number", { einheit: "€", hinweis: "Freiwillig. Ersetzt Monatsbetrag × Monate." })}
+      </div>` : ""}
+      <div class="note">Fläche, Personen und Einzug änderst du im Fenster der Einheit.</div>
+      ${efAktionen({})}`;
+    const sheet = openSheet(u.wohnung || "Einheit", "Abrechnung " + jahr + " · " + (u.mieter || "frei"), body);
+    const typ = sheet.querySelector('[data-f="vor_typ"]');
+    const block = sheet.querySelector("[data-nk-vor]");
+    if (typ && block) { const sync = () => { block.hidden = typ.value !== "mieter"; }; typ.addEventListener("change", sync); sync(); }
+    efBind(sheet, async (w) => {
+      const n = { zaehler: [{ n: text(w.z1n) || "Zähler", nr: text(w.z1) || "" }, { n: text(w.z2n) || "Zähler", nr: text(w.z2) || "" }].filter(x => x.nr) };
+      if (u.status === "vermietet" && nkZahlOk(w.voraus_ist)) n.voraus_ist = Number(w.voraus_ist);
+      if (mitVor) n.vor = w.vor_typ === "mieter"
+        ? { typ: "mieter", name: text(w.vor_name) || "", anschrift: text(w.vor_anschrift) || "", personen: zahl(w.vor_personen) || 1,
+            voraus_monat: nkZahlOk(w.vor_voraus_monat) ? Number(w.vor_voraus_monat) : null, voraus_ist: nkZahlOk(w.vor_voraus_ist) ? Number(w.vor_voraus_ist) : null }
+        : { typ: "leer" };
+      const alle = Object.assign({}, cfg.daten.einheiten || {}); alle[u._id] = n;
+      await speichereNkAbrechnung(s._id, cfg, { daten: { einheiten: alle } });
+    }, null, null, () => { showToast("Gespeichert."); openNkAbrechnung(objektMitId(s._id) || s, jahr, 2); });
+  }
+
+  // Eine Kostenart anlegen oder bearbeiten – mit Rechnungen und (bei Verbrauch) Werten je Einheit.
+  async function openNkPosten(s, jahr, p0) {
+    if (!pruefeModul("nebenkosten")) return;
+    // frischen Stand holen (der Betrag ändert sich mit jeder Rechnung)
+    const posten = await ladeNebenkosten(s._id, jahr);
+    const p = p0 ? (posten.find(x => x.id === p0.id) || p0) : null;
+    const [cfg, ausgAlle] = s.istProjekt ? [null, {}] : await Promise.all([ladeNkAbrechnung(s._id, jahr), p ? ladeNkAusgaben(s._id, [p]) : Promise.resolve({})]);
+    const ausg = p ? (ausgAlle[p.id] || []) : [];
+    const mitRechnungen = ausg.length > 0;
+    const neu17 = !nkFehlt17 && !s.istProjekt;
+    const einheiten = s.einheiten || [];
+    const vonJ = cfg ? cfg.von : jahr + "-01-01", bisJ = cfg ? cfg.bis : jahr + "-12-31";
+    const werte = p && p.schluessel === "verbrauch" && p.anteile ? p.anteile : {};
+    const verbrauchFelder = einheiten.map(u => {
+      const ez = u.einzug ? String(u.einzug).slice(0, 10) : "";
+      const geteilt = u.status === "vermietet" && ez > vonJ && ez <= bisJ;
+      const w = werte[u._id];
+      const name = (u.wohnung || "Einheit") + (u.status === "vermietet" && u.mieter ? " · " + u.mieter : u.status === "vermietet" ? "" : " · frei");
+      return geteilt
+        ? `<div class="eq-nk-vb"><div class="eq-nk-vb-n">${esc(name)}<small>Einzug ${esc(datumKurz(ez))}</small></div>
+            <div class="eq-ef2">
+              ${ef("bis Einzug", "vbv_" + u._id, w && typeof w === "object" ? (w.v ?? "") : "", "number", { step: "any", min: 0 })}
+              ${ef("ab Einzug", "vbm_" + u._id, w && typeof w === "object" ? (w.m ?? "") : (nkZahlOk(w) ? w : ""), "number", { step: "any", min: 0 })}
+            </div></div>`
+        : `<div class="eq-nk-vb">${ef(name, "vb_" + u._id, w != null && typeof w !== "object" ? w : (w ? nkWertGesamt(w) : ""), "number", { step: "any", min: 0 })}</div>`;
+    }).join("");
     const body = `
       ${ef("Kostenart", "art", p ? p.art : "", "text", { pflicht: true, platzhalter: "z. B. Grundsteuer" })}
-      ${ef("Betrag im Jahr", "betrag", p ? (p.betrag ?? "") : "", "number",
-        { pflicht: true, minus: true, einheit: "€", hinweis: "Gesamtbetrag für " + jahr + " laut Bescheid oder Rechnung" })}
+      ${mitRechnungen
+        ? ef("Betrag im Zeitraum", "betrag", Number(p.betrag) || 0, "number", { readonly: true, einheit: "€", hinweis: "Summe aus " + mehrzahl(ausg.length, "Rechnung", "Rechnungen") + ". Du änderst ihn über die Rechnungen unten." })
+        : ef("Betrag im Zeitraum", "betrag", p ? (p.betrag ?? "") : "", "number",
+          { pflicht: true, minus: true, einheit: "€", hinweis: s.istProjekt ? "Erwarteter Betrag für " + jahr : "Gesamtbetrag laut Bescheid oder Rechnung. Erfasst du unten Rechnungen, ergibt sich der Betrag daraus." })}
       ${efSel("Verteilung", "schluessel", p ? p.schluessel : "flaeche",
         [{ v: "flaeche", t: "nach Wohnfläche (üblich)" }, { v: "einheiten", t: "gleich je Einheit" },
-         { v: "personen", t: "nach Personen im Haushalt" }, { v: "verbrauch", t: "nach Verbrauch (hier ersatzweise nach Wohnfläche)" }]
+         { v: "personen", t: "nach Personen im Haushalt" }, { v: "verbrauch", t: s.istProjekt ? "nach Verbrauch (hier nach Wohnfläche)" : "nach Verbrauch (Werte je Einheit)" }]
          .concat(p && p.schluessel === "direkt" ? [{ v: "direkt", t: "nach Wärmemengenzähler und Fläche (aus dem Mieterstrom)" }] : []),
         { hinweis: "Wonach die Kosten auf die Einheiten aufgeteilt werden" })}
+      ${neu17 ? `<div data-nk-nur="verbrauch">
+        ${efTitel("Verbrauch je Einheit")}
+        <div class="eq-ef2">
+          ${efSel("Maßeinheit", "mass", p ? nkMass(p) : "m³", ["m³", "kWh", "€", "Stück"].map(x => ({ v: x, t: x === "€" ? "€ (direkt je Einheit)" : x })))}
+          ${ef("Gesamtmenge", "menge_gesamt", p && p.menge_gesamt != null ? p.menge_gesamt : "", "number", { step: "any", min: 0, hinweis: "Laut Hauptzähler. Leer: Summe der Einheiten." })}
+        </div>
+        ${ef("Anteil nach Verbrauch", "verbrauch_prozent", p && nkZahlOk(p.verbrauch_prozent) ? p.verbrauch_prozent : 100, "number", { step: "1", min: 0, max: 100, einheit: "%", hinweis: "Der Rest wird nach Wohnfläche verteilt. Heizung und Warmwasser: 50 bis 70 % (Heizkostenverordnung)." })}
+        ${verbrauchFelder || `<div class="note">Noch keine Einheit angelegt.</div>`}
+        <div class="note">Werte vom Ablesedienst oder aus deinen Zählerständen. Zog jemand im Zeitraum ein, trägst du den Verbrauch bis und ab Einzug getrennt ein.</div>
+      </div>` : ""}
       ${efSel("Umlagefähig?", "umlagefaehig", p && p.umlagefaehig === false ? "0" : "1",
         [{ v: "1", t: "ja – wird auf die Mieter verteilt" }, { v: "0", t: "nein – trägst du selbst" }],
         { hinweis: "Instandhaltung, Verwaltung und Rücklagen sind nicht umlagefähig." })}
+      ${neu17 ? efSel("Teil des Stromabschlags?", "strom", p && p.strom ? "1" : "0",
+        [{ v: "0", t: "nein" }, { v: "1", t: "ja – Strom der Mieter über die Nebenkosten" }],
+        { hinweis: "Ja: Die Stromabschläge der Einheiten zählen als Vorauszahlung, und die Abrechnung nennt einen eigenen neuen Stromabschlag." }) : ""}
       ${efArea("Notiz", "notiz", p ? (p.notiz || "") : "")}
-      ${p && !s.istProjekt ? `<div id="dokNk"></div>` : ""}
+      ${s.istProjekt ? "" : p ? `<div id="nkAusgHost"></div>` : `<div class="note">Rechnungen mit Beleg erfasst du nach dem Speichern.</div>`}
       ${efAktionen({ loeschen: p ? "Kostenart löschen" : null })}`;
     const sheet = openSheet(p ? "Kostenart bearbeiten" : "Kostenart erfassen", jahr + " · " + s.name, body);
-    if (p && !s.istProjekt) ladeDokumente(s._id).then(c => {
-      const host = sheet.querySelector("#dokNk"); if (!host || !host.isConnected) return;
-      if (c.fehlt) { host.remove(); return; }
-      const meine = c.liste.filter(d => d.nebenkosten_id === p.id);
-      const zurueck = () => { const s2 = objektMitId(s._id) || s; openNkPosten(s2, jahr, p); };
-      host.innerHTML = `${efTitel("Rechnungen und Belege")}
-        ${meine.length ? `<div class="eq-dok-liste">${meine.map(d => dokZeile(s, d, c, { ohneKostenart: true })).join("")}</div>` : `<div class="note">Noch kein Beleg zu dieser Kostenart.</div>`}
-        <button type="button" class="add-btn" id="dokNkNeu" style="margin-top:8px">+ Rechnung ablegen</button>`;
-      dokZeilenVerdrahten(host, s, c, zurueck);
-      host.querySelector("#dokNkNeu").onclick = () => openDokument(s, null, { art: "rechnung", jahr, nebenkosten_id: p.id, titel: "Rechnung " + p.art }, zurueck);
-    });
-    const bauen = (w) => ({
-      art: text(w.art) || "Kostenart",
-      betrag: zahl(w.betrag) || 0,
-      schluessel: w.schluessel,
-      umlagefaehig: w.umlagefaehig === "1",
-      notiz: text(w.notiz)
-    });
+    const schl = sheet.querySelector('[data-f="schluessel"]');
+    const nurVerbrauch = () => sheet.querySelectorAll("[data-nk-nur]").forEach(x => { x.hidden = schl.value !== x.dataset.nkNur; });
+    schl.addEventListener("change", nurVerbrauch); nurVerbrauch();
+    const zuMir = () => openNkPosten(objektMitId(s._id) || s, jahr, p);
+
+    // Rechnungen der Kostenart
+    const host = sheet.querySelector("#nkAusgHost");
+    if (host) {
+      if (nkFehlt17) host.innerHTML = `<div class="note">${esc(NK17_FEHLT)}</div>`;
+      else {
+        const dc = await ladeDokumente(s._id);
+        if (!host.isConnected) return;
+        const altBelege = dc.fehlt ? [] : dc.liste.filter(d => d.nebenkosten_id === p.id && !ausg.some(a => a.dokument_id === d.id));
+        host.innerHTML = `${efTitel("Rechnungen")}
+          ${ausg.length ? `<div class="eq-dok-liste">${ausg.map(a => {
+            const d = a.dokument_id ? dc.liste.find(x => x.id === a.dokument_id) : null;
+            const teile = [a.datum ? datumKurz(a.datum) : "", d ? dokTyp(d) : "", a.mitsenden === false ? "wird nicht mitgeschickt" : ""].filter(Boolean).join(" · ");
+            return `<div class="eq-dok-z" data-ausg="${esc(a.id)}" role="button" tabindex="0">
+              <span class="eq-dok-typ" data-typ="${d ? esc(dokTyp(d)) : "ohne"}">${d ? esc(dokTyp(d)) : "—"}</span>
+              <span class="eq-dok-tx"><b>${esc(a.bezeichnung || "Rechnung")} · ${eur2(Number(a.betrag) || 0)}</b><small>${esc(teile || "")}${d ? "" : `<span class="eq-marke achtung" style="margin-left:6px">Beleg fehlt</span>`}</small></span>
+              ${d ? `<a class="eq-dok-auf" href="${esc((dc.urls && dc.urls[d.pfad]) || "#")}" target="_blank" rel="noopener" data-dok-auf="${esc(d.id)}" aria-label="${esc((a.bezeichnung || "Rechnung") + " öffnen")}">Öffnen</a>` : `<span class="eq-dok-auf">Ergänzen</span>`}
+            </div>`; }).join("")}</div>` : `<div class="note">Noch keine Rechnung. Erfasse jede Rechnung oder jeden Abschlag mit Betrag und Beleg – die Summe wird der Betrag der Kostenart.</div>`}
+          <button type="button" class="add-btn" id="nkAusgNeu" style="margin-top:8px">+ Rechnung erfassen</button>
+          ${altBelege.length ? `<div class="note" style="margin-top:12px">Ältere Belege ohne Betrag:</div><div class="eq-dok-liste">${altBelege.map(d => dokZeile(s, d, dc, { ohneKostenart: true })).join("")}</div>` : ""}`;
+        host.querySelectorAll("[data-dok-auf]").forEach(a => a.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const d = dc.liste.find(x => x.id === a.dataset.dokAuf); if (!d) return;
+          if (a.getAttribute("href") === "#" || Date.now() - dc.zeit > 50 * 60e3) { e.preventDefault(); dokOeffnen(s._id, d); }
+        }));
+        host.querySelectorAll("[data-ausg]").forEach(n => {
+          const tun = () => openNkAusgabe(s, jahr, p, ausg.find(a => a.id === n.dataset.ausg), zuMir);
+          n.onclick = (e) => { if (!e.target.closest("a")) tun(); };
+          n.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === n && !e.repeat) { e.preventDefault(); tun(); } };
+        });
+        if (altBelege.length) dokZeilenVerdrahten(host, s, dc, zuMir);
+        host.querySelector("#nkAusgNeu").onclick = () => openNkAusgabe(s, jahr, p, null, zuMir);
+      }
+    }
+
+    let neueId = null;
+    const bauen = (w) => {
+      const d = { art: text(w.art) || "Kostenart", schluessel: w.schluessel, umlagefaehig: w.umlagefaehig === "1", notiz: text(w.notiz) };
+      if (!mitRechnungen) d.betrag = zahl(w.betrag) || 0;
+      if (neu17) {
+        d.strom = w.strom === "1";
+        if (w.schluessel === "verbrauch") {
+          d.mass = w.mass || "m³";
+          d.menge_gesamt = nkZahlOk(w.menge_gesamt) && Number(w.menge_gesamt) > 0 ? Number(w.menge_gesamt) : null;
+          d.verbrauch_prozent = nkZahlOk(w.verbrauch_prozent) ? Math.max(0, Math.min(100, Math.round(Number(w.verbrauch_prozent)))) : 100;
+          const a = {};
+          einheiten.forEach(u => {
+            if (nkZahlOk(w["vb_" + u._id])) a[u._id] = Number(w["vb_" + u._id]);
+            else if (nkZahlOk(w["vbv_" + u._id]) || nkZahlOk(w["vbm_" + u._id])) a[u._id] = { v: Number(w["vbv_" + u._id]) || 0, m: Number(w["vbm_" + u._id]) || 0 };
+          });
+          d.anteile = Object.keys(a).length ? a : null;
+        } else if (p && p.schluessel === "verbrauch") d.anteile = null;
+      }
+      return d;
+    };
     const zurueck = (meldung) => () => {
       showToast(meldung);
       const s2 = objektMitId(s._id) || s;
-      openNkAbrechnung(s2, jahr, 1);
+      if (neueId && !s.istProjekt) openNkPosten(s2, jahr, { id: neueId }); else openNkAbrechnung(s2, jahr, 1);
     };
     efBind(sheet,
       async (w) => {
         const d = bauen(w);
-        const { error } = p
-          ? await window.sb.from("nebenkosten").update(d).eq("id", p.id)
-          : await window.sb.from("nebenkosten").insert({ ...d, objekt_id: s._id, jahr });
-        if (error) throw error;
+        if (p) { const { error } = await window.sb.from("nebenkosten").update(d).eq("id", p.id); if (error) throw error; }
+        else {
+          const { data, error } = await window.sb.from("nebenkosten").insert({ ...d, objekt_id: s._id, jahr }).select().single();
+          if (error) throw error;
+          neueId = data && data.id;
+        }
       },
-      p ? async () => { const { error } = await window.sb.from("nebenkosten").delete().eq("id", p.id); if (error) throw error; } : null,
-      "Kostenart wirklich löschen?",
-      zurueck("Gespeichert."), zurueck("Gelöscht."));
+      p ? async () => {
+        // Belege der Rechnungen mitlöschen (Datei und Eintrag), dann die Kostenart
+        for (const a of ausg) {
+          if (!a.dokument_id) continue;
+          const d = (dokCache[s._id] && dokCache[s._id].liste || []).find(x => x.id === a.dokument_id);
+          try { await window.sb.from("dokumente").delete().eq("id", a.dokument_id); if (d) await window.sb.storage.from("dokumente").remove([d.pfad]); } catch (_) {}
+        }
+        const { error } = await window.sb.from("nebenkosten").delete().eq("id", p.id); if (error) throw error;
+        dokNeuLaden(s._id);
+      } : null,
+      mitRechnungen ? "Mit allen Rechnungen löschen?" : "Kostenart wirklich löschen?",
+      zurueck(p ? "Gespeichert." : "Gespeichert. Jetzt kannst du Rechnungen erfassen."), zurueck("Gelöscht."));
   }
 
-  // Abrechnung einer Einheit – das, was der Mieter bekommt. opt: { r, s } für die Grundlage und den Weg zurück
+  // Eine Rechnung (Ausgabe) zu einer Kostenart – immer mit Betrag, am besten mit Beleg.
+  function openNkAusgabe(s, jahr, p, a, zurueck) {
+    if (!pruefeModul("nebenkosten")) return;
+    const dc = dokCache[s._id] || { liste: [], urls: {} };
+    const d = a && a.dokument_id ? dc.liste.find(x => x.id === a.dokument_id) : null;
+    const body = `
+      ${d ? `<div class="eq-dok-datei"><span class="eq-dok-typ" data-typ="${esc(dokTyp(d))}">${esc(dokTyp(d))}</span><span class="eq-dok-tx"><b>${esc(d.dateiname || "Beleg")}</b><small>${esc(dokGroesse(d.groesse))}</small></span>
+        <button type="button" class="add-btn" id="dokAuf">Öffnen</button></div>` : ""}
+      <div class="ef-row eq-dok-wahl">
+        <span class="ef-l">${d ? "Beleg ersetzen" : "Beleg"}</span>
+        <label class="eq-btn zweit eq-dok-knopf" for="dokDatei">${d ? "Andere Datei wählen" : "Datei auswählen"}</label>
+        <input type="file" id="dokDatei" class="eq-dok-input" accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.heic,.webp">
+        <div class="ef-h" id="dokGewaehlt">PDF oder Foto, höchstens 15 MB. Am iPhone geht auch „Dokumente scannen“.</div>
+      </div>
+      ${ef("Bezeichnung", "bezeichnung", a ? (a.bezeichnung || "") : "", "text", { platzhalter: "z. B. Abschlag März oder Jahresrechnung" })}
+      <div class="eq-ef2">
+        ${ef("Rechnungsdatum", "datum", a ? (a.datum || "") : "", "date")}
+        ${ef("Betrag", "betrag", a ? a.betrag : "", "number", { pflicht: true, minus: true, einheit: "€", hinweis: "Gutschrift mit Minus" })}
+      </div>
+      ${efSel("Dem Mieter mitschicken?", "mitsenden", a && a.mitsenden === false ? "0" : "1",
+        [{ v: "1", t: "ja – hängt an der PDF-Abrechnung" }, { v: "0", t: "nein – nur für dich" }],
+        { hinweis: "Schick nur Belege mit, auf denen keine Daten anderer Mieter stehen." })}
+      ${efAktionen({ loeschen: a ? "Rechnung löschen" : null })}`;
+    const sheet = openSheet(a ? "Rechnung" : "Rechnung erfassen", p.art + " · " + jahr, body);
+    const datei = sheet.querySelector("#dokDatei");
+    datei.addEventListener("change", () => {
+      const f = datei.files && datei.files[0], h = sheet.querySelector("#dokGewaehlt");
+      if (!f) return;
+      h.textContent = f.name + " · " + dokGroesse(f.size) + (f.size > DOK_MAX ? " – zu groß, höchstens 15 MB" : "");
+      h.classList.toggle("bad", f.size > DOK_MAX);
+      sheet.querySelector(".eq-dok-knopf").textContent = "Andere Datei wählen";
+      const bz = sheet.querySelector('[data-f="bezeichnung"]');
+      if (!bz.value.trim()) bz.value = f.name.replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/[_]+/g, " ").slice(0, 200);
+    });
+    const auf = sheet.querySelector("#dokAuf"); if (auf) auf.onclick = () => dokOeffnen(s._id, d);
+    const fertig = (m) => () => { showToast(m); dokNeuLaden(s._id); zurueck(); };
+    efBind(sheet, async (w) => {
+      const f = datei.files && datei.files[0];
+      const betrag = zahl(w.betrag) || 0;
+      const titel = (text(w.bezeichnung) || "Rechnung " + p.art).slice(0, 200);
+      const jahrR = w.datum ? Number(String(w.datum).slice(0, 4)) : jahr;
+      let neuDok = null;
+      if (f) {
+        if (f.size > DOK_MAX) throw Object.assign(new Error("gross"), { eqText: "Die Datei ist größer als 15 MB. Verkleinere sie (z. B. als PDF speichern) und versuch es noch einmal." });
+        const pfad = s._id + "/" + dokZufall() + "-" + dokSicher(f.name);
+        const { error: e1 } = await window.sb.storage.from("dokumente").upload(pfad, f, { contentType: f.type || "application/octet-stream", upsert: false });
+        if (e1) {
+          const m = String(e1.message || e1.error || "");
+          if (/bucket.*not.*found|not found/i.test(m)) throw Object.assign(new Error("fehlt"), { eqText: DOK_FEHLT });
+          if (/mime|type/i.test(m)) throw Object.assign(new Error("typ"), { eqText: "Diese Dateiart geht nicht. Erlaubt sind PDF und Fotos." });
+          throw e1;
+        }
+        const { data, error: e2 } = await window.sb.from("dokumente").insert({ objekt_id: s._id, art: "rechnung", titel, jahr: jahr, datum: w.datum || null, betrag, nebenkosten_id: p.id, pfad, dateiname: f.name, mime: f.type || null, groesse: f.size }).select().single();
+        if (e2) { try { await window.sb.storage.from("dokumente").remove([pfad]); } catch (_) {} throw dokFehltTabelle(e2) ? Object.assign(new Error("fehlt"), { eqText: DOK_FEHLT }) : e2; }
+        neuDok = { ...data, pfad };
+      }
+      const felder = { bezeichnung: text(w.bezeichnung), datum: w.datum || null, betrag, mitsenden: w.mitsenden !== "0" };
+      if (neuDok) felder.dokument_id = neuDok.id;
+      const { error } = a
+        ? await window.sb.from("nk_ausgaben").update(felder).eq("id", a.id)
+        : await window.sb.from("nk_ausgaben").insert({ ...felder, objekt_id: s._id, nebenkosten_id: p.id });
+      if (error) {
+        if (neuDok) { try { await window.sb.from("dokumente").delete().eq("id", neuDok.id); await window.sb.storage.from("dokumente").remove([neuDok.pfad]); } catch (_) {} }
+        throw nkTabFehlt(error) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : error;
+      }
+      // Alter Beleg ersetzt → weg damit; sonst Angaben am Beleg nachziehen
+      if (neuDok && d) { try { await window.sb.from("dokumente").delete().eq("id", d.id); await window.sb.storage.from("dokumente").remove([d.pfad]); } catch (_) {} }
+      else if (d) { try { await window.sb.from("dokumente").update({ titel, datum: w.datum || null, betrag, jahr }).eq("id", d.id); } catch (_) {} }
+      dokNeuLaden(s._id);
+    }, a ? async () => {
+      const { error } = await window.sb.from("nk_ausgaben").delete().eq("id", a.id);
+      if (error) throw error;
+      if (d) { try { await window.sb.from("dokumente").delete().eq("id", d.id); await window.sb.storage.from("dokumente").remove([d.pfad]); } catch (_) {} }
+      dokNeuLaden(s._id);
+    } : null, "Rechnung wirklich löschen?", fertig("Gespeichert."), fertig("Gelöscht."));
+  }
+
+  // Abrechnung einer Einheit – das, was der Mieter bekommt. opt: { r, s, cfg } für die Grundlage und den Weg zurück
   function openNkEinheit(z, jahr, opt) {
     opt = opt || {};
     const r = opt.r;
-    const frei = z.u.status !== "vermietet";
-    const stufe = "";   // keine Wertung durch Farbe: Eine Nachzahlung ist für den Vermieter nichts Schlechtes
-    // Woraus sich der Anteil ergibt, z. B. „72,5 von 332,75 m²"
-    const grundlage = (key) => {
-      if (!r) return "";
-      if (key === "einheiten") return "1 von " + mehrzahl(r.anzahl, "Einheit", "Einheiten");
-      if (key === "personen") return (Number(z.u.personen) || 1) + " von " + mehrzahl(r.personenGes, "Person", "Personen");
-      return qm(Number(z.u.flaeche) || 0).replace("\u00A0m²", "") + " von " + qm(r.flaecheGes) + (key === "verbrauch" ? " (ersatzweise)" : "");
+    const frei = !z.mieter;
+    const pt = z.mieter;
+    const grundlage = (d) => {
+      if (d.basisGes == null) return "";
+      const f = (n) => zahlKurz(n);
+      if (d.schluessel === "einheiten") return "1 von " + mehrzahl(d.basisGes, "Einheit", "Einheiten");
+      return f(d.basis) + " von " + f(d.basisGes) + " " + d.einheit + (d.ersatz ? " (ersatzweise nach Fläche)" : "") + (d.vp != null && d.vp < 1 ? ", " + Math.round(d.vp * 100) + " % nach Verbrauch" : "");
     };
+    const teilweise = pt && r && (pt.von > r.von || pt.bis < r.bis);
+    const zeitText = pt && r ? (teilweise ? datumKurz(pt.von) + " – " + datumKurz(pt.bis) : "ganzer Zeitraum") : "";
+    const tageText = pt && r ? (teilweise ? pt.tage + " von " + r.tage : String(pt.tage)) : "";
     const body = `
-      <div class="nk-erg${stufe}">
+      <div class="nk-erg">
         <div class="nk-erg-t">${frei ? "Diese Einheit ist frei" : Math.abs(z.saldo) < 0.005 ? "Ausgeglichen" : z.saldo >= 0 ? "Guthaben für den Mieter" : "Nachzahlung des Mieters"}</div>
         <div class="nk-erg-z">${frei ? eur(z.anteil) : eur(Math.abs(z.saldo))}</div>
         <div class="nk-erg-u">${frei ? "Diesen Anteil trägst du selbst." : z.saldo >= 0 ? "Der Mieter hat mehr vorausgezahlt, als angefallen ist." : "Die Vorauszahlungen haben die Kosten nicht gedeckt."}</div>
       </div>
       ${frei ? "" : `<div class="rc-zeilen" style="margin-top:8px">
-        <div class="rc-z"><span>Anteil an den Kosten ${jahr}</span><b>${eur(z.anteil)}</b></div>
-        <div class="rc-z"><span>Vorauszahlungen ${jahr}</span><b>− ${eur(z.voraus)}</b></div>
+        ${zeitText ? `<div class="rc-z"><span>Mietzeit</span><b>${esc(zeitText)}</b></div><div class="rc-z"><span>Tage im Zeitraum</span><b>${esc(tageText)}</b></div>` : ""}
+        <div class="rc-z"><span>Anteil an den Kosten</span><b>${eur(z.anteil)}</b></div>
+        <div class="rc-z"><span>Vorauszahlungen</span><b>− ${eur(z.voraus)}</b></div>
         <div class="rc-z gross"><span>${z.saldo >= 0 ? "Guthaben" : "Nachzahlung"}</span><b>${eur(Math.abs(z.saldo))}</b></div>
       </div>`}
+      ${z.vormieter ? `<div class="rc-zeilen" style="margin-top:12px">
+        <div class="rc-z"><span>Vormieter ${esc(z.vormieter.name || "")} · ${esc(datumKurz(z.vormieter.von) + " – " + datumKurz(z.vormieter.bis))}</span><b>${esc(nkErgebnis(z.vormieter.saldo))}</b></div></div>` : ""}
+      ${!frei && z.leer > 0.005 ? `<div class="note" style="margin-top:8px">Leerstand vor dem Einzug: ${eur(z.leer)} trägst du selbst.</div>` : ""}
       ${efTitel("So setzt sich der Anteil zusammen")}
       <div class="nk-liste">
         ${z.detail.length ? z.detail.map(d => `<div class="nk-p eq-nk-fest">
           <div class="nk-p-tx"><div class="nk-p-n">${esc(d.art)}</div>
-            <div class="nk-p-m">${esc(nkSchText(d.schluessel))}${grundlage(d.schluessel) ? " · " + esc(grundlage(d.schluessel)) : ""}</div></div>
+            <div class="nk-p-m">${esc(nkSchText(d.schluessel))}${grundlage(d) ? " · " + esc(grundlage(d)) : ""}</div></div>
           <b>${eur(d.betrag)}</b></div>`).join("") : `<div class="note">Noch keine umlagefähigen Kosten erfasst.</div>`}
       </div>
-      <div class="wi-hinweis">Die Vorauszahlung ergibt sich aus den bei der Einheit hinterlegten monatlichen Nebenkosten mal zwölf.</div>
+      ${opt.s && !opt.s.istProjekt && (z.mieter || z.vormieter) ? `<div class="nk-btns" style="margin-top:14px">
+        ${z.mieter ? `<button type="button" class="eq-btn" id="nkPdfM">PDF-Abrechnung erstellen</button>` : ""}
+        ${z.vormieter ? `<button type="button" class="eq-btn zweit" id="nkPdfV">PDF für den Vormieter</button>` : ""}
+      </div><div class="note" id="nkPdfMsg" role="status"></div>` : ""}
       ${opt.s ? `<button type="button" class="ef-open" id="nkZurAbr">Zurück zur Abrechnung</button>` : ""}`;
     const sh = openSheet(z.u.wohnung || "Einheit", (frei ? "frei" : (z.u.mieter || "ohne Namen")) + " · Nebenkosten " + jahr, body);
     const zb = sh.querySelector("#nkZurAbr");
     if (zb) zb.onclick = () => openNkAbrechnung(opt.s, jahr, 3);
+    const starte = async (party, knopf) => {
+      const posten = await ladeNebenkosten(opt.s._id, jahr);
+      const ausg = await ladeNkAusgaben(opt.s._id, posten);
+      nkPdfStarten({ s: opt.s, jahr, r, cfg: opt.cfg, posten, ausg }, [{ z, p: party }], knopf);
+    };
+    const bm = sh.querySelector("#nkPdfM"); if (bm) bm.onclick = () => starte(z.mieter, bm);
+    const bv = sh.querySelector("#nkPdfV"); if (bv) bv.onclick = () => starte(z.vormieter, bv);
   }
 
   /* ================= GEWERKE & KOSTENKONTROLLE ================= */
@@ -10874,19 +11317,15 @@
   function dokumenteKarte(s) {
     if (s.istProjekt) return null;
     const karte = el(`<div class="card eq-dok">
-      <div class="card-h"><div><div class="card-t">Dokumente</div><div class="card-s">Rechnungen, Mietverträge und andere Belege</div></div>
-        <button type="button" class="add-btn" id="dokNeu">+ Dokument</button></div>
+      <div class="card-h"><div><div class="card-t">Dokumente</div><div class="card-s">Rechnungen aus den Nebenkosten und Mietverträge der Wohnungen</div></div></div>
       <div class="card-b" id="dokInhalt"><div class="note">Wird geladen…</div></div></div>`);
     let filter = "alle", alle = false;
-    karte.querySelector("#dokNeu").onclick = () => openDokument(s, null, {});
     const zeichne = (c) => {
       const v = karte.querySelector("#dokInhalt"); if (!v) return;
-      if (c.fehlt) { v.innerHTML = `<div class="note">${esc(DOK_FEHLT)}</div>`; karte.querySelector("#dokNeu").hidden = true; return; }
+      if (c.fehlt) { v.innerHTML = `<div class="note">${esc(DOK_FEHLT)}</div>`; return; }
       if (c.fehler) { v.innerHTML = `<div class="note">Die Dokumente ließen sich gerade nicht laden. Lade die Seite neu.</div>`; return; }
       if (!c.liste.length) {
-        v.innerHTML = `<div class="eq-leer"><div>Noch keine Dokumente. Leg Rechnungen und Mietverträge hier ab – sie liegen geschützt, nur deine Firma sieht sie.</div>
-          <div><button type="button" class="eq-btn" id="dokErstes">Dokument hochladen</button></div></div>`;
-        v.querySelector("#dokErstes").onclick = () => openDokument(s, null, {});
+        v.innerHTML = `<div class="eq-leer"><div>Noch keine Dokumente. Rechnungen legst du in den Nebenkosten bei der Kostenart ab, Mietverträge im Fenster der Wohnung. Hier siehst du dann alles an einem Ort – geschützt, nur deine Firma sieht es.</div></div>`;
         return;
       }
       const zahl = (k) => c.liste.filter(d => d.art === k).length;
@@ -10911,7 +11350,8 @@
   // nachher: Funktion, die nach dem Speichern oder Löschen läuft (z. B. zurück ins Fenster der Einheit).
   function openDokument(s, d, vor, nachher) {
     vor = vor || {};
-    const art0 = d ? d.art : (vor.art || "rechnung");
+    if (d && d.art === "rechnung" && d.nebenkosten_id) return openDokRechnung(s, d, nachher);
+    const art0 = d ? d.art : (vor.art || "mietvertrag");
     const jahr0 = d ? d.jahr : (vor.jahr || (art0 === "rechnung" ? new Date().getFullYear() : null));
     const einheiten = s.einheiten || [];
     const body = `
@@ -10921,9 +11361,9 @@
           <span class="ef-l">Datei <span class="ef-req">*</span></span>
           <label class="eq-btn zweit eq-dok-knopf" for="dokDatei">Datei auswählen</label>
           <input type="file" id="dokDatei" class="eq-dok-input" accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,.xls,.xlsx,.txt">
-          <div class="ef-h" id="dokGewaehlt">PDF, Foto, Word oder Excel – höchstens 15 MB. Am iPhone geht auch „Dokumente scannen“.</div>
+          <div class="ef-h" id="dokGewaehlt">PDF, Foto, Word oder Excel – höchstens 15 MB. Am iPhone geht auch „Dokumente scannen“. Rechnungen erfasst du in den Nebenkosten.</div>
         </div>`}
-      ${efSel("Art", "art", art0, DOK_ARTEN.map(a => ({ v: a[0], t: a[1] })))}
+      ${efSel("Art", "art", art0, DOK_ARTEN.filter(a => a[0] !== "rechnung" || art0 === "rechnung").map(a => ({ v: a[0], t: a[1] })))}
       ${ef("Titel", "titel", d ? d.titel : (vor.titel || ""), "text", { platzhalter: "z. B. Rechnung Heizungswartung", hinweis: "Leer lassen: Dann gilt der Dateiname." })}
       ${efSel("Einheit", "einheit_id", d ? (d.einheit_id || "") : (vor.einheit_id || ""), [{ v: "", t: "ganzes Objekt" }].concat(einheiten.map(u => ({ v: u._id, t: (u.wohnung || "Einheit") + (u.mieter ? " · " + u.mieter : "") }))),
         { hinweis: "Beim Mietvertrag die Wohnung wählen – dann steht er auch im Fenster der Einheit." })}
@@ -11074,12 +11514,11 @@
   // Nebenkosten: großer Balken = Vorauszahlungen der Mieter, darin die Kostenarten (Anteil der Mieter) farbig.
   // Reicht die Vorauszahlung nicht, ragen die Kosten über den Balken hinaus (Nachzahlung); sonst bleibt Guthaben.
   function nkBalkenHtml(r, b) {
-    const vermietet = r.zeilen.filter(z => z.u.status === "vermietet");
     const jeArt = [];
-    vermietet.forEach(z => z.detail.forEach(d => {
+    r.zeilen.forEach(z => [z.vormieter, z.mieter].filter(Boolean).forEach(pt => pt.detail.forEach(d => {
       let x = jeArt.find(y => y.art === d.art); if (!x) jeArt.push(x = { art: d.art, v: 0 });
       x.v += d.betrag;
-    }));
+    })));
     const teile = jeArt.filter(x => x.v > 0.005).sort((a, c) => c.v - a.v);
     const V = b.vorausMieter, K = teile.reduce((a, x) => a + x.v, 0);
     if (!(V > 0) && !(K > 0)) return "";
@@ -11104,8 +11543,412 @@
       <div class="eq-nkb-leg">${teile.map((t, i) => `<div><i style="background:${eqKat(i)}"></i><span>${esc(t.art)}</span><b>${eur(t.v)}</b><small>${V > 0 ? Math.round(t.v / V * 100) + " %" : ""}</small></div>`).join("")}
         <div class="eq-nkb-lz"><i class="voraus"></i><span>Vorauszahlungen (Rahmen)</span></div>
         ${diff < -0.5 && V > 0 ? `<div class="eq-nkb-lz"><i class="nach"></i><span>über der Vorauszahlung = Nachzahlung</span></div>` : ""}</div>
-      ${b.anteilLeer > 0.5 ? `<div class="note">Ohne den Anteil freier Einheiten (${eur(b.anteilLeer)}), den du selbst trägst.</div>` : ""}
+      ${b.anteilLeer > 0.5 ? `<div class="note">Ohne den Anteil für Leerstand (${eur(b.anteilLeer)}), den du selbst trägst.</div>` : ""}
     </div>`;
+  }
+
+  /* ================= NEBENKOSTENABRECHNUNG ALS PDF (v=90) ================= */
+  // Ein Brief je Mieter im Design der Pages-Vorlage (Briefkopf, Falzmarken, Tabelle, Fußzeile in vier Spalten),
+  // dahinter die Rechnungen der Kostenarten, an denen die Einheit beteiligt ist. Gebaut mit pdf-lib (MIT),
+  // die erst beim ersten Klick nachgeladen wird. Alles passiert im Browser – keine Datei verlässt das Gerät.
+  let nkPdfLib = null;
+  function nkPdfLaden() {
+    if (window.PDFLib) return Promise.resolve(window.PDFLib);
+    if (nkPdfLib) return nkPdfLib;
+    nkPdfLib = new Promise((res, rej) => {
+      const sc = document.createElement("script");
+      sc.src = "./pdf-lib.min.js?v=90";
+      sc.onload = () => window.PDFLib ? res(window.PDFLib) : rej(new Error("pdf-lib"));
+      sc.onerror = () => { nkPdfLib = null; rej(Object.assign(new Error("pdf-lib"), { eqText: "Das PDF-Werkzeug ließ sich nicht laden. Prüf die Internetverbindung." })); };
+      document.head.appendChild(sc);
+    });
+    return nkPdfLib;
+  }
+
+  let briefkopfCache = null;
+  async function ladeBriefkopf(neu) {
+    if (briefkopfCache && !neu) return briefkopfCache;
+    try {
+      const { data, error } = await window.sb.from("briefkopf").select("*").maybeSingle();
+      if (error) return { fehlt: nkTabFehlt(error), daten: null };
+      return (briefkopfCache = { daten: data ? (data.daten || {}) : null, logo: data ? data.logo : null, org: data ? data.org_id : null });
+    } catch (e) { return { daten: null, fehler: e }; }
+  }
+
+  // Bild verkleinern und als Daten-URL liefern (PNG bleibt PNG wegen Transparenz, sonst JPEG)
+  function nkBildDaten(blob, maxBreite, png) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, maxBreite / (img.naturalWidth || maxBreite));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+        const g = c.getContext("2d");
+        if (!png) { g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); }
+        g.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        res(c.toDataURL(png ? "image/png" : "image/jpeg", 0.88));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("bild")); };
+      img.src = url;
+    });
+  }
+  const nkDatenBytes = (du) => { const b = atob(String(du).split(",")[1] || ""); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+
+  // Briefkopf einmal einrichten: Logo, Absender, Ansprechpartner, Fußzeile (vier Spalten wie in der Vorlage)
+  async function openBriefkopf(nachher) {
+    if (!pruefeModul("nebenkosten")) return;
+    const bk = await ladeBriefkopf(true);
+    if (bk.fehlt) { showToast(NK17_FEHLT); return; }
+    const d = bk.daten || {};
+    let logo = bk.logo || null;
+    const body = `
+      <div class="ef-row">
+        <span class="ef-l">Logo</span>
+        <div class="eq-bk-logo"><div class="eq-bk-logo-bild" id="bkLogoBild">${logo ? `<img src="${esc(logo)}" alt="Logo">` : `<span>Noch kein Logo</span>`}</div>
+          <div class="eq-bk-logo-k"><label class="eq-btn zweit eq-dok-knopf" for="bkLogo">${logo ? "Anderes Logo" : "Logo wählen"}</label>
+          <input type="file" id="bkLogo" class="eq-dok-input" accept="image/png,image/jpeg">
+          <button type="button" class="add-btn" id="bkLogoWeg"${logo ? "" : " hidden"}>Entfernen</button></div></div>
+        <div class="ef-h">PNG oder JPG, am besten breit und mit weißem oder durchsichtigem Hintergrund. Steht oben rechts.</div>
+      </div>
+      ${ef("Firma", "firma", d.firma || "", "text", { pflicht: true, platzhalter: "z. B. Muster Immobilien GmbH" })}
+      ${efArea("Anschrift", "anschrift", d.anschrift || "", { hinweis: "Zwei Zeilen: Straße und Hausnummer, dann PLZ und Ort." })}
+      ${ef("Ansprechpartner", "ansprechpartner", d.ansprechpartner || "", "text")}
+      <div class="eq-ef2">
+        ${ef("Telefon", "telefon", d.telefon || "", "tel")}
+        ${ef("E-Mail", "email", d.email || "", "email")}
+      </div>
+      ${ef("Absenderzeile über der Anschrift", "ruecksende", d.ruecksende || "", "text", { hinweis: "Leer lassen: Firma und Anschrift in einer Zeile." })}
+      ${ef("Zahlungsfrist", "frist", d.frist || 4, "number", { step: "1", min: 1, max: 12, einheit: "Wochen", hinweis: "Steht im Satz zur Nachzahlung oder Rückzahlung." })}
+      ${efTitel("Fußzeile")}
+      ${efArea("Spalte 1", "fuss1", d.fuss1 || "", { hinweis: "z. B. Firma, Anschrift, Geschäftsführung – bis zu vier Zeilen" })}
+      ${efArea("Spalte 2", "fuss2", d.fuss2 || "", { hinweis: "z. B. Website, E-Mail, Telefon" })}
+      ${efArea("Spalte 3", "fuss3", d.fuss3 || "", { hinweis: "z. B. Bank, IBAN, BIC" })}
+      ${efArea("Spalte 4", "fuss4", d.fuss4 || "", { hinweis: "z. B. Amtsgericht, Handelsregister, USt-IdNr." })}
+      <div class="note">Gilt für alle Abrechnungen deiner Firma. Du stellst ihn nur einmal ein.</div>
+      ${efAktionen({})}`;
+    const sheet = openSheet("Briefkopf und Fußzeile", "für die PDF-Abrechnung", body);
+    const inp = sheet.querySelector("#bkLogo"), bild = sheet.querySelector("#bkLogoBild"), weg = sheet.querySelector("#bkLogoWeg");
+    inp.addEventListener("change", async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      try {
+        logo = await nkBildDaten(f, 900, f.type === "image/png");
+        if (logo.length > 1400000) { logo = bk.logo || null; showToast("Das Logo ist zu groß. Nimm bitte eine kleinere Datei."); return; }
+        bild.innerHTML = `<img src="${esc(logo)}" alt="Logo">`; weg.hidden = false;
+        sheet.querySelector('label[for="bkLogo"]').textContent = "Anderes Logo";
+      } catch (_) { showToast("Dieses Bild ließ sich nicht lesen. Nimm bitte PNG oder JPG."); }
+    });
+    weg.onclick = () => { logo = null; bild.innerHTML = `<span>Noch kein Logo</span>`; weg.hidden = true; };
+    efBind(sheet, async (w) => {
+      const daten = { firma: text(w.firma) || "", anschrift: text(w.anschrift) || "", ansprechpartner: text(w.ansprechpartner) || "",
+        telefon: text(w.telefon) || "", email: text(w.email) || "", ruecksende: text(w.ruecksende) || "",
+        frist: Math.max(1, Math.min(12, Math.round(Number(w.frist) || 4))),
+        fuss1: text(w.fuss1) || "", fuss2: text(w.fuss2) || "", fuss3: text(w.fuss3) || "", fuss4: text(w.fuss4) || "" };
+      const { data: alt, error: e0 } = await window.sb.from("briefkopf").select("org_id").maybeSingle();
+      if (e0) throw nkTabFehlt(e0) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : e0;
+      const { error } = alt && alt.org_id
+        ? await window.sb.from("briefkopf").update({ daten, logo, geaendert: new Date().toISOString() }).eq("org_id", alt.org_id)
+        : await window.sb.from("briefkopf").insert({ daten, logo });
+      if (error) throw nkTabFehlt(error) ? Object.assign(new Error("fehlt"), { eqText: NK17_FEHLT }) : error;
+      briefkopfCache = null;
+    }, null, null, () => { showToast("Briefkopf gespeichert."); if (nachher) nachher(); });
+  }
+
+  // Klick auf „Erstellen“: Briefkopf prüfen, PDF bauen, herunterladen
+  async function nkPdfStarten(ctx, liste, knopf) {
+    if (!pruefeModul("nebenkosten")) return;
+    const msg = document.querySelector("#nkPdfMsg");
+    const sag = (t, bad) => { if (msg) { msg.textContent = t; msg.classList.toggle("bad", !!bad); } };
+    const bk = await ladeBriefkopf();
+    if (bk.fehlt) { showToast(NK17_FEHLT); return; }
+    if (!bk.daten || !bk.daten.firma) {
+      showToast("Richte einmal deinen Briefkopf ein. Danach entsteht die PDF auf Knopfdruck.");
+      openBriefkopf(() => openNkAbrechnung(objektMitId(ctx.s._id) || ctx.s, ctx.jahr, 3));
+      return;
+    }
+    const ziel = knopf && knopf.querySelector(".eq-dok-auf") || knopf;
+    const alt = ziel ? ziel.textContent : "";
+    if (knopf) { knopf.disabled = true; knopf.setAttribute("aria-busy", "true"); }
+    if (ziel) ziel.textContent = "Wird erstellt…";
+    sag("Die PDF wird erstellt. Mit vielen Belegen dauert das einen Moment.");
+    try {
+      const L = await nkPdfLaden();
+      const res = await nkPdfBauen(L, ctx, liste, bk);
+      const x = liste[0];
+      const name = liste.length === 1
+        ? "Nebenkostenabrechnung_" + ctx.jahr + "_" + dokSicher(x.z.u.wohnung || "Einheit") + "_" + dokSicher(x.p.name || "Mieter") + ".pdf"
+        : "Nebenkostenabrechnungen_" + ctx.jahr + "_" + dokSicher(ctx.s.name || "Objekt") + ".pdf";
+      nkDownload(res.bytes, name);
+      sag(res.fehlt.length ? "Fertig. Nicht angehängt, bitte selbst beilegen: " + res.fehlt.join(", ") + "." : "Fertig. Die PDF ist heruntergeladen" + (res.anlagen ? " – mit " + mehrzahl(res.anlagen, "Beleg", "Belegen") + "." : "."), res.fehlt.length > 0);
+    } catch (e) {
+      console.error("PDF:", e);
+      sag("Die PDF ließ sich nicht erstellen. " + ((e && e.eqText) || "Bitte versuch es noch einmal."), true);
+    } finally {
+      if (knopf) { knopf.disabled = false; knopf.removeAttribute("aria-busy"); }
+      if (ziel) ziel.textContent = alt;
+    }
+  }
+  function nkDownload(bytes, name) {
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }
+
+  async function nkPdfBauen(L, ctx, liste, bk) {
+    const { PDFDocument, StandardFonts } = L;
+    const doc = await PDFDocument.create();
+    doc.setTitle("Nebenkostenabrechnung " + ctx.jahr + " · " + (ctx.s.name || ""));
+    doc.setAuthor(bk.daten.firma || ""); doc.setCreator("ESTRIQ"); doc.setProducer("ESTRIQ");
+    const F = { L, fR: await doc.embedFont(StandardFonts.Helvetica), fB: await doc.embedFont(StandardFonts.HelveticaBold), logo: null, win: {} };
+    if (bk.logo) { try { const by = nkDatenBytes(bk.logo); F.logo = /^data:image\/png/.test(bk.logo) ? await doc.embedPng(by) : await doc.embedJpg(by); } catch (_) {} }
+    const dc = await ladeDokumente(ctx.s._id);
+    const cache = {}, fehlt = [];
+    let anlagen = 0;
+    for (const x of liste) {
+      const anl = await nkAnlagen(ctx, x, dc, cache, fehlt, L);
+      nkBrief(doc, F, bk.daten, ctx, x, anl.length);
+      for (const a of anl) { if (await nkAnhaengen(doc, a, L)) anlagen++; else fehlt.push(a.name); }
+    }
+    return { bytes: await doc.save(), fehlt: [...new Set(fehlt)], anlagen };
+  }
+
+  // Belege eines Briefs: Rechnungen der Kostenarten, an denen die Partei einen Anteil hat und die mitgeschickt werden sollen
+  async function nkAnlagen(ctx, x, dc, cache, fehlt, L) {
+    const ids = new Set(x.p.detail.filter(d => Math.abs(d.betrag) > 0.005).map(d => d.id));
+    const reihe = [];
+    ctx.posten.forEach(p => {
+      if (!ids.has(p.id)) return;
+      (ctx.ausg[p.id] || []).slice().sort((a, b) => String(a.datum || "").localeCompare(String(b.datum || ""))).forEach(a => {
+        if (a.mitsenden === false || !a.dokument_id) return;
+        const d = (dc.liste || []).find(y => y.id === a.dokument_id);
+        if (d) reihe.push(d);
+      });
+    });
+    const out = [];
+    for (const d of reihe) {
+      if (cache[d.id] === undefined) cache[d.id] = await nkBelegLaden(d, L);
+      if (cache[d.id]) out.push(cache[d.id]); else fehlt.push(d.dateiname || d.titel || "Beleg");
+    }
+    return out;
+  }
+  async function nkBelegLaden(d, L) {
+    const name = d.dateiname || d.titel || "Beleg";
+    try {
+      const { data, error } = await window.sb.storage.from("dokumente").createSignedUrl(d.pfad, 600);
+      if (error || !data || !data.signedUrl) return null;
+      const antw = await fetch(data.signedUrl);
+      if (!antw.ok) return null;
+      const blob = await antw.blob();
+      const typ = dokTyp(d), m = String(d.mime || blob.type || ""), n = String(d.dateiname || d.pfad).toLowerCase();
+      if (typ === "PDF") return { typ: "pdf", bytes: new Uint8Array(await blob.arrayBuffer()), name };
+      if (typ === "Bild") {
+        if (/jpe?g/.test(m) || /\.jpe?g$/.test(n)) return { typ: "jpg", bytes: new Uint8Array(await blob.arrayBuffer()), name };
+        if (/png/.test(m) || /\.png$/.test(n)) return { typ: "png", bytes: new Uint8Array(await blob.arrayBuffer()), name };
+        // HEIC, WebP: über das Bild des Browsers in JPEG umwandeln
+        const du = await nkBildDaten(blob, 2200, false);
+        return { typ: "jpg", bytes: nkDatenBytes(du), name };
+      }
+      return null;
+    } catch (_) { return null; }
+  }
+  async function nkAnhaengen(doc, a, L) {
+    try {
+      if (a.typ === "pdf") {
+        if (!a.src) a.src = await L.PDFDocument.load(a.bytes, { ignoreEncryption: true });
+        const seiten = await doc.copyPages(a.src, a.src.getPageIndices());
+        seiten.forEach(p => doc.addPage(p));
+        return seiten.length > 0;
+      }
+      const img = a.typ === "png" ? await doc.embedPng(a.bytes) : await doc.embedJpg(a.bytes);
+      const W = 595.28, H = 841.89, rand = 36;
+      const k = Math.min((W - 2 * rand) / img.width, (H - 2 * rand) / img.height);
+      const w = img.width * k, h = img.height * k;
+      const pg = doc.addPage([W, H]);
+      pg.drawImage(img, { x: (W - w) / 2, y: (H - h) / 2, width: w, height: h });
+      return true;
+    } catch (e) { console.warn("Beleg:", a.name, e); return false; }
+  }
+
+  // Zahlen und Daten im Brief immer deutsch (der Brief geht an Mieter in Deutschland)
+  const nkDeZahl = (n, max) => (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: max == null ? 2 : max, useGrouping: false });
+  const nkDeEur = (n) => (Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const nkDeDatum = (iso, kurz) => { const t = String(iso).slice(0, 10).split("-"); return t[2] + "." + t[1] + "." + (kurz ? t[0].slice(2) : t[0]); };
+  const nkPersonen = (n) => Number(n) === 1 ? "1 Person" : nkDeZahl(n) + " Personen";
+  const nkUnd = (l) => l.length < 2 ? l.join("") : l.slice(0, -1).join(", ") + " und " + l[l.length - 1];
+
+  // Der Brief. Maße in Pixeln der Pages-Vorschau (724 × 1024), umgerechnet auf A4 in Punkt.
+  function nkBrief(doc, F, bk, ctx, x, nAnlagen) {
+    const { L } = F;
+    const W = 595.28, H = 841.89, K = W / 724;
+    const SCHWARZ = L.rgb(0, 0, 0), GRAU = L.rgb(0.55, 0.55, 0.55);
+    const { s, r, jahr } = ctx, cfg = ctx.cfg || {};
+    const z = x.z, pt = x.p, u = z.u, inc = z.inc || FE.unitIncome(u);
+    const mieter = pt.typ === "mieter";
+    const anschrift = (cfg.daten && cfg.daten.anschrift) || {};
+    const ec = ((cfg.daten && cfg.daten.einheiten) || {})[u._id] || {};
+    const seiten = [];
+    let pg = null;
+
+    const sicher = (t, f) => {
+      t = String(t == null ? "" : t).replace(/[   ]/g, " ").replace(/−/g, "-").replace(/[\r\n\t]+/g, " ");
+      let o = "";
+      for (const ch of t) {
+        let ok = F.win[ch];
+        if (ok === undefined) { try { f.encodeText(ch); ok = true; } catch (_) { ok = false; } F.win[ch] = ok; }
+        o += ok ? ch : "?";
+      }
+      return o;
+    };
+    const P = (v) => v * K;
+    const schreib = (t, xp, yp, o) => {
+      o = o || {};
+      const f = o.bold ? F.fB : F.fR, size = o.size || 8.2;
+      t = sicher(t, f);
+      let w = f.widthOfTextAtSize(t, size);
+      if (o.max && w > P(o.max)) { while (t.length > 1 && f.widthOfTextAtSize(t + "…", size) > P(o.max)) t = t.slice(0, -1); t += "…"; w = f.widthOfTextAtSize(t, size); }
+      let xx = P(xp); if (o.align === "r") xx -= w; else if (o.align === "c") xx -= w / 2;
+      pg.drawText(t, { x: xx, y: H - P(yp) - 0.36 * size, size, font: f, color: SCHWARZ });
+      return w;
+    };
+    const linie = (x1, y1, x2, y2, dicke, farbe) => pg.drawLine({ start: { x: P(x1), y: H - P(y1) }, end: { x: P(x2), y: H - P(y2) }, thickness: dicke || 0.6, color: farbe || SCHWARZ });
+    const neueSeite = () => { pg = doc.addPage([W, H]); seiten.push(pg); return pg; };
+
+    // --- Seite 1: Kopf ---
+    neueSeite();
+    if (F.logo) {
+      const mw = 165, mh = 55, k = Math.min(P(mw) / F.logo.width, P(mh) / F.logo.height);
+      const w = F.logo.width * k, h = F.logo.height * k;
+      pg.drawImage(F.logo, { x: P(685) - w, y: H - P(22) - h, width: w, height: h });
+    }
+    const absender = String(bk.anschrift || "").split(/\n+/).map(t => t.trim()).filter(Boolean).slice(0, 3);
+    schreib(bk.firma, 450, 112.5, { bold: true, size: 9.3, max: 245 });
+    let y = 141.5;
+    absender.forEach((t, i) => schreib(t, 450, y + i * 15, { size: 9.3, max: 245 }));
+    y = absender.length ? y + (absender.length - 1) * 15 + 29 : 141.5;
+    if (bk.ansprechpartner) { schreib("Ansprechpartner:", 450, y, { size: 9.3 }); schreib(bk.ansprechpartner, 450, y + 13.5, { size: 9.3, max: 245 }); y += 44; }
+    if (bk.telefon) { schreib("Tel.:", 450, y, { size: 9.3 }); schreib(bk.telefon, 493, y, { size: 9.3, max: 200 }); y += 14; }
+    if (bk.email) { schreib("Mail:", 450, y, { size: 9.3 }); schreib(bk.email, 493, y, { size: 9.3, max: 200 }); }
+    schreib(bk.ruecksende || [bk.firma].concat(absender).join(", "), 86, 163.5, { size: 5.2, max: 320 });
+    const objZeile = anschrift.strasse ? anschrift.strasse + (anschrift.ort ? ", " + anschrift.ort : "") : (s.name || "") + (s.ort ? ", " + s.ort : "");
+    const empf = mieter
+      ? [pt.name || u.mieter || "", anschrift.strasse || s.name || "", anschrift.ort || s.ort || ""]
+      : [pt.name || "Vormieter"].concat(String(pt.anschrift || "").split(/\n+/).map(t => t.trim()).filter(Boolean));
+    empf.filter(Boolean).slice(0, 5).forEach((t, i) => schreib(t, 86, 180 + i * 14.7, { size: 9.3, max: 330 }));
+    // Falz- und Lochmarken
+    [361, 513, 724].forEach(yy => linie(22, yy, 30, yy, 0.4, GRAU));
+    schreib("Nebenkostenabrechnung", 85, 285, { bold: true, size: 9.3 });
+    schreib(nkDeDatum(cfg.briefdatum || new Date().toISOString().slice(0, 10)), 643, 285, { bold: true, size: 9.3, align: "r" });
+    schreib(objZeile, 85, 302, { bold: true, size: 9.3, max: 520 });
+    if (pt.name) schreib(pt.name, 85, 318.5, { size: 9.3, max: 520 });
+
+    // --- Angaben zur Wohnung ---
+    const links = [["Wohnung:", u.wohnung || "—"], ["Größe:", nkDeZahl(u.flaeche) + " m²"], ["Anz. Pers.:", nkPersonen(pt.personen)]];
+    const rechts = mieter
+      ? [["Kaltmiete:", inc.kalt], ["Nebenkosten:", inc.nk], inc.kueche > 0 ? ["Küche:", inc.kueche] : null, inc.strom > 0 ? ["Strom:", inc.strom] : null,
+         inc.stell > 0 ? ["Stellplatz:", inc.stell] : null, ["Gesamt:", inc.gesamt]].filter(Boolean)
+      : [["Vorauszahlung mtl.:", pt.vorausMonat]];
+    links.forEach((l, i) => { schreib(l[0], 82.5, 371 + i * 14); schreib(l[1], 246.5, 371 + i * 14, { align: "c", max: 150 }); });
+    rechts.forEach((l, i) => { schreib(l[0], 519, 371 + i * 14); schreib(nkDeEur(l[1]), 643, 371 + i * 14, { align: "r" }); });
+    const y2 = Math.max(455.5, 371 + (rechts.length - 1) * 14 + 28);
+    const zeitraum = (label, a, b, tage, yy) => {
+      schreib(label, 82.5, yy); schreib(nkDeDatum(a, true), 310.5, yy); schreib("bis", 401.5, yy); schreib(nkDeDatum(b, true), 460, yy);
+      schreib(tage + " Tage", 617.5, yy, { align: "c" });
+    };
+    zeitraum("Abrechnungszeitraum:", r.von, r.bis, r.tage, y2);
+    zeitraum("Ihr Abrechnungszeitraum:", pt.von, pt.bis, pt.tage, y2 + 14);
+    const y3 = y2 + 42;
+    [["Gesamt Wohnfläche:", nkDeZahl(r.flaecheGes) + " m²"], ["Anzahl Wohnungen:", r.anzahl === 1 ? "1 Wohneinheit" : r.anzahl + " Wohneinheiten"], ["Anzahl Personen:", nkPersonen(Math.round(r.personenGes * 100) / 100)]]
+      .forEach((l, i) => { schreib(l[0], 82.5, y3 + i * 14.5); schreib(l[1], 246.5, y3 + i * 14.5, { align: "c" }); });
+    const mon = Math.round(pt.monate);
+    [["Mietzeit:", mon === 1 ? "1 Monat" : mon + " Monate"]].concat((ec.zaehler || []).filter(q => q && q.nr).slice(0, 2).map(q => [q.n + ":", q.nr]))
+      .forEach((l, i) => { schreib(l[0], 519, y3 + i * 14.5, { max: 72 }); schreib(l[1], 617.5, y3 + i * 14.5, { align: "c", max: 60 }); });
+
+    // --- Tabelle ---
+    const XS = [80.7, 205, 288.7, 372.7, 441.7, 517.7, 586.7, 648.3], RH = 14, UNTEN = 905;
+    let ty = y3 + 49.5;
+    const zeile = (zellen, fett) => {
+      if (ty + RH > UNTEN) { neueSeite(); ty = 70; kopfzeile(); }
+      linie(XS[0], ty, XS[7], ty);
+      const m = ty + RH / 2;
+      zellen.forEach((t, i) => {
+        const o = { bold: !!fett, max: XS[i + 1] - XS[i] - 6 };
+        if (fett || (i >= 1 && i <= 4)) schreib(t, (XS[i] + XS[i + 1]) / 2, m, { ...o, align: "c" });
+        else if (i === 0) schreib(t, XS[0] + 3, m, o);
+        else schreib(t, XS[i + 1] - 3, m, { ...o, align: "r" });
+      });
+      XS.forEach(xx => linie(xx, ty, xx, ty + RH));
+      ty += RH;
+      linie(XS[0], ty, XS[7], ty);
+    };
+    const kopfzeile = () => zeile(["Bezeichnung", "verteilt nach", "Gesamt", "Anteil", "Einheit", "Betrag", "Anteil"], true);
+    kopfzeile();
+    pt.detail.forEach(d => zeile([d.art, d.verteilt || "", nkDeZahl(d.basisGes), nkDeZahl(d.basis), d.einheit || "", nkDeEur(d.gesamtBetrag), nkDeEur(d.betrag)]));
+
+    // --- Summen und Ergebnis ---
+    const stromAnteil = pt.detail.filter(d => d.strom).reduce((a, d) => a + d.betrag, 0);
+    const mitNeu = mieter && pt.monate >= 1;
+    const hoehe = 130 + (mitNeu ? 62 : 0) + (nAnlagen ? 24 : 0);
+    if (ty + hoehe > UNTEN) { neueSeite(); ty = 50; }
+    const B = ty;
+    schreib("Summe Haus:", 443.5, B + 22.5); schreib(nkDeEur(r.summeUml), 526.5, B + 22.5);
+    schreib("Anteil im Abrechnungszeitraum:", 443.5, B + 50.5); schreib(nkDeEur(pt.anteil), 643, B + 50.5, { align: "r" });
+    schreib("Betriebskosten-Vorauszahlung:", 443.5, B + 64.5); schreib(nkDeEur(pt.voraus), 643, B + 64.5, { align: "r" });
+    const saldo = pt.voraus - pt.anteil;
+    const nach = saldo < -0.005, zurueck = saldo > 0.005;
+    schreib(nach ? "Nachzahlung:" : zurueck ? "Rückzahlung:" : "Ergebnis:", 443, B + 92, { bold: true });
+    schreib(nkDeEur(Math.abs(saldo)), 643, B + 92, { bold: true, align: "r" });
+    linie(442.5, B + 97.5, 649, B + 97.5, 0.6); linie(442.5, B + 100, 649, B + 100, 0.6);
+    const frist = Number(bk.frist) || 4;
+    schreib(nach ? "Bitte überweisen Sie den zu zahlenden Betrag innerhalb von " + frist + " Wochen auf das Ihnen bekannte Konto."
+      : zurueck ? "Wir überweisen Ihre Rückzahlung innerhalb von " + frist + " Wochen auf das uns bekannte Konto."
+      : "Es ergibt sich weder eine Nachzahlung noch eine Rückzahlung.", 83, B + 123, { bold: true, max: 565 });
+    let yn = B + 123;
+    if (mitNeu) {
+      const zehn = (v) => v > 0 ? Math.ceil(v / 10 - 1e-9) * 10 : 0;
+      const neuBK = zehn((pt.anteil - stromAnteil) / pt.monate);
+      const neuStrom = r.hatStrom ? zehn(stromAnteil / pt.monate) : null;
+      const teile = ["Kaltmiete"].concat(inc.kueche > 0 ? ["Küche"] : [], inc.stell > 0 ? ["Stellplatz"] : [], !r.hatStrom && inc.strom > 0 ? ["Strom"] : []);
+      const summe = inc.kalt + inc.kueche + inc.stell + neuBK + (r.hatStrom ? neuStrom : inc.strom);
+      yn = B + 152.5;
+      schreib("Ihre neue Betriebskosten-Vorauszahlung beträgt monatlich:", 83, yn); schreib(nkDeEur(neuBK), 643, yn, { align: "r" });
+      if (r.hatStrom) { yn += 13.5; schreib("Ihre neue Stromkosten-Vorauszahlung beträgt monatlich:", 83, yn); schreib(nkDeEur(neuStrom), 643, yn, { align: "r" }); }
+      yn += 13.5;
+      schreib("monatliche Summe inklusive der monatlichen " + nkUnd(teile) + ":", 83, yn, { bold: true, max: 470 }); schreib(nkDeEur(summe), 643, yn, { bold: true, align: "r" });
+      linie(80, yn + 6, 649, yn + 6, 0.6);
+    }
+    if (nAnlagen) schreib("Anlagen: " + (nAnlagen === 1 ? "1 Beleg" : nAnlagen + " Belege"), 83, yn + 26, { size: 7.5 });
+
+    // --- Fußzeile und Seitenzahl auf jeder Briefseite ---
+    const spalten = [bk.fuss1, bk.fuss2, bk.fuss3, bk.fuss4].map(t => String(t || "").split(/\n/).map(v => v.trim()).slice(0, 4));
+    const SX = [86, 243, 366, 528], SB = [152, 118, 158, 160];
+    seiten.forEach((p, i) => {
+      pg = p;
+      schreib("Seite " + (i + 1) + " von " + seiten.length, 528, 939, { bold: true, size: 6.5 });
+      spalten.forEach((zeilen, c) => zeilen.forEach((t, j) => { if (t) schreib(t, SX[c], 951.5 + j * 12.2, { size: 6.4, max: SB[c] }); }));
+    });
+  }
+
+  // Eine Rechnung aus den Nebenkosten in der Dokumentenablage: nur ansehen. Betrag und Beleg ändert man bei der Kostenart.
+  async function openDokRechnung(s, d, nachher) {
+    const c = dokCache[s._id] || { nk: {} };
+    const nk = d.nebenkosten_id && c.nk ? c.nk[d.nebenkosten_id] : null;
+    const body = `
+      <div class="eq-dok-datei"><span class="eq-dok-typ" data-typ="${esc(dokTyp(d))}">${esc(dokTyp(d))}</span><span class="eq-dok-tx"><b>${esc(d.dateiname || "Datei")}</b><small>${esc([dokGroesse(d.groesse), "hochgeladen am " + datumKurz(String(d.erstellt_am).slice(0, 10))].filter(Boolean).join(" · "))}</small></span>
+        <button type="button" class="add-btn" id="dokAuf">Öffnen</button></div>
+      <div class="rc-zeilen" style="margin-top:8px">
+        ${nk ? `<div class="rc-z"><span>Kostenart</span><b>${esc(nk.art)} · ${esc(String(nk.jahr))}</b></div>` : ""}
+        ${d.datum ? `<div class="rc-z"><span>Rechnungsdatum</span><b>${esc(datumKurz(d.datum))}</b></div>` : ""}
+        ${d.betrag != null ? `<div class="rc-z"><span>Betrag</span><b>${eur2(Number(d.betrag))}</b></div>` : ""}
+      </div>
+      <div class="note">Diese Rechnung gehört zu den Nebenkosten. Betrag, Datum und Beleg änderst du dort bei der Kostenart.</div>
+      ${nk ? `<button type="button" class="eq-btn" id="dokZurNk" style="margin-top:12px">Zur Kostenart ${esc(nk.art)}</button>` : ""}`;
+    const sh = openSheet(d.titel || "Rechnung", nameOhneBruch(s.name), body);
+    sh.querySelector("#dokAuf").onclick = () => dokOeffnen(s._id, d);
+    const z = sh.querySelector("#dokZurNk"); if (z) z.onclick = () => openNkPosten(s, Number(nk.jahr), { id: nk.id });
   }
 
   /* ================= PROJEKTE ================= */
