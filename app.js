@@ -11748,7 +11748,7 @@
     if (nkPdfLib) return nkPdfLib;
     nkPdfLib = new Promise((res, rej) => {
       const sc = document.createElement("script");
-      sc.src = "./pdf-lib.min.js?v=91";
+      sc.src = "./pdf-lib.min.js?v=92";
       sc.onload = () => window.PDFLib ? res(window.PDFLib) : rej(new Error("pdf-lib"));
       sc.onerror = () => { nkPdfLib = null; rej(Object.assign(new Error("pdf-lib"), { eqText: "Das PDF-Werkzeug ließ sich nicht laden. Prüf die Internetverbindung." })); };
       document.head.appendChild(sc);
